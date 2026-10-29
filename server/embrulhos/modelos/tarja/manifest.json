@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "tarja",
+  "nome": "Tarja",
+  "origem": "(PDF embrulhos, enviado pelo editor)#p6",
+  "tipo": "sobreposicao",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "headline",
+      "papel": "headline",
+      "max": 36
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "impacto",
+      "manchete"
+    ],
+    "serveA": [
+      "revelacao",
+      "dado"
+    ],
+    "exige": [],
+    "evita": []
+  }
+}

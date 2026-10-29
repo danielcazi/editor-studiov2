@@ -12,6 +12,7 @@ import { CAPTION_PRESETS, CARD_TYPES, formatCardTypes, validateCaptionStyle, val
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
 import { captionLines, checkLayers, colorsOf, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
 import { synthesize, synthesizeLong } from './voice.ts';
+import { carregarEmbrulho, compor, conferirCampos, extrairQuadro, listarEmbrulhos, precosDoSrt, renderCamadas, sugerirQuadros } from './embrulhos.ts';
 import { band, download as brollDownload, extOf, pick as brollPick, rightsOf, search as brollSearch } from './broll.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -1718,7 +1719,7 @@ export const listProjectsOverview = (): ProjectOverview[] => {
 };
 // Files the UI may read; anything else stays private.
 export const finalName = (format: string) => `final-${format.replace(':', '-')}.mp4`;
-const PROJECT_FILES = ['script.json', 'edit.json', 'embrulhos.json', 'preview.mp4', 'final.mp4', ...FORMATS.map(finalName)];
+const PROJECT_FILES = ['script.json', 'edit.json', 'embrulhos.json', 'preview.mp4', 'final.mp4', ...FORMATS.map(finalName), ...listarEmbrulhos().map(m => `embrulho-${m}.mp4`)];
 export function projectFile(id: string, f: string) {
   load(id);
   if (!PROJECT_FILES.includes(f) || !existsSync(join(projDir(id), f))) fail(`no ${f} yet`);
@@ -2527,53 +2528,74 @@ export const exportAfterEffects = (id: string) => locked(id, "ae", async st => {
   return { ok: true, outputDir: aeDir, aep: aepPath, aepGenerated };
 });
 
-export const generateHooks = (id: string) => locked(id, "embrulhos", async st => {
+// Embrulhos: the 9 static 9:16 frames from the editor's PDF (server/embrulhos/modelos). Sonnet picks up to 3 eligible models for this
+// talk, fills their fields in conversational copy, and each pick is rendered as embrulho-<modelo>.mp4 with the reel inside the slot.
+// shortcut: the angle library is a fixed file; `body.angulos` replaces it for one call, no per-brand list yet
+const ANGULOS: { n: number; cat: string; angulo: string; explicacao: string; exemplo: string; modelos: string[] }[] = readJSON(join(ROOT, 'server/embrulhos/angulos.json')).angulos;
+const angulosDe = (modelo: string) => ANGULOS.filter(a => a.modelos.includes(modelo)).map(a => a.angulo);
+export const generateHooks = (id: string, body: { angulos?: string[] } = {}) => locked(id, 'embrulhos', async st => {
   const P = projDir(id);
-  const scriptFile = join(P, "script.json");
-  if (!existsSync(scriptFile)) fail("script.json não encontrado. Conclua a etapa de roteiro.");
-  const scriptData = readJSON(scriptFile);
-  const fullText = (scriptData.moments || []).map((m: any) => m.texto).join(" ");
-  
-  const prompt = `Analise o roteiro a seguir de um vídeo curto de alta retenção e gere EXATAMENTE 3 ganchos / embrulhos diferentes para os primeiros 3 a 4 segundos do vídeo.
-Cada gancho deve explorar um ângulo psicológico forte:
-1. Curiosidade / Pergunta (Quebra de padrão irresistível)
-2. Dor / Urgência (Consequência direta de não agir)
-3. Promessa / Benefício Rápido (Revelação imediata)
-
-Roteiro completo:
-"${fullText}"
-
-Responda em formato JSON com o seguinte schema:
-{
-  "embrulhos": [
-    { "tipo": "curiosidade", "titulo": "...", "copy": "...", "texto_card": "...", "tempo_segundos": 3.5 },
-    { "tipo": "dor", "titulo": "...", "copy": "...", "texto_card": "...", "tempo_segundos": 3.5 },
-    { "tipo": "promessa", "titulo": "...", "copy": "...", "texto_card": "...", "tempo_segundos": 3.5 }
-  ]
-}`;
-
-  const res = await ask<any>("script", "embrulhos:generate", {
-    system: "Você é um estrategista de conteúdo e copywriting especialista em ganchos e retenção para Reels/TikTok.",
-    content: prompt,
-    schema: obj({
-      embrulhos: {
-        type: "array",
-        items: obj({
-          tipo: str,
-          titulo: str,
-          copy: str,
-          texto_card: str,
-          tempo_segundos: num
-        })
-      }
-    })
-  }, logCost(st));
-
-  const embrulhosData = res.embrulhos ?? [];
-  writeJSON(join(P, "embrulhos.json"), { generatedAt: Date.now(), embrulhos: embrulhosData });
-  await commit(id, "embrulhos: geradas 3 variações de gancho");
-  emit(id, "embrulhos:done", { embrulhos: embrulhosData });
-  return { ok: true, embrulhos: embrulhosData };
+  const video = [finalName('9:16'), 'master.mp4'].map(f => join(P, f)).find(existsSync) ?? fail('Sem vídeo: conclua a ingestão (master.mp4) ou o render 9:16.');
+  const words: Word[] = existsSync(join(P, 'transcript.json')) ? readJSON(join(P, 'transcript.json')) : [];
+  // the srt is the only source of prices; without one the Whisper transcript stands in for it
+  const srt = existsSync(join(P, 'source.srt')) ? readFileSync(join(P, 'source.srt'), 'utf8').replace(/^\uFEFF/, '') : words.map(w => w.text).join(' ');
+  const falas = srt.split(/\r?\n/).filter(l => l.trim() && !/^\d+$/.test(l.trim()) && !/-->/.test(l)).join(' ');
+  if (!falas.trim()) fail('Sem transcrição nem legenda: conclua a ingestão.');
+  const dur = await duration(id, video), precos = precosDoSrt(srt), quadros = sugerirQuadros(video, 3);
+  const modelos = listarEmbrulhos().map(mid => {
+    const m = carregarEmbrulho(mid), faltas: string[] = [];
+    if (m.perfil.exige.includes('preco_no_srt') && !precos.length) faltas.push('o .srt não tem preço (R$)');
+    if (m.perfil.exige.includes('quadro_marcante') && !quadros.length) faltas.push('nenhuma cena candidata para o print');
+    return { id: m.id, nome: m.nome, tipo: m.tipo, perfil: m.perfil, campos: m.campos, angulos: angulosDe(m.id), elegivel: !faltas.length, ...(faltas.length ? { motivo: faltas.join('; ') } : {}) };
+  });
+  const system = `Você escolhe "embrulhos" (molduras estáticas 9:16 com texto) para um vídeo curto e escreve o texto de cada campo.
+Regras:
+- Só modelos com elegivel:true. Até 3 sugestões, modelos diferentes, exatamente uma com rec:true.
+- "angulo" é o nome de um dos "angulos" do modelo escolhido (biblioteca abaixo: explicação e exemplo de cada um); ângulos diferentes entre as sugestões. O texto dos campos segue a lógica do ângulo, adaptado ao que o vídeo diz.
+- Texto estático, sem animação. Copy de conversação: tom de fala, coloquial, como alguém contando para um amigo. Nada de CAIXA ALTA.
+- Tudo tem de ser compatível com o assunto do vídeo e sair do que ele diz: nenhum número, preço ou promessa que não esteja nas falas.
+- Preencha todos os campos do modelo dentro de "max" caracteres. Campo com "fixo":true mantém o valor "padrao". Nunca repita os textos-exemplo do PDF.
+- Oferta: preco_por (e preco_de, se houver) têm de ser um dos precosDoSrt, escritos igual.
+- Fofoca (duplo): nome_pagina é o nome de uma página de fofoca fictícia inventada por você; titulo é a manchete; quadro_t é o instante (s) da cena marcante, de preferência um dos quadrosSugeridos.
+- "copy" é a legenda/linha de conversa que acompanha o embrulho no post (1 a 2 frases). "porque" explica a escolha em uma frase.`;
+  const campoSchema = { type: 'object', additionalProperties: { type: 'string' } };
+  const schema = obj({ sugestoes: { type: 'array', items: obj({ embrulho: str, rec: { type: 'boolean' }, angulo: str, porque: str, copy: str, quadro_t: num, campos: campoSchema }) } });
+  const contexto = { duracao: dur, falas, precosDoSrt: precos, quadrosSugeridos: quadros, modelos, biblioteca: body.angulos?.length ? body.angulos : ANGULOS.map(a => ({ angulo: a.angulo, explicacao: a.explicacao, exemplo: a.exemplo })) };
+  type Sug = { embrulho: string; rec: boolean; angulo: string; porque: string; copy: string; quadro_t: number; campos: Record<string, string> };
+  const checar = (s: Sug) => {
+    const m = carregarEmbrulho(s.embrulho), itens = conferirCampos(m, { ...s.campos, ...(m.perfil.exige.includes('quadro_marcante') ? { quadro_t: s.quadro_t } : {}) }, { srt, duracao: dur, textoFonte: falas });
+    if (!body.angulos?.length && !angulosDe(m.id).includes(s.angulo)) itens.push({ nivel: 'aviso', campo: 'angulo', msg: `"${s.angulo}" não está entre os ângulos de ${m.nome}` });
+    return { m, itens };
+  };
+  let res = await ask<{ sugestoes: Sug[] }>('embrulhos', 'embrulhos:sugerir', { system, content: JSON.stringify(contexto), schema }, logCost(st));
+  let checks = res.sugestoes.map(s => { try { return checar(s); } catch (e) { return { m: null, itens: [{ nivel: 'erro' as const, campo: 'embrulho', msg: (e as Error).message }] }; } });
+  const erros = () => checks.flatMap((c, i) => c.itens.filter(x => x.nivel === 'erro').map(x => `#${i + 1} ${res.sugestoes[i].embrulho} · ${x.campo}: ${x.msg}`));
+  if (erros().length) {   // one correction round, then whatever still fails is dropped
+    emit(id, 'log', 'embrulhos: corrigindo ' + erros().length + ' erro(s)');
+    res = await ask<{ sugestoes: Sug[] }>('embrulhos', 'embrulhos:corrigir', { system, content: JSON.stringify({ ...contexto, suaResposta: res, erros: erros() }) + '\nCorrija os erros e devolva as sugestões completas.', schema }, logCost(st));
+    checks = res.sugestoes.map(s => { try { return checar(s); } catch (e) { return { m: null, itens: [{ nivel: 'erro' as const, campo: 'embrulho', msg: (e as Error).message }] }; } });
+  }
+  const dir = join(P, 'embrulhos'); mkdirSync(dir, { recursive: true });
+  const gi = join(P, '.gitignore');
+  if (!existsSync(gi) || !/^embrulhos\/$/m.test(readFileSync(gi, 'utf8'))) appendFileSync(gi, 'embrulhos/\n');
+  const out: unknown[] = [];
+  for (const [i, s] of res.sugestoes.entries()) {
+    const { m, itens } = checks[i], falhas = itens.filter(x => x.nivel === 'erro').map(x => `${x.campo}: ${x.msg}`);
+    const avisos = itens.filter(x => x.nivel === 'aviso').map(x => `${x.campo}: ${x.msg}`);
+    if (!m || falhas.length) { out.push({ ...s, erros: falhas }); continue; }
+    emit(id, 'log', `embrulho ${m.nome}: renderizando`);
+    const quadro = m.perfil.exige.includes('quadro_marcante') ? extrairQuadro(video, s.quadro_t, join(dir, `${m.id}-quadro.jpg`)) : null;
+    const camadas = await renderCamadas(m, s.campos, { quadroImg: quadro, destino: join(dir, m.id) });
+    if (camadas.textoNaoCabe?.length) avisos.push(`texto não coube: ${camadas.textoNaoCabe.join(', ')}`);
+    const arquivo = `embrulho-${m.id}.mp4`;
+    compor(m, video, camadas, join(P, arquivo), { duracao: dur });
+    out.push({ ...s, nome: m.nome, arquivo, avisos });
+  }
+  if (!out.some((o: any) => o.arquivo)) fail('Nenhum embrulho passou na conferência: ' + erros().join(' | '));
+  writeJSON(join(P, 'embrulhos.json'), { generatedAt: Date.now(), embrulhos: out });
+  await commit(id, `embrulhos: ${out.filter((o: any) => o.arquivo).length} moldura(s) renderizada(s)`);
+  emit(id, 'embrulhos:done', { embrulhos: out });
+  return { ok: true, embrulhos: out };
 });
 
 // ---- Cut-out (Apple Vision Segmentation) ----------------------------------------------------------------------------

@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "noticia",
+  "nome": "Notícia",
+  "origem": "(PDF embrulhos, enviado pelo editor)#p5",
+  "tipo": "janela",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.1,
+          "y": 0.4774,
+          "w": 0.7988,
+          "h": 0.3252,
+          "raio": 0.03
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "rotulo",
+      "papel": "rotulo",
+      "max": 14,
+      "padrao": "NICHO"
+    },
+    {
+      "id": "titulo",
+      "papel": "titulo",
+      "max": 110
+    },
+    {
+      "id": "apoio",
+      "papel": "apoio",
+      "max": 80
+    },
+    {
+      "id": "cta",
+      "papel": "cta",
+      "max": 50
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "noticia",
+      "autoridade"
+    ],
+    "serveA": [
+      "revelacao",
+      "dado",
+      "prova"
+    ],
+    "exige": [],
+    "evita": [
+      "humor"
+    ]
+  }
+}

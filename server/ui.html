@@ -8983,7 +8983,11 @@ async function deliveryStep(id, body, st) {
   // a clip without a license never blocks the render: it is only a reminder to swap it later
   const unlic = await api('GET', `/projects/${id}/layers`).then(l => (l.edits?.added || []).filter(a => a.rights?.status === 'unlicensed').length).catch(() => 0);
   const hooks = await api('GET', `/projects/${id}/files/embrulhos.json`).then(r => r.embrulhos || []).catch(() => []);
-  const hookList = list => list.map(h => `<div class="box" style="margin-top:8px"><b>${esc(h.tipo)} · ${esc(h.titulo)}</b><p>${esc(h.copy)}</p><p class="muted">Card: ${esc(h.texto_card)} · ${esc(h.tempo_segundos)}s</p></div>`).join('');
+  const hookList = list => list.map(h => `<div class="box" style="margin-top:8px"><b>${h.rec ? '★ ' : ''}${esc(h.nome || h.embrulho)} · ${esc(h.angulo || '')}</b><p class="muted" style="margin:4px 0">${esc(h.porque || '')}</p>
+      ${Object.entries(h.campos || {}).map(([k, v]) => `<p style="margin:2px 0"><span class="muted">${esc(k)}:</span> ${esc(v)}</p>`).join('')}
+      <p><b>Copy:</b> ${esc(h.copy || '')}</p>
+      ${(h.erros || []).map(e => `<p class="err">✗ ${esc(e)}</p>`).join('')}${(h.avisos || []).map(a => `<p class="muted">⚠ ${esc(a)}</p>`).join('')}
+      ${h.arquivo ? `<video controls style="max-height:420px" src="/projects/${id}/files/${h.arquivo}?${Date.now()}"></video>` : ''}</div>`).join('');
   const sec = (title, desc, inner) => `<div class="box" style="margin-top:16px;padding:20px;background:var(--panel2);border:1px solid var(--line-strong);border-radius:12px">
       <h4 style="margin:0 0 6px 0;font-size:12px;color:var(--cream);letter-spacing:.08em">${title}</h4><p class="muted" style="margin:0 0 12px 0;font-size:12px">${desc}</p>${inner}</div>`;
   body.innerHTML = `<div class="box"><h3>Etapa 5: entrega</h3>
@@ -9000,7 +9004,7 @@ async function deliveryStep(id, body, st) {
         <details><summary>Relatório</summary><pre>${esc(st.qa.report)}</pre></details>
         ${((st.readyFinals && st.readyFinals.length > 0) ? st.readyFinals : (st.formats || []).filter(f => f === (st.primaryFormat || '9:16'))).map(f => `<p style="font-weight:600;margin-top:16px">${esc(f)}</p><video controls src="/projects/${id}/files/final-${f.replace(':', '-')}.mp4?${Date.now()}"></video>`).join('')}</div>` : ''}`)}
     ${sec('2 · ARQUIVO PARA AFTER EFFECTS', 'Scripts .jsx e clipes do projeto; gera o .aep quando o After Effects está disponível.', `<button id="dl-ae">🎬 Exportar para After Effects</button>`)}
-    ${sec('3 · COPY PARA EMBRULHOS', 'Três ângulos de abertura (curiosidade, dor, promessa) para testar nos primeiros segundos.', `<button id="dl-hooks">✨ ${hooks.length ? 'Gerar de novo' : 'Gerar 3 embrulhos'} (IA)</button><div id="dl-hook-list">${hookList(hooks)}</div>`)}
+    ${sec('3 · EMBRULHOS (9:16)', 'A IA escolhe até 3 molduras do PDF pelo texto do vídeo, escreve a copy em tom de conversa e renderiza cada uma com o reel dentro da janela.', `<button id="dl-hooks">✨ ${hooks.length ? 'Gerar de novo' : 'Gerar embrulhos'} (IA)</button><div id="dl-hook-list">${hookList(hooks)}</div>`)}
     ${sec('4 · STATUS & ENCERRAMENTO DO PROJETO', 'Finalize o ciclo deste vídeo marcando-o como concluído para arquivá-lo na esteira e retirar os alertas de ação pendente.', `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>

@@ -13,10 +13,11 @@ export const MODEL_BY_STEP = {
   cortes: 'claude-sonnet-5-5',    // Cortes: maps a long talk and picks its 10 strongest 1-2 min passages (prose judgement, no motion code)
   cortesSrt: 'claude-haiku-5-5',  // Cortes export: fixes transcription slips in the srt of a chosen clip (text only, timing untouched)
   broll: 'claude-sonnet-5-5',     // b-roll fill: picks the beats and writes the stock search queries; no motion code, so not Opus
+  embrulhos: 'claude-sonnet-5-5', // embrulhos: picks up to 3 of the 9 PDF frames for the talk and writes their static copy (text only)
 } as const;
 export type ModelStep = keyof typeof MODEL_BY_STEP;
 
-const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', cloneFormat: 'high', broll: 'low', cortes: 'medium', cortesSrt: 'low' };
+const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', cloneFormat: 'high', broll: 'low', cortes: 'medium', cortesSrt: 'low', embrulhos: 'medium' };
 
 export type Cost = { at: string; stage: string; step: ModelStep; model: string; in: number; out: number; cacheRead: number; cacheWrite: number };
 

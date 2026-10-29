@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "fofoca-headline",
+  "nome": "Fofoca (headline)",
+  "origem": "(PDF embrulhos, enviado pelo editor)#p9",
+  "tipo": "janela",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0.2689,
+          "w": 1,
+          "h": 0.4566
+        }
+      },
+      "camadas": [
+        "fundo",
+        "frente"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "titulo",
+      "papel": "titulo",
+      "max": 110
+    }
+  ],
+  "midia": [
+    {
+      "id": "avatar",
+      "tipo": "imagem",
+      "opcional": true
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "fofoca",
+      "revelacao"
+    ],
+    "serveA": [
+      "revelacao",
+      "curiosidade"
+    ],
+    "exige": [],
+    "evita": []
+  }
+}

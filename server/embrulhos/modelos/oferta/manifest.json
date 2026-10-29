@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "oferta",
+  "nome": "Oferta",
+  "origem": "(PDF embrulhos, enviado pelo editor)#p7",
+  "tipo": "janela",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.119,
+          "y": 0.141,
+          "w": 0.762,
+          "h": 0.387
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "promessa",
+      "papel": "promessa",
+      "max": 36
+    },
+    {
+      "id": "preco_de",
+      "papel": "preco_de",
+      "max": 12,
+      "opcional": true
+    },
+    {
+      "id": "preco_por",
+      "papel": "preco_por",
+      "max": 12
+    },
+    {
+      "id": "cta",
+      "papel": "cta",
+      "max": 40
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "oferta",
+      "venda"
+    ],
+    "serveA": [
+      "oferta",
+      "promocao"
+    ],
+    "exige": [
+      "preco_no_srt"
+    ],
+    "evita": []
+  }
+}

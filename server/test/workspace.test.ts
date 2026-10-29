@@ -1,16 +1,18 @@
 // Everything here runs in a throw-away workspace: never the real one (a test once overwrote a real brand's font).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const tmp = mkdtempSync(join(tmpdir(), 'editor-ws-'));
 process.env.WORKSPACE = join(tmp, 'ws');
-const fake = join(tmp, 'claude.sh');   // stands in for the claude CLI: always answers with 3 hooks
+const fake = join(tmp, 'claude.sh');   // stands in for the claude CLI: always answers with 2 embrulhos, the second one repeating the PDF's template text
 writeFileSync(fake, `#!/bin/bash\ncat >/dev/null\necho '${JSON.stringify({ is_error: false, result: '', usage: { input_tokens: 1, output_tokens: 1 },
-  structured_output: { embrulhos: ['curiosidade', 'dor', 'promessa'].map(tipo => ({ tipo, titulo: 't', copy: 'c', texto_card: 'x', tempo_segundos: 3.5 })) } })}'\n`);
+  structured_output: { sugestoes: [
+    { embrulho: 'tarja', rec: true, angulo: 'prova', porque: 'p', copy: 'c', quadro_t: 0, campos: { headline: 'olá mundo, de novo' } },
+    { embrulho: 'pergunta', rec: false, angulo: 'curiosidade', porque: 'p', copy: 'c', quadro_t: 0, campos: { rotulo: 'Faça uma pergunta', pergunta: 'Coloque aqui uma pergunta altamente forte ou polêmica' } }] } })}'\n`);
 chmodSync(fake, 0o755);
 process.env.CLAUDE_BIN = fake;
 const P = await import('../pipeline.ts');
@@ -52,14 +54,20 @@ test('a createProject that fails leaves no folder behind, so the name can be use
   assert.equal(existsSync(join(P.WS, 'projects')) ? readdirSync(join(P.WS, 'projects')).length : 0, 0);
 });
 
-test('generateHooks returns the hooks the model sent', async () => {
+test('generateHooks renders the valid embrulho and keeps the rejected one with its errors', async () => {
   const clip = join(tmp, 'clip.mp4');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
   const st = await P.createProject({ name: 'Hooks', video: clip, preEdited: true, brand: 'padrao' });
-  writeFileSync(join(P.WS, 'projects', st.id, 'script.json'), JSON.stringify({ moments: [{ texto: 'olá mundo' }] }));
+  const D = join(P.WS, 'projects', st.id);
+  copyFileSync(clip, join(D, 'master.mp4'));
+  writeFileSync(join(D, 'transcript.json'), JSON.stringify([{ text: 'olá', start: 0, end: 0.5 }, { text: 'mundo', start: 0.5, end: 1 }]));
   const out = await P.generateHooks(st.id);
-  assert.equal(out.embrulhos.length, 3);
-  assert.equal(JSON.parse(readFileSync(join(P.WS, 'projects', st.id, 'embrulhos.json'), 'utf8')).embrulhos[1].tipo, 'dor');
+  const [ok, bad] = JSON.parse(readFileSync(join(D, 'embrulhos.json'), 'utf8')).embrulhos;
+  assert.equal(out.embrulhos.length, 2);
+  assert.equal(ok.arquivo, 'embrulho-tarja.mp4');
+  assert.ok(existsSync(join(D, ok.arquivo)) && existsSync(join(D, 'embrulhos', 'tarja', 'fundo.png')));
+  assert.match(bad.erros.join(' '), /texto-modelo do PDF/);
+  assert.match(readFileSync(join(D, '.gitignore'), 'utf8'), /^embrulhos\/$/m);
 });
 
 test('syncBrandMarkdown keeps the Google fonts it downloaded', async () => {
