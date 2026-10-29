@@ -7,7 +7,7 @@ import { safeId, type Word } from './lib.ts';
 import { duration, expandHome, intake, py, run, subscribe, UserError, WS } from './pipeline.ts';
 
 export type Corte = { n: number; start: number; end: number; title: string; quote: string; why: string; score: number };
-type State = { id: string; name: string; source: string; status: 'transcribing' | 'analysing' | 'ready' | 'exporting' | 'error'; error?: string;
+type State = { id: string; name: string; source: string; subtitle?: string; status: 'transcribing' | 'analysing' | 'ready' | 'exporting' | 'error'; error?: string;
   duration?: number; cortes: Corte[]; exported: Record<number, { mp4: string; srt: string }>; cost: Cost[] };
 
 const DIR = join(WS, 'cortes');
@@ -30,13 +30,15 @@ export function file(id: string, name: string) {
   return /^\d+\.(mp4|srt)$/.test(name) && existsSync(f) ? f : fail(`sem ${name}`);
 }
 
-export async function create(o: { name?: string; video?: string }) {
+export async function create(o: { name?: string; video?: string; subtitle?: string }) {
   const video = expandHome(String(o?.video ?? ''));
   if (!VIDEO_EXT.includes(extname(video).toLowerCase()) || !existsSync(video)) fail(`vídeo inválido ou não encontrado: ${video}`);
+  const subtitle = o.subtitle ? expandHome(String(o.subtitle)) : undefined;
+  if (subtitle && (!['.srt', '.vtt'].includes(extname(subtitle).toLowerCase()) || !existsSync(subtitle))) fail(`legenda inválida ou não encontrada: ${subtitle}`);
   const slug = String(o.name || basename(video, extname(video))).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || fail('nome obrigatório');
   const id = `${slug}-${Date.now().toString(36)}`;
   mkdirSync(join(dirOf(id), 'out'), { recursive: true });
-  const st: State = { id, name: o.name || basename(video), source: video, status: 'transcribing', cortes: [], exported: {}, cost: [] };
+  const st: State = { id, name: o.name || basename(video), source: video, subtitle, status: 'transcribing', cortes: [], exported: {}, cost: [] };
   save(st);
   analyse(st).catch(e => { st.status = 'error'; st.error = e.message; save(st); log(id, 'ERRO: ' + e.message); });
   return st;
@@ -51,9 +53,10 @@ async function analyse(st: State) {
     log(id, `▶ Guardando ${basename(st.source)}...`);
     intake(st.source, kept);
     st.source = kept; save(st);
+    if (st.subtitle) { const k = join(dirOf(id), 'source' + extname(st.subtitle).toLowerCase()); intake(st.subtitle, k); st.subtitle = k; save(st); }
     st.duration = await duration(id, st.source);
-    log(id, `▶ Transcrevendo ${Math.round(st.duration / 60)} min de vídeo (Whisper local)...`);
-    await py(id, 'transcribe.py', [st.source, join(dirOf(id), 'transcript.json')]);
+    log(id, st.subtitle ? `▶ Lendo os tempos da legenda ${basename(st.subtitle)} (sem Whisper)...` : `▶ Transcrevendo ${Math.round(st.duration / 60)} min de vídeo (Whisper local)...`);
+    await py(id, 'transcribe.py', [st.subtitle ?? st.source, join(dirOf(id), 'transcript.json')]);
     const words: Word[] = readJSON(join(dirOf(id), 'transcript.json')).filter((w: Word) => w.text.trim());
     if (!words.length) fail('nenhuma fala encontrada');
     st.status = 'analysing'; save(st);

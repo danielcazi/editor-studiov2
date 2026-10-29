@@ -10936,8 +10936,11 @@ async function cortes(sel) {
       <div style="display:grid;gap:6px;margin-bottom:14px">
         <input id="ct-name" placeholder="Nome (opcional)">
         <input id="ct-video" placeholder="Caminho do vídeo (~1 h)">
-        <div style="display:flex;gap:6px"><button id="ct-pick">Escolher vídeo…</button><button id="ct-go" class="primary">Analisar</button></div>
+        <input id="ct-srt" placeholder="Legenda .srt/.vtt (opcional, pula o Whisper)">
+        <div style="display:flex;gap:6px"><button id="ct-pick">Escolher vídeo…</button><button id="ct-pick-srt">Escolher .srt…</button></div>
+        <button id="ct-go" class="primary">Analisar</button>
         <input id="ct-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" hidden>
+        <input id="ct-file-srt" type="file" accept=".srt,.vtt" hidden>
       </div>
       ${list.map(c => `<a class="bitem ${c.id === sel ? 'on' : ''}" href="#/cortes/${esc(c.id)}">${esc(c.name)} <span class="muted">· ${c.status === 'ready' ? c.n + ' trechos' : c.status}</span></a>`).join('') || '<p class="muted">nenhum ainda</p>'}
     </aside>
@@ -10958,10 +10961,12 @@ async function cortes(sel) {
       </label>`).join('')}</div>` : ''}
       <p style="margin-top:20px"><button id="ct-del" class="muted">Apagar este corte</button></p>`}
     </section></div>`;
-  const upload = f => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=video&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
+  const upload = (f, kind = 'video') => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=${kind}&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
   $('#ct-pick').onclick = async () => { try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#ct-video').value = r.path; } catch { $('#ct-file').click(); } };
   $('#ct-file').onchange = async e => { if (e.target.files[0]) { $('#ct-video').value = 'enviando…'; $('#ct-video').value = await upload(e.target.files[0]); } };
-  $('#ct-go').onclick = e => act(e.target, async () => { const r = await api('POST', '/cortes', { name: $('#ct-name').value, video: $('#ct-video').value }); location.hash = `#/cortes/${r.id}`; });
+  $('#ct-pick-srt').onclick = async () => { try { const r = await api('POST', '/pick-file', { kind: 'subtitle' }); if (r.path) $('#ct-srt').value = r.path; } catch { $('#ct-file-srt').click(); } };
+  $('#ct-file-srt').onchange = async e => { if (e.target.files[0]) $('#ct-srt').value = await upload(e.target.files[0], 'subtitle'); };
+  $('#ct-go').onclick = e => act(e.target, async () => { const r = await api('POST', '/cortes', { name: $('#ct-name').value, video: $('#ct-video').value, subtitle: $('#ct-srt').value || undefined }); location.hash = `#/cortes/${r.id}`; });
   if (!st) return;
   $('#ct-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este corte e seus arquivos?')) { await api('DELETE', `/cortes/${encodeURIComponent(st.id)}`); location.hash = '#/cortes'; } });
   const picked = () => [...document.querySelectorAll('.ct-pick:checked')].map(i => +i.value);
