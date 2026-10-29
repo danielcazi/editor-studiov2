@@ -1,0 +1,42 @@
+{
+  "id": "youtube-16-9",
+  "name": "YouTube / Desktop (16:9)",
+  "aspectRatio": "16:9",
+  "width": 1920,
+  "height": 1080,
+  "category": "Widescreen",
+  "cutout": false,
+  "description": "Vídeo widescreen horizontal (16:9). Textos animados e imagens reposicionados nas laterais ou terço inferior para não cobrir o locutor.",
+  "promptGuide": "Em formato 16:9 widescreen, o locutor ocupa a área central ou terço principal. REGRA OBRIGATÓRIA DE PROTEÇÃO DO LOCUTOR: Textos animados, cards gráficos, imagens e títulos NUNCA devem sobrepor o rosto ou o corpo do locutor. Aproveite o amplo espaço horizontal do formato e reposicione todos os elementos visuais nas laterais (lado esquerdo ou direito) ou em lower-thirds (terço inferior), mantendo o apresentador completamente visível e desobstruído.",
+  "comments": "Textos animados e imagens devem ficar sempre nas laterais ou terço inferior para não cobrir o rosto do locutor.",
+  "camera": {
+    "mode": "fixed-center",
+    "headroomPercent": 14,
+    "zoomFactor": 1.0,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 80,
+      "bottom": 100,
+      "left": 120,
+      "right": 120
+    },
+    "backgroundStyle": "letterbox"
+  },
+  "editingStyle": {
+    "pacing": "natural",
+    "screenPacingSeconds": 2.0,
+    "cardMinDuration": 3.0,
+    "cardMaxDuration": 5.0,
+    "punchIns": {
+      "enabled": false,
+      "intervalSeconds": [
+        5.0,
+        10.0
+      ],
+      "zoomScale": 1.15
+    },
+    "transitions": "cut"
+  }
+}

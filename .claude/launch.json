@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "editor-7",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--env-file-if-exists=../.env", "server/server.ts"],
+      "env": { "PORT": "4401" },
+      "port": 4401
+    }
+  ]
+}

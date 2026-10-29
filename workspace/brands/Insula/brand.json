@@ -1,0 +1,190 @@
+{
+ "name": "Insula",
+ "resolution": [
+  2160,
+  3840
+ ],
+ "pacing": "tight",
+ "graphics": "busy",
+ "speed": 1.1,
+ "max_seconds": 60,
+ "colors": {
+  "main": "#1f1e1d",
+  "pop": "#5857b0",
+  "light": "#f8f7f6",
+  "soft": "#7c7a73",
+  "caption": "#ffffff",
+  "caption_accent": "#617eef"
+ },
+ "sfx": "lots",
+ "deliver_dir": "~/Movies/Reels",
+ "grade": null,
+ "require_carousel": false,
+ "title_outline": "#FFFFFF",
+ "title_y": 380,
+ "captions": {
+  "mode": "word",
+  "case": "lower",
+  "size": 70,
+  "y": 1250,
+  "style": "editorial"
+ },
+ "fonts": {
+  "head": {
+   "family": "Inter",
+   "file": "~/reels/fonts/Brown-Bold.otf",
+   "weight": 700
+  },
+  "body": {
+   "family": "Aspekta",
+   "file": "/Volumes/Extreme SSD/Connect-hub/Editor 7.0/workspace/brands/padrao/fonts/Aspekta-Bold.otf",
+   "weight": 700
+  },
+  "accent": {
+   "family": "Canela",
+   "file": "~/reels/fonts/Canela-Light.otf",
+   "weight": 300,
+   "style": "italic"
+  }
+ },
+ "icons": [],
+ "captionStyle": {
+  "preset": "word-pop",
+  "font": "body",
+  "size": 70,
+  "y": 1250,
+  "x": 0,
+  "case": "lower",
+  "color": "#ffffff",
+  "highlight": "#617eef",
+  "maxWords": 0,
+  "stroke": false,
+  "strokeColor": "#000000",
+  "strokeWidth": 4,
+  "shadow": false,
+  "shadowColor": "rgba(0,0,0,0.85)",
+  "shadowBlur": 14,
+  "shadowDistance": 6,
+  "box": false,
+  "boxColor": "#1f1e1d",
+  "scale": 100,
+  "rotation": 0,
+  "letterSpacing": 0,
+  "underline": false,
+  "align": "center"
+ },
+ "palette": [
+  {
+   "token": "color-12",
+   "hex": "#f8f7f6",
+   "role": "Background"
+  },
+  {
+   "token": "color-13",
+   "hex": "#ffffff",
+   "role": "Background"
+  },
+  {
+   "token": "color-11",
+   "hex": "#ecebfa",
+   "role": "Surface"
+  },
+  {
+   "token": "color-1",
+   "hex": "#1f1e1d",
+   "role": "Text Primary"
+  },
+  {
+   "token": "color-2",
+   "hex": "#55534d",
+   "role": "Text Primary"
+  },
+  {
+   "token": "color-4",
+   "hex": "#7c7a73",
+   "role": "Text Secondary"
+  },
+  {
+   "token": "color-3",
+   "hex": "#5857b0",
+   "role": "Accent"
+  },
+  {
+   "token": "color-5",
+   "hex": "#f07163",
+   "role": "Accent"
+  },
+  {
+   "token": "color-6",
+   "hex": "#25d366",
+   "role": "Accent"
+  },
+  {
+   "token": "color-8",
+   "hex": "#f2c94c",
+   "role": "Accent"
+  },
+  {
+   "token": "color-9",
+   "hex": "#d6d5f2",
+   "role": "Border"
+  },
+  {
+   "token": "color-10",
+   "hex": "#e6e3da",
+   "role": "Border"
+  },
+  {
+   "token": "color-7",
+   "hex": "#6fcf97",
+   "role": "Background Dark"
+  }
+ ],
+ "emojis": [
+  "💡",
+  "🚀",
+  "🔥",
+  "⚡",
+  "📊",
+  "🤖",
+  "🎯",
+  "✨"
+ ],
+ "animation": {
+  "style": "",
+  "voice": null,
+  "characters": [
+   {
+    "name": "aang",
+    "description": "Aang, jovem monge careca com seta azul na cabeça, roupa vermelha e amarela",
+    "poses": [
+     {
+      "name": "frente",
+      "file": "characters/aang/frente.png",
+      "tags": []
+     },
+     {
+      "name": "tres-quartos",
+      "file": "characters/aang/tres-quartos.png",
+      "tags": []
+     },
+     {
+      "name": "feliz",
+      "file": "characters/aang/feliz.png",
+      "tags": []
+     },
+     {
+      "name": "surpreso",
+      "file": "characters/aang/surpreso.png",
+      "tags": []
+     },
+     {
+      "name": "bravo",
+      "file": "characters/aang/bravo.png",
+      "tags": []
+     }
+    ]
+   }
+  ]
+ }
+}

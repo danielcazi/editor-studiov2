@@ -1,0 +1,46 @@
+{
+  "id": "business-reels",
+  "name": "Business Reels",
+  "order": 1,
+  "styleNumber": 1,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": true,
+  "description": "Tela cheia, tela dividida e overlays compactos de dados, alternando a cada corte.",
+  "promptGuide": "Varie o tratamento visual a cada final de frase, sem repetir o mesmo tratamento duas vezes seguidas. Os modos abaixo são uma paleta, não uma sequência a seguir em ordem: (1) locutor em tela cheia, para gancho, opinião e CTA; (2) tela dividida, locutor em cima e embaixo um elemento visual de apoio, quando ele explicar método, lista ou passo a passo; (3) locutor visível com elemento gráfico de dados, quando houver número, comparação ou prova (nunca cobrir o locutor com fundo sólido); (4) locutor recortado (fundo removido) com animação ilustrativa ou B-roll ao fundo. Também vale inventar outros: tipografia gigante cortando o quadro, diagramas que orbitam o locutor, layouts editoriais. Algo deve mudar na tela a cada ~2 segundos; se houver texto ou informação que precisa ser lida, ela fica até a fala terminar. Os 3 primeiros segundos trazem o gancho em texto, visualmente forte. Enfatize números na cor de destaque da marca. Em geral um elemento por frase, durando 2 a 4 segundos; uma frase de impacto pode ter mais.",
+  "comments": "",
+  "layout": "split-dynamic",
+  "captionsStyle": "one-word",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 18,
+    "zoomFactor": 1.15,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 200,
+      "bottom": 380,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "blur-extend"
+  },
+  "editingStyle": {
+    "pacing": "fast-cut",
+    "screenPacingSeconds": 2,
+    "cardMinDuration": 2,
+    "cardMaxDuration": 4,
+    "punchIns": {
+      "enabled": true,
+      "intervalSeconds": [
+        3,
+        6
+      ],
+      "zoomScale": 1.25
+    },
+    "transitions": "cut"
+  }
+}

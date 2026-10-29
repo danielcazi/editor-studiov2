@@ -1,0 +1,46 @@
+{
+  "id": "cutout-backdrop",
+  "name": "Cut-out Backdrop",
+  "order": 6,
+  "styleNumber": 11,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": true,
+  "description": "Você recortado sobre imagens em tela cheia que mudam a cada ideia.",
+  "promptGuide": "Locutor recortado (máscara alpha) em enquadramento de busto, em primeiro plano, com o fundo original já substituído desde o primeiro frame, inclusive no gancho de 3s. Fundo: se o usuário enviou um segundo vídeo para ser o fundo, ele é a base de TODO o vídeo, do início ao fim, e o roteiro não gera imagens de fundo; se não enviou, a IA gera imagens em tela cheia que ilustram a ideia da fala, e a cada nova ideia o fundo troca com crossfade. A IA escolhe UM estilo visual por vídeo (fotográfico, ilustração ou 3D) e o mantém em todos os fundos; fundos consecutivos têm relação temática ou paleta coerente. O fundo recebe apenas uma opacidade leve, sem escurecer demais, e nunca deve brigar com o recorte. Legenda centralizada horizontalmente, posicionada abaixo do rosto, sem cobrir os olhos nem a boca do locutor, com brilho suave. Punch-in só no meio de uma ideia, nunca junto da troca de fundo. Algo muda na tela a cada ~2 segundos; texto que precisa ser lido fica até a fala terminar. Cards de 2,5 a 5 segundos.",
+  "comments": "",
+  "layout": "cutout-backdrop-fullscreen",
+  "captionsStyle": "center-glow",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 18,
+    "zoomFactor": 1.2,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 200,
+      "bottom": 380,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "custom-scenes"
+  },
+  "editingStyle": {
+    "pacing": "storytelling",
+    "screenPacingSeconds": 2,
+    "cardMinDuration": 2.5,
+    "cardMaxDuration": 5,
+    "punchIns": {
+      "enabled": true,
+      "intervalSeconds": [
+        4,
+        7
+      ],
+      "zoomScale": 1.25
+    },
+    "transitions": "crossfade"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "editor-4-server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=../.env server.ts",
+    "test": "WORKSPACE=$(mktemp -d) node --test test/ && python3 test/test_transcribe.py && python3 test/test_anim.py",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.16.0"
+  }
+}

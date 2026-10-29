@@ -1,0 +1,14 @@
+.DS_Store
+._*
+node_modules/
+.env
+scratch/
+__pycache__/
+# saída do usuário: projetos (cada um é um repo git próprio) e uploads
+workspace/projects/
+workspace/uploads/
+workspace/scratch/
+# baixado/gerado por setup_engine.sh
+claude-reel-editor/skills/reel-editor/engine/gsap.min.js
+claude-reel-editor/skills/reel-editor/engine/sfx/
+claude-reel-editor/skills/reel-editor/engine/hf/

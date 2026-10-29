@@ -1,0 +1,46 @@
+{
+  "id": "ranking-format",
+  "name": "Ranking Format",
+  "order": 7,
+  "styleNumber": 14,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": false,
+  "description": "Uma tier list que vai enchendo enquanto você classifica, um card por vez.",
+  "promptGuide": "Tier list que vai enchendo durante o vídeo. O locutor fica em tela cheia, sem recorte, e a tabela de tiers fica na parte de baixo da tela, com 6 faixas (S, A, B, C, D, F) nas cores clássicas de tier list (S rosa, A lilás, B amarelo, C azul-claro, D verde, F vermelho), independente da marca. O roteiro é uma lista de itens que o locutor classifica um a um, e a IA decide quantos itens cabem pelo tamanho da fala. Cada item aparece como card acima da tabela, com imagem (a enviada pelo usuário; se não houver, gerada pela IA) e o nome em texto curto, enquanto o locutor o apresenta. Quando o locutor dá a nota, o card encolhe e desliza para a faixa correspondente, onde fica como miniatura. O gancho de 3s anuncia o tema e o que será classificado, com a tabela vazia. O vídeo termina com a tabela completa na tela, sem veredito extra. Algo muda na tela a cada ~2s, mas o tempo de cada card segue a fala do locutor; texto que precisa ser lido fica até a fala terminar. Cards de 2,2 a 4,5s. Cores da marca só em textos e detalhes fora da tabela.",
+  "comments": "",
+  "layout": "tier-list-bottom",
+  "captionsStyle": "badge-rank",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 24,
+    "zoomFactor": 1.05,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 180,
+      "bottom": 360,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "dark-grid"
+  },
+  "editingStyle": {
+    "pacing": "gamified",
+    "screenPacingSeconds": 2,
+    "cardMinDuration": 2.2,
+    "cardMaxDuration": 4.5,
+    "punchIns": {
+      "enabled": false,
+      "intervalSeconds": [
+        4,
+        8
+      ],
+      "zoomScale": 1.15
+    },
+    "transitions": "cut"
+  }
+}

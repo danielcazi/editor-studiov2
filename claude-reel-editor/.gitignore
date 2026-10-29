@@ -1,0 +1,7 @@
+skills/reel-editor/engine/gsap.min.js
+test-renders/
+*.norm
+skills/reel-editor/engine/hf/
+skills/reel-editor/engine/sfx/
+__pycache__/
+*.pyc
