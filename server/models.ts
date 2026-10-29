@@ -10,11 +10,12 @@ export const MODEL_BY_STEP = {
   cloneBrand: 'claude-opus-5-5',  // Opus identifica e clona marca a partir de imagem ou YouTube
   compose: 'claude-opus-5-5',     // agent composer: Opus writes the whole HyperFrames composition (formats with composer: "agent")
   cloneFormat: 'claude-opus-5-5', // clona um estilo de animação (vídeos + imagens de referência) em um novo formato
+  cortes: 'claude-opus-5-5',      // Cortes: picks the 10 strongest 1-2 min passages of a long talk from its transcript
   broll: 'claude-sonnet-5-5',     // b-roll fill: picks the beats and writes the stock search queries; no motion code, so not Opus
 } as const;
 export type ModelStep = keyof typeof MODEL_BY_STEP;
 
-const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', cloneFormat: 'high', broll: 'low' };
+const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', cloneFormat: 'high', broll: 'low', cortes: 'medium' };
 
 export type Cost = { at: string; stage: string; step: ModelStep; model: string; in: number; out: number; cacheRead: number; cacheWrite: number };
 

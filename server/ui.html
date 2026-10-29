@@ -3117,6 +3117,7 @@
       <a href="#/" class="nav-tab" id="nav-projects">Projetos</a>
       <a href="#/brands" class="nav-tab" id="nav-brands">Brandkits</a>
       <a href="#/formats" class="nav-tab" id="nav-formats">Formatos</a>
+      <a href="#/cortes" class="nav-tab" id="nav-cortes">Cortes</a>
       <a href="#/config" class="nav-tab" id="nav-config">Configurações</a>
     </nav>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
@@ -10921,17 +10922,69 @@ if (!sidebarTimerInterval) {
 }
 
 // ---- Roteador SPA -------------------------------------------------------------------------------------
+// ---- Cortes: a long talk → 10 candidate 1-2 min clips → mp4 + srt per chosen clip (polls the server, no SSE) ----
+let cortesPoll = null;
+const mmss = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+async function cortes(sel) {
+  clearInterval(cortesPoll);
+  const list = await api('GET', '/cortes');
+  const st = sel ? await api('GET', `/cortes/${encodeURIComponent(sel)}`) : null;
+  const busy = st && !['ready', 'error'].includes(st.status);
+  const STATUS = { transcribing: '⏳ Transcrevendo (Whisper local, pode levar vários minutos para 1 h)...', analysing: '🧠 Opus escolhendo os 10 melhores trechos...', exporting: '🎬 Exportando os cortes escolhidos...', ready: '✓ Trechos prontos: marque os que quer e exporte.', error: '✗ Erro' };
+  app.innerHTML = `<div style="display:grid;grid-template-columns:260px 1fr;gap:24px">
+    <aside><h4>Cortes</h4>
+      <div style="display:grid;gap:6px;margin-bottom:14px">
+        <input id="ct-name" placeholder="Nome (opcional)">
+        <input id="ct-video" placeholder="Caminho do vídeo (~1 h)">
+        <div style="display:flex;gap:6px"><button id="ct-pick">Escolher vídeo…</button><button id="ct-go" class="primary">Analisar</button></div>
+        <input id="ct-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" hidden>
+      </div>
+      ${list.map(c => `<a class="bitem ${c.id === sel ? 'on' : ''}" href="#/cortes/${esc(c.id)}">${esc(c.name)} <span class="muted">· ${c.status === 'ready' ? c.n + ' trechos' : c.status}</span></a>`).join('') || '<p class="muted">nenhum ainda</p>'}
+    </aside>
+    <section>${!st ? '<p class="muted">Suba um vídeo longo: ele é transcrito, o modelo marca os 10 trechos de 1–2 min com as falas mais impactantes, você escolhe quais viram corte e cada um sai em MP4 + SRT.</p>' : `
+      <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${st.duration ? mmss(st.duration) : ''}</span></h3>
+      <p class="${st.status === 'error' ? 'err' : 'muted'}">${STATUS[st.status]} ${esc(st.error ?? '')}</p>
+      ${busy ? `<pre class="muted" style="font-size:12px;max-height:220px;overflow:auto">${esc(st.log.join('\n'))}</pre>` : ''}
+      ${st.cortes.length ? `<video id="ct-video-el" src="/cortes/${esc(st.id)}/files/source" controls style="width:100%;max-height:360px;background:#000;border-radius:10px"></video>
+      <div style="display:flex;gap:8px;align-items:center;margin:12px 0"><button id="ct-export" class="primary" ${busy ? 'disabled' : ''}>Exportar selecionados (MP4 + SRT)</button><span class="muted" id="ct-sel">0 selecionados</span></div>
+      <div style="display:grid;gap:10px">${st.cortes.map(c => `<label style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer">
+        <input type="checkbox" class="ct-pick" value="${c.n}">
+        <div><b>${c.n}. ${esc(c.title)}</b> <span class="muted">· ${mmss(c.start)}–${mmss(c.end)} (${Math.round(c.end - c.start)} s) · nota ${c.score}</span>
+          <blockquote style="margin:6px 0;padding:6px 10px;border-left:3px solid var(--yellow)">“${esc(c.quote)}”</blockquote>
+          <div class="muted" style="font-size:13px">${esc(c.why)}</div>
+          ${st.exported[c.n] ? `<div style="margin-top:6px"><a href="/cortes/${esc(st.id)}/files/${c.n}.mp4" download>⬇ ${c.n}.mp4</a> · <a href="/cortes/${esc(st.id)}/files/${c.n}.srt" download>⬇ ${c.n}.srt</a></div>` : ''}
+        </div>
+        <button type="button" class="ct-play" data-t="${c.start}">▶ ver</button>
+      </label>`).join('')}</div>` : ''}
+      <p style="margin-top:20px"><button id="ct-del" class="muted">Apagar este corte</button></p>`}
+    </section></div>`;
+  const upload = f => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=video&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
+  $('#ct-pick').onclick = async () => { try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#ct-video').value = r.path; } catch { $('#ct-file').click(); } };
+  $('#ct-file').onchange = async e => { if (e.target.files[0]) { $('#ct-video').value = 'enviando…'; $('#ct-video').value = await upload(e.target.files[0]); } };
+  $('#ct-go').onclick = e => act(e.target, async () => { const r = await api('POST', '/cortes', { name: $('#ct-name').value, video: $('#ct-video').value }); location.hash = `#/cortes/${r.id}`; });
+  if (!st) return;
+  $('#ct-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este corte e seus arquivos?')) { await api('DELETE', `/cortes/${encodeURIComponent(st.id)}`); location.hash = '#/cortes'; } });
+  const picked = () => [...document.querySelectorAll('.ct-pick:checked')].map(i => +i.value);
+  document.querySelectorAll('.ct-pick').forEach(i => i.onchange = () => $('#ct-sel').textContent = `${picked().length} selecionados`);
+  document.querySelectorAll('.ct-play').forEach(b => b.onclick = e => { e.preventDefault(); const v = $('#ct-video-el'); v.currentTime = +b.dataset.t; v.play(); v.scrollIntoView({ block: 'nearest' }); });
+  $('#ct-export') && ($('#ct-export').onclick = e => act(e.target, async () => { api('POST', `/cortes/${encodeURIComponent(st.id)}/export`, { picks: picked() }).catch(err => alert(err.message)); setTimeout(() => cortes(sel), 500); }));
+  if (busy) cortesPoll = setInterval(() => cortes(sel).catch(() => {}), 3000);
+}
+
 function route() {
   es?.close();
   clearTimer();
+  clearInterval(cortesPoll);
   const h = location.hash.slice(1) || "/";
   const m = h.match(/^\/p\/(.+)$/);
   const b = h.match(/^\/brands\/?(.*)$/);
   const f = h.match(/^\/formats\/?(.*)$/);
   const cfg = h.match(/^\/config\/?(.*)$/);
+  const ct = h.match(/^\/cortes\/?(.*)$/);
+  $("#nav-cortes")?.classList.toggle("active", !!ct);
 
   // Atualiza destaque na top navbar
-  $("#nav-projects")?.classList.toggle("active", !b && !f && !cfg && !m);
+  $("#nav-projects")?.classList.toggle("active", !b && !f && !cfg && !m && !ct);
   $("#nav-brands")?.classList.toggle("active", !!b);
   $("#nav-formats")?.classList.toggle("active", !!f);
   $("#nav-config")?.classList.toggle("active", !!cfg);
@@ -10953,6 +11006,8 @@ function route() {
       brands(b[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (f) {
       formats(f[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
+    } else if (ct) {
+      cortes(ct[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (cfg) {
       configSettings(cfg[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else {

@@ -7,6 +7,7 @@ import * as P from './pipeline.ts';
 import * as K from './keys.ts';
 import * as B from './broll.ts';
 import * as V from './voice.ts';
+import * as C from './cortes.ts';
 
 process.chdir(import.meta.dirname);
 
@@ -15,6 +16,11 @@ const MAX_BODY = 25_000_000;
 const LOCAL_HOST = /^(127\.0\.0\.1|localhost)(:\d+)?$/, LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
 
 const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
+  ['GET', /^\/cortes$/, () => C.list()],
+  ['POST', /^\/cortes$/, (_, b) => C.create(b)],
+  ['GET', /^\/cortes\/([^/]+)$/, m => C.get(m[1])],
+  ['DELETE', /^\/cortes\/([^/]+)$/, m => C.remove(m[1])],
+  ['POST', /^\/cortes\/([^/]+)\/export$/, (m, b) => C.exportCortes(m[1], b?.picks)],
   ['GET', /^\/anim-presets$/, () => P.animPresets()],
   ['POST', /^\/broll\/search$/, (_, b) => B.search(b?.query, b)],
   ['GET', /^\/voices\/([^/]+)$/, m => V.listVoices(m[1])],
@@ -137,6 +143,8 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && path === '/gsap.js') return res.writeHead(200, { 'content-type': 'text/javascript' }).end(readFileSync(P.GSAP));   // same file the render embeds
     const f = path.match(/^\/projects\/([^/]+)\/files\/([^/]+)$/);
     if (req.method === 'GET' && f) return file(P.projectFile(decodeURIComponent(f[1]), decodeURIComponent(f[2])), req, res);
+    const cf = path.match(/^\/cortes\/([^/]+)\/files\/([^/]+)$/);
+    if (req.method === 'GET' && cf) return file(C.file(decodeURIComponent(cf[1]), decodeURIComponent(cf[2])), req, res);
     const lv = path.match(/^\/projects\/([^/]+)\/live\/(.+)$/);
     if (req.method === 'GET' && lv) return file(P.liveFile(decodeURIComponent(lv[1]), decodeURIComponent(lv[2])), req, res);
     const hf = path.match(/^\/hf\/([^/]+)$/);
