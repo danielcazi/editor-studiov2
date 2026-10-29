@@ -12,7 +12,8 @@ rec = [np.zeros([1, 1, 1, 1], np.float32)] * 4
 dsr = np.array([ds], np.float32)
 
 # fit (never stretch) into the 1920x1080 stage: a vertical source becomes a centred strip, the sides stay transparent
-sw, sh = map(int, subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', src], text=True).split(',')[:2])
+# first line only: a .mov with a stream group makes ffprobe print the stream twice ("1920,1080\n\n1920,1080")
+sw, sh = map(int, subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', src], text=True).split('\n')[0].split(',')[:2])
 fw = min(W, round(sw * H / sh / 2) * 2); x0 = (W - fw) // 2
 dec = subprocess.Popen(['ffmpeg', '-v', 'error', '-i', src, '-vf', f'fps=30,scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], stdout=subprocess.PIPE)
 enc = subprocess.Popen(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', f'{W}x{H}', '-r', '30', '-i', '-',

@@ -146,7 +146,7 @@ const brandFiles = (brand: any, to: (f: string) => string) => {
 const saveBrand = (b: string, brand: any) => writeJSON(join(brandDir(b), 'brand.json'),
   brandFiles(brand, f => f.startsWith(brandDir(b) + '/') ? f.slice(brandDir(b).length + 1) : f));
 
-function run(id: string, cmd: string, args: string[], env: Record<string, string> = {}, allowFail = false, cwd?: string): Promise<{ code: number; out: string }> {
+export function run(id: string, cmd: string, args: string[], env: Record<string, string> = {}, allowFail = false, cwd?: string): Promise<{ code: number; out: string }> {
   return new Promise((ok, ko) => {
     emit(id, 'log', `$ ${basename(cmd)} ${args.map(a => basename(a)).join(' ')}`);
     const workDir = cwd ?? (existsSync(projDir(id)) ? projDir(id) : ROOT);
@@ -158,9 +158,9 @@ function run(id: string, cmd: string, args: string[], env: Record<string, string
     p.on('close', code => code === 0 || allowFail ? ok({ code: code ?? 1, out }) : ko(new Error(`${basename(['python3', 'bash', 'node'].includes(cmd) ? args[0] ?? cmd : cmd)} failed (${code}): ${out.trim().slice(-600)}`)));
   });
 }
-const py = (id: string, script: string, args: string[], env?: Record<string, string>) => run(id, 'python3', [join(S, script), ...args], env);
+export const py = (id: string, script: string, args: string[], env?: Record<string, string>) => run(id, 'python3', [join(S, script), ...args], env);
 
-async function duration(id: string, file: string) {
+export async function duration(id: string, file: string) {
   const { out } = await run(id, 'ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]);
   return Number(out.trim());
 }
@@ -526,6 +526,28 @@ const runQuiet = (cmd: string, args: string[], ms = 60_000) => new Promise<void>
   p.on('close', () => { clearTimeout(timer); resolve(); });
   p.on('error', () => { clearTimeout(timer); resolve(); });
 });
+
+// ---- self-update (git pull from origin, then restart through start.sh) ---------------------------------------------------
+const git = (...args: string[]) => execP('git', ['-C', ROOT, ...args]);
+
+export async function checkUpdate() {
+  await git('fetch', '-q', 'origin');
+  const branch = (await git('rev-parse', '--abbrev-ref', 'HEAD')).trim();
+  const log = (await git('log', '--format=%s', `HEAD..origin/${branch}`)).trim();
+  const commits = log ? log.split('\n') : [];
+  return { branch, behind: commits.length, commits, dirty: (await git('status', '--porcelain', '--untracked-files=no')).trim() !== '' };
+}
+
+export async function applyUpdate() {
+  const { branch, behind } = await checkUpdate();
+  if (!behind) return { ok: true, updated: false, message: 'Já está na versão mais recente.' };
+  // --autostash keeps brands/formats edited locally; --ff-only never creates merge commits on the user's machine.
+  const out = await git('pull', '-q', '--ff-only', '--autostash', 'origin', branch);
+  await execP('npm', ['install', '--prefix', join(ROOT, 'server'), '--no-audit', '--no-fund']);
+  // start.sh kills whoever listens on PORT (this process) and starts the new code; the client polls until it is back.
+  spawn('bash', [join(ROOT, 'start.sh')], { detached: true, stdio: 'ignore', cwd: ROOT }).unref();
+  return { ok: true, updated: true, message: /conflict/i.test(out) ? 'Atualizado, mas houve conflito ao reaplicar edições locais (veja git stash list).' : 'Atualizado. Reiniciando o servidor...' };
+}
 
 // Thumbnail, official title and two frames of a YouTube video, as references for the clone.
 // The URL is rebuilt from the 11-character id: whatever else came in the string never reaches yt-dlp.
@@ -964,7 +986,7 @@ export async function upload(kind: string, name: string, stream: NodeJS.Readable
   await pipe(stream, createWriteStream(path));
   return { path };
 }
-const intake = (from: string, to: string) => from.startsWith(UPLOADS + '/') ? renameSync(from, to) : copyFileSync(from, to);   // uploads move, picked paths copy
+export const intake = (from: string, to: string) => from.startsWith(UPLOADS + '/') ? renameSync(from, to) : copyFileSync(from, to);   // uploads move, picked paths copy
 
 
 // ---- formats (Editor 7.0) --------------------------------------------------------------------------------------------

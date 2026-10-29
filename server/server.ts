@@ -19,6 +19,8 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/broll\/search$/, (_, b) => B.search(b?.query, b)],
   ['GET', /^\/voices\/([^/]+)$/, m => V.listVoices(m[1])],
   ['POST', /^\/projects\/([^/]+)\/voice$/, (m, b) => P.speak(m[1], b)],
+  ['GET', /^\/update\/check$/, () => P.checkUpdate()],
+  ['POST', /^\/update\/apply$/, () => P.applyUpdate()],
   ['GET', /^\/settings\/keys$/, () => K.listKeys()],
   ['PUT', /^\/settings\/keys\/([^/]+)$/, (m, b) => K.setKey(m[1], b?.key)],
   ['DELETE', /^\/settings\/keys\/([^/]+)$/, m => K.deleteKey(m[1])],

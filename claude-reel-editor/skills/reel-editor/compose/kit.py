@@ -1,6 +1,6 @@
 # Biblioteca de composição do compositor "agent". O Claude escreve scenes.py (importa este módulo, chama scene(...) e render()).
 # Constantes vêm de compose.json (W, H, DUR, colors, faceX). Regras: GUIDE.md. Rode: python3 scenes.py
-import json, os, subprocess
+import json, os, re, subprocess, sys
 
 CFG = json.load(open('compose.json'))
 W, H, DUR = CFG['W'], CFG['H'], CFG['DUR']
@@ -91,6 +91,27 @@ ERROS, AVISOS = [], []
 def erro(msg): ERROS.append(msg)
 def aviso(msg): AVISOS.append(msg)
 
+# Lint de variedade: medido no que o agente de fato gerou, porque o repertório embutido estava ficando sem uso
+# (48 dos 66 helpers nunca usados, catálogo motions/ nunca usado) e quase todo tween era só entrada/saída.
+KIT_HELPERS = set(re.findall(r'^def ([a-z]\w*)\((?:p|sel)\b', open(__file__, encoding='utf8').read(), re.M))
+MIN_HELPERS, MAX_PLAIN = 5, 0.7
+PLAIN = {'opacity', 'x', 'y', 'xPercent', 'yPercent', 'scale'}
+NOT_PROPS = {'duration', 'ease', 'delay', 'stagger', 'repeat', 'yoyo', 'immediateRender', 'transformOrigin', 'overwrite'}
+
+def lint_variety(src, html, js):
+    """src = scenes.py; html/js = tudo que render() escreveu. Devolve avisos (nunca erros: o gosto é do agente, o lint só cobra repertório)."""
+    out = []
+    used = sorted(h for h in KIT_HELPERS if re.search(r'(?<![\w.])' + h + r'\(', src))
+    if len(used) < MIN_HELPERS:
+        out.append(f'variedade: só {len(used)} helper(s) do kit ({", ".join(used) or "nenhum"}); use pelo menos {MIN_HELPERS} distintos (ver "Estilos prontos" no GUIDE.md)')
+    if 'motions/' not in html:
+        out.append('variedade: nenhum componente do catálogo motions/ (count-up, chart-story, chat-message, notification...); use ao menos um onde a fala pede')
+    tweens = [m.group(2) for m in re.finditer(r'tl\.(to|fromTo|from)\(([^;\n]{0,400})', js)]
+    plain = sum(1 for t in tweens if set(re.findall(r'(?<![\w"\'])([A-Za-z]\w*)\s*:', t)) - NOT_PROPS <= PLAIN)
+    if tweens and plain / len(tweens) > MAX_PLAIN:
+        out.append(f'variedade: {plain} de {len(tweens)} tweens só animam opacity/x/y/scale (entrada e saída); use rotation, clipPath, filter, skew, stagger, morph ou movimento sustentado (>1 s) em parte deles')
+    return out
+
 def lint_static():
     for s in S:
         n, cam = s['n'], s['cam']
@@ -160,7 +181,7 @@ def render():
     os.makedirs('compositions', exist_ok=True)
     for f in os.listdir('compositions'):
         os.remove(os.path.join('compositions', f))
-    hosts, sfx_tags, cam = [], [], []
+    hosts, sfx_tags, cam, all_html, all_js = [], [], [], [], []
     fx_n = 0
     SFXLEN = {k: v['duration'] for k, v in json.load(open('assets/sfx/manifest.json')).items()}
     for s in S:
@@ -177,6 +198,7 @@ def render():
             if 'text-stroke' in body: erro(f'cena {n}: -webkit-text-stroke para forçar texto na frente do corpo; use back')
             if kind == 's' and 'class="giant"' in body: erro(f'cena {n}: tipografia gigante em front; use back, atrás do locutor')
             open(f'compositions/{cid}.html', 'w').write(comp(cid, body, js))
+            all_html.append(body); all_js.append(js)
             z, track = (2, 1 + n % 2) if kind == 'b' else (4, 4 + n % 2)
             hosts.append(f'<div id="{cid}" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" data-start="{a}" data-duration="{d}" data-track-index="{track}" data-track-kind="graphics" data-width="{W}" data-height="{H}" style="z-index:{z}"></div>')
         for i, (name, off, vol) in enumerate(s['sfx']):
@@ -237,6 +259,7 @@ def render():
     """)
     print(len(S), "cenas,", len(hosts), "hosts,", len(sfx_tags), "sons")
     json.dump([dict(n=s['n'], a=s['a'], b=s['b'], bg=s['bg'], cam=s['cam'], cta=s['cta']) for s in S], open('scenes.json', 'w'), indent=1)
+    AVISOS.extend(lint_variety(open(sys.argv[0], encoding='utf8').read() if sys.argv and os.path.isfile(sys.argv[0]) else '', '\n'.join(all_html), '\n'.join(all_js)))
     for m in AVISOS: print('aviso:', m)
     if ERROS: raise AssertionError('\n'.join(ERROS))
     # medição no Chrome (layout_check.mjs): caixas de texto, zonas seguras, rosto e cobertura pela cabeça

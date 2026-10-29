@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=../.env server.ts",
-    "test": "WORKSPACE=$(mktemp -d) node --test test/ && python3 test/test_transcribe.py && python3 test/test_anim.py",
+    "test": "WORKSPACE=$(mktemp -d) node --test test/ && python3 test/test_transcribe.py && python3 test/test_anim.py && python3 test/test_kit_lint.py",
     "check": "tsc --noEmit"
   },
   "devDependencies": {

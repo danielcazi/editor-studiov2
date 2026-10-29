@@ -10133,8 +10133,38 @@ async function configKeys() {
   });
 }
 
+// Atualização do Editor: busca commits novos no GitHub e, se o usuário quiser, faz git pull + npm install e reinicia o servidor.
+async function configUpdate() {
+  app.innerHTML = `<div class="box" style="max-width:720px;margin:0 auto">
+    <a href="#/config" class="muted" style="font-size:12px">← Dimensões e formatos</a>
+    <h3 style="margin:8px 0 4px">Atualização do Editor</h3>
+    <p class="muted" style="font-size:12px;line-height:1.5">Compara esta instalação com o GitHub. Baixar reinicia o servidor; projetos, marcas e chaves não são apagados.</p>
+    <div style="display:flex;gap:6px;margin:12px 0"><button id="up-check">Buscar atualização</button><button id="up-apply" style="display:none">Baixar e reiniciar</button></div>
+    <div id="up-out" class="muted" style="font-size:12px;line-height:1.6;font-family:var(--mono)"></div>
+  </div>`;
+  const out = $("#up-out"), applyBtn = $("#up-apply");
+  $("#up-check").onclick = e => act(e.target, async () => {
+    out.textContent = "Consultando o GitHub...";
+    const r = await api("GET", "/update/check");
+    applyBtn.style.display = r.behind ? "" : "none";
+    out.innerHTML = r.behind
+      ? `${r.behind} atualização(ões) disponível(is):<br>${r.commits.map(c => "• " + esc(c)).join("<br>")}${r.dirty ? "<br><br>⚠️ Há edições locais em arquivos do Editor; elas serão guardadas e reaplicadas." : ""}`
+      : "✓ Já está na versão mais recente.";
+  });
+  applyBtn.onclick = e => act(e.target, async () => {
+    out.textContent = "Baixando e instalando... não feche esta aba.";
+    const r = await api("POST", "/update/apply");
+    out.textContent = r.message;
+    if (!r.updated) return;
+    // o servidor morre e volta pelo start.sh; recarrega quando responder de novo
+    await new Promise(ok => setTimeout(ok, 3000));
+    const t = setInterval(() => fetch("/formats").then(x => { if (x.ok) { clearInterval(t); location.reload(); } }).catch(() => {}), 1500);
+  });
+}
+
 async function configSettings(sel) {
   if (sel === "chaves") return configKeys();
+  if (sel === "atualizacao") return configUpdate();
   const list = await api("GET", "/formats");
   sel ??= list.find(f => ['reel-9-16', 'youtube-16-9', 'feed-1-1'].includes(f)) || list[0];
   app.innerHTML = `<div class="formats-layout">
@@ -10143,6 +10173,7 @@ async function configSettings(sel) {
       <p class="muted" style="font-size:11.5px;line-height:1.4">Dimensões técnicas, safe-zones e enquadramentos de câmera.</p>
       <div class="formats-list">
         <a class="bitem" href="#/config/chaves">🔑 Chaves de API</a>
+        <a class="bitem" href="#/config/atualizacao">⬆️ Atualização do Editor</a>
         ${list.map(f => `<a class="bitem ${f === sel ? "on" : ""}" href="#/config/${esc(f)}">${esc(f)}</a>`).join("") || "<p class=\"muted\">Nenhuma dimensão cadastrada.</p>"}
       </div>
       <div style="margin-top:18px;display:flex;gap:6px">
