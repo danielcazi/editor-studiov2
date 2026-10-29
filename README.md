@@ -12,6 +12,40 @@ O **Editor 7.0** é o resultado da convergência e maturação do ecossistema Co
 
 ---
 
+## Como funciona
+
+![Esteira de projetos](docs/img/01-esteira.png)
+
+Você entrega um vídeo bruto de locutor e o editor devolve um reel pronto na identidade da marca, em 5 etapas. Cada projeto é um repositório git próprio, então cada passo e cada edição ficam registrados e reversíveis.
+
+```mermaid
+flowchart LR
+  A[1 Ingestão<br/>áudio -14 LUFS, Whisper, rosto] --> B[2 Roteiro<br/>Opus propõe cards e motion]
+  B --> C[3 Revisão<br/>player ao vivo + anotações]
+  C --> D[4 Edição<br/>timeline em camadas]
+  D --> E[5 Entrega<br/>render, After Effects, embrulhos]
+  C -- "Aplicar notas (~1 s)" --> C
+```
+
+| Etapa | O que acontece | Tela |
+|---|---|---|
+| Novo vídeo | Escolha marca, formato e referências | ![](docs/img/03-novo-video.png) |
+| 1 Ingestão | Limpa o áudio, transcreve e rastreia o rosto | ![](docs/img/10-ingestao.png) |
+| 2 Roteiro | O Claude Opus escreve o roteiro e a direção de motion; você aprova | ![](docs/img/11-roteiro.png) |
+| 3 Revisão | O reel toca ao vivo; anotações presas a um instante, aplicadas em lote | ![](docs/img/12-revisao.png) |
+| 4 Edição | Timeline em camadas com ferramentas manuais | ![](docs/img/13-edicao.png) |
+| 5 Entrega | Render nos formatos, QA, After Effects e 3 ganchos | ![](docs/img/14-entrega.png) |
+
+**Marcas e formatos** são dados separados: a marca define cores, fontes e legenda; o formato define proporção e jeito de montar. Combine qualquer marca com qualquer formato.
+
+| Brandkits | Formatos |
+|---|---|
+| ![](docs/img/04-brands.png) | ![](docs/img/05-formats.png) |
+
+Detalhes de uso em [GUIA.md](GUIA.md); arquitetura em [CLAUDE.md](CLAUDE.md).
+
+---
+
 ## Como Rodar
 
 > Primeira vez? Siga a [Instalação](INSTALACAO.md) e depois o [Guia de uso](GUIA.md).

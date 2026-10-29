@@ -2790,7 +2790,8 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
   const motion = mode === 'motion';
   const P = projDir(id);
   if (!usesAgent(st)) fail('Este formato não usa o compositor agent');
-  const other = aspect && aspect !== primaryAspect(st) && !motion ? checkFormats(aspect)[0] : null;   // another format: its own composition
+  // another format: its own composition; the message names what came in, so a stale UI value is obvious in the log
+  const other = aspect && aspect !== primaryAspect(st) && !motion ? pickFormats([aspect])?.[0] ?? fail(`formato ${JSON.stringify(aspect)} não existe: use ${FORMATS.join(', ')}`) : null;
   await composeScaffold(id, motion, other);
   const C = composeDirOf(P, st, other);
   emit(id, 'log', motion ? '🎬 Claude está compondo o reel (escrita, check, snapshots e render)...' : `🎬 Claude está compondo o reel${other ? ` em ${other}` : ''} (escrita, check e snapshots, sem render)...`);

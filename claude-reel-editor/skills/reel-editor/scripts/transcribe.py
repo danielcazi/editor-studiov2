@@ -20,13 +20,15 @@ def split_words(entries):
     return out
 
 if __name__ == "__main__":
-    src, out = Path(sys.argv[1]).expanduser(), Path(sys.argv[2]).expanduser()
+    src, out = Path(sys.argv[1]).expanduser().resolve(), Path(sys.argv[2]).expanduser().resolve()   # absolute: npx runs elsewhere
     subs = src.suffix.lower() in (".srt", ".vtt")
     d = out.parent / (out.stem + "_whisper")
     d.mkdir(parents=True, exist_ok=True)   # importing a .srt fails if the folder is missing
     cmd = ["npx", "-y", HF, "transcribe", str(src), "-d", str(d), "--json"]
     if not subs: cmd += ["--model", "small", "--language", os.environ.get("REEL_LANG", "pt")]
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(d))
+    # cwd is this scripts folder, never the fresh output dir: on macOS exFAT drives node's getcwd() fails with ENOENT
+    # (uv_cwd) for a directory created moments ago, and npx dies before hyperframes even starts; every path above is absolute
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent))
     if r.returncode: sys.exit(f"hyperframes transcribe failed: {(r.stderr or r.stdout).strip()[-400:]}")
     words = json.load(open(d / "transcript.json"))
     if subs: words = split_words(words)
