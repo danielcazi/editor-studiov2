@@ -10953,14 +10953,14 @@ async function cortes(sel) {
         <p class="muted" style="font-size:13px">${st.analysis.estrutura.map(e => `${mmss(e.start)} ${esc(e.titulo)}`).join(' · ')}</p>
         <ul class="muted" style="font-size:13px;margin:0;padding-left:18px">${st.analysis.momentos.map(m => `<li>${mmss(m.start)} <b>${esc(m.tipo)}</b>: ${esc(m.resumo)}</li>`).join('')}</ul></details>` : ''}
       ${st.cortes.length ? `<video id="ct-video-el" src="/cortes/${esc(st.id)}/files/source" controls style="width:100%;max-height:360px;background:#000;border-radius:10px"></video>
-      <div id="ct-tl" title="Linha do tempo: cada bloco é um trecho, clique para ver" style="position:relative;height:30px;margin:8px 0;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer">
-        ${st.cortes.map(c => `<div class="ct-seg" data-n="${c.n}" data-t="${c.start}" title="${c.n}. ${esc(c.title)} (${mmss(c.start)}–${mmss(c.end)})" style="position:absolute;top:4px;bottom:4px;left:${100 * c.start / st.duration}%;width:${100 * (c.end - c.start) / st.duration}%;background:var(--yellow);opacity:.45;border-radius:3px;font:700 11px var(--mono);color:var(--ink);text-align:center;line-height:22px">${c.n}</div>`).join('')}
+      <div id="ct-tl" title="Linha do tempo: clique num bloco para ver; arraste as bordas para encurtar ou alongar o corte" style="position:relative;height:30px;margin:8px 0;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer">
+        ${st.cortes.map(c => `<div class="ct-seg" data-n="${c.n}" data-t="${c.start}" title="${c.n}. ${esc(c.title)} (${mmss(c.start)}–${mmss(c.end)})" style="position:absolute;top:4px;bottom:4px;left:${100 * c.start / st.duration}%;width:${100 * (c.end - c.start) / st.duration}%;background:var(--yellow);opacity:.45;border-radius:3px;font:700 11px var(--mono);color:var(--ink);text-align:center;line-height:22px;user-select:none">${c.n}<span class="ct-h" data-edge="start" style="position:absolute;left:0;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(0,0,0,.35)"></span><span class="ct-h" data-edge="end" style="position:absolute;right:0;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(0,0,0,.35)"></span></div>`).join('')}
         <div id="ct-head" style="position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--red,#e55);pointer-events:none"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin:12px 0"><button id="ct-export" class="primary" ${busy ? 'disabled' : ''}>Exportar selecionados (MP4 + SRT)</button><span class="muted" id="ct-sel">0 selecionados</span></div>
       <div style="display:grid;gap:10px">${st.cortes.map(c => `<label style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer">
         <input type="checkbox" class="ct-pick" value="${c.n}">
-        <div><b>${c.n}. ${esc(c.title)}</b> <span class="muted">· ${mmss(c.start)}–${mmss(c.end)} (${Math.round(c.end - c.start)} s) · ${esc(c.tipo)} · nota ${c.score}</span>
+        <div><b>${c.n}. ${esc(c.title)}</b> <span class="muted">· ${mmss(c.start)}–${mmss(c.end)} (${Math.round(c.end - c.start)} s) · ${esc(c.tipo)} · nota ${c.score}${c.enfase != null ? ` · ⚡ ênfase ${c.enfase}%` : ''}</span>
           <div style="font-size:13px;margin-top:4px"><span class="muted">Gancho:</span> ${esc(c.hook)}</div>
           <blockquote style="margin:6px 0;padding:6px 10px;border-left:3px solid var(--yellow)">“${esc(c.quote)}”</blockquote>
           <div class="muted" style="font-size:13px">${esc(c.why)}</div>
@@ -10984,7 +10984,16 @@ async function cortes(sel) {
   let cur = null;
   const play = n => { const c = st.cortes.find(x => x.n === n), v = $('#ct-video-el'); cur = c; v.currentTime = c.start; v.play(); v.scrollIntoView({ block: 'nearest' }); };
   document.querySelectorAll('.ct-play').forEach(b => b.onclick = e => { e.preventDefault(); play(+b.closest('label').querySelector('.ct-pick').value); });
-  document.querySelectorAll('.ct-seg').forEach(d => d.onclick = () => play(+d.dataset.n));
+  document.querySelectorAll('.ct-seg').forEach(d => d.onclick = e => { if (!e.target.classList.contains('ct-h')) play(+d.dataset.n); });
+  // drag an edge: the block follows the mouse, the video shows the frame under it, the release saves it (min 10 s)
+  document.querySelectorAll('.ct-h').forEach(h => h.onmousedown = e => {
+    e.preventDefault(); e.stopPropagation();
+    const seg = h.parentElement, c = { ...st.cortes.find(x => x.n === +seg.dataset.n) }, tl = $('#ct-tl').getBoundingClientRect(), v = $('#ct-video-el');
+    const at = ev => Math.min(st.duration, Math.max(0, st.duration * (ev.clientX - tl.left) / tl.width));
+    const move = ev => { const t = at(ev); if (h.dataset.edge === 'start') c.start = Math.min(t, c.end - 10); else c.end = Math.max(t, c.start + 10); seg.style.left = `${100 * c.start / st.duration}%`; seg.style.width = `${100 * (c.end - c.start) / st.duration}%`; v.currentTime = h.dataset.edge === 'start' ? c.start : c.end; };
+    const up = async () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); try { await api('PUT', `/cortes/${encodeURIComponent(st.id)}/cortes/${c.n}`, { start: c.start, end: c.end }); } catch (err) { alert(err.message); } cortes(sel); };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  });
   $('#ct-tl').onclick = e => { if (e.target.id === 'ct-tl') { cur = null; $('#ct-video-el').currentTime = st.duration * e.offsetX / e.currentTarget.clientWidth; } };
   const paint = () => { document.querySelectorAll('.ct-pick').forEach(i => { const d = document.querySelector(`.ct-seg[data-n="${i.value}"]`); d.style.opacity = i.checked ? '1' : '.45'; d.style.outline = cur?.n === +i.value ? '2px solid var(--cream)' : ''; }); };
   $('#ct-video-el').ontimeupdate = e => { const v = e.target; $('#ct-head').style.left = `${100 * v.currentTime / st.duration}%`; if (cur && v.currentTime >= cur.end) { v.pause(); cur = null; } paint(); };

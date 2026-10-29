@@ -1,12 +1,13 @@
 // Cortes: a long talk (about 1 h) in, up to 10 candidate 1-2 min passages out, then an mp4 + srt per chosen passage.
 // Lives beside the reel projects in workspace/cortes/<id>/ (source path, transcript.json, state.json, out/). No SSE: the UI polls GET /cortes/:id.
+import { execFile } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { ask, type Cost } from './models.ts';
 import { safeId, type Word } from './lib.ts';
 import { duration, expandHome, intake, py, run, subscribe, UserError, WS } from './pipeline.ts';
 
-export type Corte = { n: number; start: number; end: number; title: string; hook: string; quote: string; why: string; tipo: string; score: number };
+export type Corte = { n: number; start: number; end: number; title: string; hook: string; quote: string; why: string; tipo: string; score: number; enfase?: number };
 type Analysis = { tema: string; publico: string; estrutura: { start: number; titulo: string }[]; momentos: { start: number; tipo: string; resumo: string }[] };
 type State = { id: string; name: string; source: string; subtitle?: string; analysis?: Analysis; status: 'transcribing' | 'analysing' | 'ready' | 'exporting' | 'error'; error?: string;
   duration?: number; cortes: Corte[]; exported: Record<number, { mp4: string; srt: string }>; cost: Cost[] };
@@ -60,6 +61,9 @@ async function analyse(st: State) {
     await py(id, 'transcribe.py', [st.subtitle ?? st.source, join(dirOf(id), 'transcript.json')]);
     const words: Word[] = readJSON(join(dirOf(id), 'transcript.json')).filter((w: Word) => w.text.trim());
     if (!words.length) fail('nenhuma fala encontrada');
+    log(id, '▶ Medindo a energia da voz (loudness por segundo) para achar as frases enfáticas...');
+    const db = await energy(st.source);
+    writeFileSync(join(dirOf(id), 'energy.json'), JSON.stringify(db));
     st.status = 'analysing'; save(st);
     log(id, `▶ ${words.length} palavras. Sonnet mapeando a palestra e escolhendo os 10 melhores trechos...`);
     const r = await ask<{ analysis: Analysis; cortes: Omit<Corte, 'n'>[] }>('cortes', 'cortes', {
@@ -74,8 +78,10 @@ async function analyse(st: State) {
         'no overlaps; spread the picks over the whole talk; vary the tipos; a passage that needs the hook rephrased is a worse pick than one whose first ' +
         'sentence already hooks. Score 1-10 = hook strength + self-contained + payoff + emotion. Order best first.\n' +
         'Each line of the transcript is one phrase between pauses, prefixed with its start second: use those seconds for start and end. ' +
+        'A ⚡ after the second marks a phrase the speaker delivers with clearly more vocal energy (louder, emphatic): that is where the speaker cares most, ' +
+        'so prefer ⚡ phrases for hooks and quotes and weigh clips that hold several of them. ' +
         'Write everything in Portuguese. quote = the single most impactful sentence, copied verbatim; hook = the opening phrase of the clip, verbatim.',
-      content: `Transcript as "[seconds] phrase" lines:\n${lines(words).join('\n')}\n\nReturn the analysis, then up to 10 cortes (fewer only if the talk is too short).`,
+      content: `Transcript as "[seconds] phrase" lines (⚡ = emphatic delivery):\n${lines(words, 25, db).join('\n')}\n\nReturn the analysis, then up to 10 cortes (fewer only if the talk is too short).`,
       schema: { type: 'object', additionalProperties: false, required: ['analysis', 'cortes'], properties: {
         analysis: { type: 'object', additionalProperties: false, required: ['tema', 'publico', 'estrutura', 'momentos'], properties: { tema: { type: 'string' }, publico: { type: 'string' },
           estrutura: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['start', 'titulo'], properties: { start: { type: 'number' }, titulo: { type: 'string' } } } },
@@ -84,7 +90,7 @@ async function analyse(st: State) {
           properties: { start: { type: 'number' }, end: { type: 'number' }, title: { type: 'string' }, hook: { type: 'string' }, quote: { type: 'string' }, why: { type: 'string' }, tipo: { type: 'string' }, score: { type: 'number' } } } } } },
     }, c => { st.cost.push(c); save(st); });
     st.analysis = r.analysis;
-    st.cortes = pick(r.cortes.map(c => snap(c, words)).filter((c): c is Omit<Corte, 'n'> => !!c)).map((c, k) => ({ n: k + 1, ...c }));
+    st.cortes = pick(r.cortes.map(c => snap(c, words)).filter((c): c is Omit<Corte, 'n'> => !!c)).map((c, k) => ({ n: k + 1, ...c, enfase: enfase(c, db) }));
     if (!st.cortes.length) fail('o modelo não devolveu nenhum trecho válido');
     st.status = 'ready'; save(st);
     log(id, `✓ ${st.cortes.length} trechos prontos. Escolha quais exportar.`);
@@ -95,12 +101,32 @@ const PAUSE = 0.6;   // seconds of silence that end a phrase (Whisper gives no p
 const phraseStarts = (words: Word[]) => words.map((w, k) => k === 0 || w.start - words[k - 1].end >= PAUSE);
 
 // One line per phrase (a pause of PAUSE s or 25 words) with its start second: 1 h fits in one prompt and the model picks real phrase edges.
-export function lines(words: Word[], max = 25): string[] {
+export function lines(words: Word[], max = 25, db?: number[]): string[] {
   const out: string[][] = [], starts = phraseStarts(words);
   words.forEach((w, k) => { const cur = out[out.length - 1]; if (!cur || starts[k] || cur.length >= max) out.push([w.text]); else cur.push(w.text); });
+  const loud = db ? loudLine(db, 1.5) : 0;   // a phrase earns ⚡ by its loudest second, so the bar sits higher than the per-second share
   let k = 0;
-  return out.map(l => { const t = Math.floor(words[k].start); k += l.length; return `[${t}] ${l.join(' ')}`; });
+  return out.map(l => { const t = Math.floor(words[k].start), end = words[k + l.length - 1].end; k += l.length; return `[${t}${db && peak(db, t, end) >= loud ? ' ⚡' : ''}] ${l.join(' ')}`; });
 }
+
+// Vocal energy: RMS loudness (dB) of each second of the audio. Emphasis = louder than usual for this speaker, so the threshold is relative:
+// mean + 0.8 std over the seconds with speech (silence, far below, is left out of the statistics).
+export function energy(src: string): Promise<number[]> {
+  const af = 'aformat=channel_layouts=mono,aresample=16000,asetnsamples=n=16000:p=0,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-';
+  return new Promise((ok, ko) => execFile('ffmpeg', ['-v', 'error', '-i', src, '-vn', '-af', af, '-f', 'null', '-'], { maxBuffer: 64e6 }, (e, out) =>
+    e ? ko(e) : ok([...out.matchAll(/RMS_level=(-?[\d.]+|-inf)/g)].map(m => m[1] === '-inf' ? -90 : Number(m[1])))));
+}
+const SILENCE = -45;
+const speech = (db: number[]) => db.filter(v => v > SILENCE);
+export function loudLine(db: number[], k = 0.8): number {
+  const s = speech(db); if (s.length < 10) return Infinity;
+  const m = s.reduce((a, b) => a + b, 0) / s.length, sd = Math.sqrt(s.reduce((a, b) => a + (b - m) ** 2, 0) / s.length);
+  return m + k * sd;
+}
+const peak = (db: number[], t0: number, t1: number) => Math.max(-Infinity, ...db.slice(Math.floor(t0), Math.max(Math.floor(t0) + 1, Math.ceil(t1))));   // a phrase is emphatic when one of its seconds is
+// share (%) of the clip's spoken seconds delivered with emphasis
+export const enfase = (c: { start: number; end: number }, db: number[]) => { const loud = loudLine(db), s = speech(db.slice(Math.floor(c.start), Math.ceil(c.end))); return s.length ? Math.round(100 * s.filter(v => v >= loud).length / s.length) : 0; };
+
 
 // Move the clip edges onto the nearest phrase edges (within REACH s) and drop what is not 1-2 min (with slack) or has no words.
 const REACH = 4;
@@ -131,6 +157,19 @@ export function srt(words: Word[], start: number, end: number): string {
   }
   const ts = (t: number) => { const ms = Math.max(0, Math.round((t - start) * 1000)); const d = new Date(ms); return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:${String(d.getUTCSeconds()).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
   return cues.map((c, k) => `${k + 1}\n${ts(c[0].start)} --> ${ts(c[c.length - 1].end)}\n${c.map(w => w.text).join(' ')}\n`).join('\n');
+}
+
+// The user dragged a clip's edges on the timeline: keep it (and forget its old export, which no longer matches).
+export function update(id: string, n: number, o: { start?: unknown; end?: unknown }) {
+  const st = load(id), c = st.cortes.find(x => x.n === n) ?? fail(`sem corte ${n}`);
+  const start = Number(o?.start), end = Number(o?.end);
+  if (!(start >= 0 && end <= (st.duration ?? Infinity) && end - start >= 10)) fail('corte inválido: mínimo 10 s, dentro do vídeo');
+  c.start = +start.toFixed(2); c.end = +end.toFixed(2);
+  const ef = join(dirOf(id), 'energy.json');
+  if (existsSync(ef)) c.enfase = enfase(c, readJSON(ef));
+  delete st.exported[n];
+  save(st);
+  return c;
 }
 
 export async function exportCortes(id: string, picks: unknown) {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lines, pick, snap, srt } from '../cortes.ts';
+import { enfase, lines, loudLine, pick, snap, srt } from '../cortes.ts';
 
 // 200 words, one every 0.5 s (100 s of speech), with a 1 s breath after every 20th word: phrases start at 0, 11, 22, ... s
 const words = Array.from({ length: 200 }, (_, k) => { const t = k * 0.5 + Math.floor(k / 20); return { text: `w${k}`, start: t, end: t + 0.4 }; });
@@ -27,4 +27,14 @@ test('lines break at pauses with a start second per line', () => {
   const l = lines(words);
   assert.equal(l.length, 10);
   assert.equal(l[1].slice(0, 9), '[11] w20 ');
+});
+
+test('emphasis: loud line is relative to the speaker and silence is left out', () => {
+  const db = [-90, -90, ...Array(40).fill(-25), -10, -10, -90];   // 40 normal seconds, 2 loud ones, silence around
+  const loud = loudLine(db);
+  assert.ok(loud > -25 && loud < -10);
+  assert.equal(enfase({ start: 0, end: db.length }, db), Math.round(100 * 2 / 42));
+  const w = Array.from({ length: 50 }, (_, k) => ({ text: `w${k}`, start: k, end: k + 0.9 }));
+  assert.ok(lines(w, 25, db)[1].startsWith('[25 ⚡] '));   // the loud seconds 42-43 fall in the second line
+  assert.ok(!lines(w, 25, db)[0].includes('⚡'));
 });
