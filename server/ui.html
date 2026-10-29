@@ -10948,11 +10948,20 @@ async function cortes(sel) {
       <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${st.duration ? mmss(st.duration) : ''}</span></h3>
       <p class="${st.status === 'error' ? 'err' : 'muted'}">${STATUS[st.status]} ${esc(st.error ?? '')}</p>
       ${busy ? `<pre class="muted" style="font-size:12px;max-height:220px;overflow:auto">${esc(st.log.join('\n'))}</pre>` : ''}
+      ${st.analysis ? `<details style="margin:8px 0"><summary class="muted" style="cursor:pointer">Mapa da palestra (o que o modelo analisou antes de escolher)</summary>
+        <p><b>Tema:</b> ${esc(st.analysis.tema)}<br><b>Público:</b> ${esc(st.analysis.publico)}</p>
+        <p class="muted" style="font-size:13px">${st.analysis.estrutura.map(e => `${mmss(e.start)} ${esc(e.titulo)}`).join(' · ')}</p>
+        <ul class="muted" style="font-size:13px;margin:0;padding-left:18px">${st.analysis.momentos.map(m => `<li>${mmss(m.start)} <b>${esc(m.tipo)}</b>: ${esc(m.resumo)}</li>`).join('')}</ul></details>` : ''}
       ${st.cortes.length ? `<video id="ct-video-el" src="/cortes/${esc(st.id)}/files/source" controls style="width:100%;max-height:360px;background:#000;border-radius:10px"></video>
+      <div id="ct-tl" title="Linha do tempo: cada bloco é um trecho, clique para ver" style="position:relative;height:30px;margin:8px 0;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer">
+        ${st.cortes.map(c => `<div class="ct-seg" data-n="${c.n}" data-t="${c.start}" title="${c.n}. ${esc(c.title)} (${mmss(c.start)}–${mmss(c.end)})" style="position:absolute;top:4px;bottom:4px;left:${100 * c.start / st.duration}%;width:${100 * (c.end - c.start) / st.duration}%;background:var(--yellow);opacity:.45;border-radius:3px;font:700 11px var(--mono);color:var(--ink);text-align:center;line-height:22px">${c.n}</div>`).join('')}
+        <div id="ct-head" style="position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--red,#e55);pointer-events:none"></div>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;margin:12px 0"><button id="ct-export" class="primary" ${busy ? 'disabled' : ''}>Exportar selecionados (MP4 + SRT)</button><span class="muted" id="ct-sel">0 selecionados</span></div>
       <div style="display:grid;gap:10px">${st.cortes.map(c => `<label style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer">
         <input type="checkbox" class="ct-pick" value="${c.n}">
-        <div><b>${c.n}. ${esc(c.title)}</b> <span class="muted">· ${mmss(c.start)}–${mmss(c.end)} (${Math.round(c.end - c.start)} s) · nota ${c.score}</span>
+        <div><b>${c.n}. ${esc(c.title)}</b> <span class="muted">· ${mmss(c.start)}–${mmss(c.end)} (${Math.round(c.end - c.start)} s) · ${esc(c.tipo)} · nota ${c.score}</span>
+          <div style="font-size:13px;margin-top:4px"><span class="muted">Gancho:</span> ${esc(c.hook)}</div>
           <blockquote style="margin:6px 0;padding:6px 10px;border-left:3px solid var(--yellow)">“${esc(c.quote)}”</blockquote>
           <div class="muted" style="font-size:13px">${esc(c.why)}</div>
           ${st.exported[c.n] ? `<div style="margin-top:6px"><a href="/cortes/${esc(st.id)}/files/${c.n}.mp4" download>⬇ ${c.n}.mp4</a> · <a href="/cortes/${esc(st.id)}/files/${c.n}.srt" download>⬇ ${c.n}.srt</a></div>` : ''}
@@ -10970,8 +10979,16 @@ async function cortes(sel) {
   if (!st) return;
   $('#ct-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este corte e seus arquivos?')) { await api('DELETE', `/cortes/${encodeURIComponent(st.id)}`); location.hash = '#/cortes'; } });
   const picked = () => [...document.querySelectorAll('.ct-pick:checked')].map(i => +i.value);
-  document.querySelectorAll('.ct-pick').forEach(i => i.onchange = () => $('#ct-sel').textContent = `${picked().length} selecionados`);
-  document.querySelectorAll('.ct-play').forEach(b => b.onclick = e => { e.preventDefault(); const v = $('#ct-video-el'); v.currentTime = +b.dataset.t; v.play(); v.scrollIntoView({ block: 'nearest' }); });
+  document.querySelectorAll('.ct-pick').forEach(i => i.onchange = () => { $('#ct-sel').textContent = `${picked().length} selecionados`; paint(); });
+  // play a clip: seek, mark its block on the timeline, stop at its end; the playhead and the lit block follow the video
+  let cur = null;
+  const play = n => { const c = st.cortes.find(x => x.n === n), v = $('#ct-video-el'); cur = c; v.currentTime = c.start; v.play(); v.scrollIntoView({ block: 'nearest' }); };
+  document.querySelectorAll('.ct-play').forEach(b => b.onclick = e => { e.preventDefault(); play(+b.closest('label').querySelector('.ct-pick').value); });
+  document.querySelectorAll('.ct-seg').forEach(d => d.onclick = () => play(+d.dataset.n));
+  $('#ct-tl').onclick = e => { if (e.target.id === 'ct-tl') { cur = null; $('#ct-video-el').currentTime = st.duration * e.offsetX / e.currentTarget.clientWidth; } };
+  const paint = () => { document.querySelectorAll('.ct-pick').forEach(i => { const d = document.querySelector(`.ct-seg[data-n="${i.value}"]`); d.style.opacity = i.checked ? '1' : '.45'; d.style.outline = cur?.n === +i.value ? '2px solid var(--cream)' : ''; }); };
+  $('#ct-video-el').ontimeupdate = e => { const v = e.target; $('#ct-head').style.left = `${100 * v.currentTime / st.duration}%`; if (cur && v.currentTime >= cur.end) { v.pause(); cur = null; } paint(); };
+  paint();
   $('#ct-export') && ($('#ct-export').onclick = e => act(e.target, async () => { api('POST', `/cortes/${encodeURIComponent(st.id)}/export`, { picks: picked() }).catch(err => alert(err.message)); setTimeout(() => cortes(sel), 500); }));
   if (busy) cortesPoll = setInterval(() => cortes(sel).catch(() => {}), 3000);
 }

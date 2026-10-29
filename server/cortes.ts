@@ -6,8 +6,9 @@ import { ask, type Cost } from './models.ts';
 import { safeId, type Word } from './lib.ts';
 import { duration, expandHome, intake, py, run, subscribe, UserError, WS } from './pipeline.ts';
 
-export type Corte = { n: number; start: number; end: number; title: string; quote: string; why: string; score: number };
-type State = { id: string; name: string; source: string; subtitle?: string; status: 'transcribing' | 'analysing' | 'ready' | 'exporting' | 'error'; error?: string;
+export type Corte = { n: number; start: number; end: number; title: string; hook: string; quote: string; why: string; tipo: string; score: number };
+type Analysis = { tema: string; publico: string; estrutura: { start: number; titulo: string }[]; momentos: { start: number; tipo: string; resumo: string }[] };
+type State = { id: string; name: string; source: string; subtitle?: string; analysis?: Analysis; status: 'transcribing' | 'analysing' | 'ready' | 'exporting' | 'error'; error?: string;
   duration?: number; cortes: Corte[]; exported: Record<number, { mp4: string; srt: string }>; cost: Cost[] };
 
 const DIR = join(WS, 'cortes');
@@ -60,36 +61,65 @@ async function analyse(st: State) {
     const words: Word[] = readJSON(join(dirOf(id), 'transcript.json')).filter((w: Word) => w.text.trim());
     if (!words.length) fail('nenhuma fala encontrada');
     st.status = 'analysing'; save(st);
-    log(id, `▶ ${words.length} palavras. Opus escolhendo os 10 melhores trechos...`);
-    const r = await ask<{ cortes: Omit<Corte, 'n'>[] }>('cortes', 'cortes', {
-      system: 'You pick the best short clips out of a long Brazilian Portuguese talk for Instagram/TikTok. Each clip must be a self-contained passage of ' +
-        `${MIN}-${MAX} seconds with an impactful statement (a strong claim, story, lesson, controversy, number or emotion), starting at the beginning of a ` +
-        'sentence and ending at the end of one. Prefer passages that open strong (the first sentence is the hook). Spread the picks across the whole talk, ' +
-        'no overlaps. Write title, quote and why in Portuguese: quote is the most impactful sentence, copied verbatim from the transcript.',
-      content: `Transcript as "[seconds] text" lines:\n${lines(words).join('\n')}\n\nReturn exactly 10 cortes (fewer only if the talk is too short), best first, score 1-10.`,
-      schema: { type: 'object', additionalProperties: false, required: ['cortes'], properties: { cortes: { type: 'array', items: { type: 'object', additionalProperties: false,
-        required: ['start', 'end', 'title', 'quote', 'why', 'score'], properties: { start: { type: 'number' }, end: { type: 'number' }, title: { type: 'string' }, quote: { type: 'string' }, why: { type: 'string' }, score: { type: 'number' } } } } } },
+    log(id, `▶ ${words.length} palavras. Sonnet mapeando a palestra e escolhendo os 10 melhores trechos...`);
+    const r = await ask<{ analysis: Analysis; cortes: Omit<Corte, 'n'>[] }>('cortes', 'cortes', {
+      system: 'You are a short-form editor picking clips out of a long Brazilian Portuguese talk for Instagram/TikTok/YouTube Shorts.\n' +
+        'Work in two passes and fill the output in that order.\n' +
+        'PASS 1 - analysis (map the talk before choosing anything): tema (what the talk is about), publico (who it speaks to), estrutura (the sections ' +
+        'of the talk with the second each starts), and momentos: every candidate moment, where the speaker makes a strong claim, tells a story with a payoff, ' +
+        'gives a number or a concrete example, teaches a step, says something polemic, or shows emotion. Note its tipo and the second it starts.\n' +
+        `PASS 2 - cortes: from the momentos choose up to 10 passages of ${MIN}-${MAX} seconds. Rules: a passage must stand alone with zero context ` +
+        '(no "como eu disse", "isso", "esse ponto" pointing to something outside it); it starts at the start of a phrase that works as a hook ' +
+        '(claim, question, "a maior mentira é...", a number) and ends where the idea closes (the payoff, lesson or punchline), never mid-thought; ' +
+        'no overlaps; spread the picks over the whole talk; vary the tipos; a passage that needs the hook rephrased is a worse pick than one whose first ' +
+        'sentence already hooks. Score 1-10 = hook strength + self-contained + payoff + emotion. Order best first.\n' +
+        'Each line of the transcript is one phrase between pauses, prefixed with its start second: use those seconds for start and end. ' +
+        'Write everything in Portuguese. quote = the single most impactful sentence, copied verbatim; hook = the opening phrase of the clip, verbatim.',
+      content: `Transcript as "[seconds] phrase" lines:\n${lines(words).join('\n')}\n\nReturn the analysis, then up to 10 cortes (fewer only if the talk is too short).`,
+      schema: { type: 'object', additionalProperties: false, required: ['analysis', 'cortes'], properties: {
+        analysis: { type: 'object', additionalProperties: false, required: ['tema', 'publico', 'estrutura', 'momentos'], properties: { tema: { type: 'string' }, publico: { type: 'string' },
+          estrutura: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['start', 'titulo'], properties: { start: { type: 'number' }, titulo: { type: 'string' } } } },
+          momentos: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['start', 'tipo', 'resumo'], properties: { start: { type: 'number' }, tipo: { type: 'string' }, resumo: { type: 'string' } } } } } },
+        cortes: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['start', 'end', 'title', 'hook', 'quote', 'why', 'tipo', 'score'],
+          properties: { start: { type: 'number' }, end: { type: 'number' }, title: { type: 'string' }, hook: { type: 'string' }, quote: { type: 'string' }, why: { type: 'string' }, tipo: { type: 'string' }, score: { type: 'number' } } } } } },
     }, c => { st.cost.push(c); save(st); });
-    st.cortes = r.cortes.map(c => snap(c, words)).filter((c): c is Omit<Corte, 'n'> => !!c).slice(0, 10).map((c, k) => ({ n: k + 1, ...c }));
+    st.analysis = r.analysis;
+    st.cortes = pick(r.cortes.map(c => snap(c, words)).filter((c): c is Omit<Corte, 'n'> => !!c)).map((c, k) => ({ n: k + 1, ...c }));
     if (!st.cortes.length) fail('o modelo não devolveu nenhum trecho válido');
     st.status = 'ready'; save(st);
     log(id, `✓ ${st.cortes.length} trechos prontos. Escolha quais exportar.`);
   } finally { off(); }
 }
 
-// One line per ~12 words with its start time: 1 h of speech fits in one prompt and the model answers in seconds it can see.
-export const lines = (words: Word[], per = 12) => Array.from({ length: Math.ceil(words.length / per) }, (_, k) => {
-  const w = words.slice(k * per, (k + 1) * per);
-  return `[${Math.floor(w[0].start)}] ${w.map(x => x.text).join(' ')}`;
-});
+const PAUSE = 0.6;   // seconds of silence that end a phrase (Whisper gives no punctuation, so breaths are the sentence marks)
+const phraseStarts = (words: Word[]) => words.map((w, k) => k === 0 || w.start - words[k - 1].end >= PAUSE);
 
-// Move the clip edges onto word edges and drop what is not 1-2 min (with slack) or has no words.
+// One line per phrase (a pause of PAUSE s or 25 words) with its start second: 1 h fits in one prompt and the model picks real phrase edges.
+export function lines(words: Word[], max = 25): string[] {
+  const out: string[][] = [], starts = phraseStarts(words);
+  words.forEach((w, k) => { const cur = out[out.length - 1]; if (!cur || starts[k] || cur.length >= max) out.push([w.text]); else cur.push(w.text); });
+  let k = 0;
+  return out.map(l => { const t = Math.floor(words[k].start); k += l.length; return `[${t}] ${l.join(' ')}`; });
+}
+
+// Move the clip edges onto the nearest phrase edges (within REACH s) and drop what is not 1-2 min (with slack) or has no words.
+const REACH = 4;
 export function snap<T extends { start: number; end: number }>(c: T, words: Word[]): T | null {
-  const inside = words.filter(w => w.start >= c.start - 1 && w.end <= c.end + 1);
-  if (!inside.length) return null;
-  const start = +inside[0].start.toFixed(2), end = +inside[inside.length - 1].end.toFixed(2);
+  const starts = phraseStarts(words);
+  const near = (t: number, ok: (k: number) => boolean) => { let best = -1; words.forEach((w, k) => { if (ok(k) && Math.abs(w.start - t) <= REACH && (best < 0 || Math.abs(w.start - t) < Math.abs(words[best].start - t))) best = k; }); return best; };
+  const a = near(c.start, k => starts[k]);
+  const z = near(c.end, k => k === words.length - 1 || starts[k + 1]);   // a phrase end is the word before the next phrase start
+  let i = a, j = z;
+  if (i < 0) i = words.findIndex(w => w.start >= c.start - 1);
+  if (j < 0) { j = words.length - 1; while (j >= 0 && words[j].end > c.end + 1) j--; }
+  if (i < 0 || j < i) return null;
+  const start = +words[i].start.toFixed(2), end = +words[j].end.toFixed(2);
   return end - start >= MIN - SLACK && end - start <= MAX + SLACK ? { ...c, start, end } : null;
 }
+
+// Best first, no overlaps (the better scored one wins), at most 10.
+export const pick = <T extends { start: number; end: number; score: number }>(cs: T[]): T[] =>
+  [...cs].sort((a, b) => b.score - a.score).filter((c, _, all) => !all.some(o => o !== c && o.score > c.score && o.start < c.end && c.start < o.end)).slice(0, 10);
 
 // SubRip from the words of a clip, times relative to the clip start; a line breaks every ~8 words, 3.5 s or a pause.
 export function srt(words: Word[], start: number, end: number): string {
@@ -113,17 +143,31 @@ export async function exportCortes(id: string, picks: unknown) {
   st.status = 'exporting'; save(st);
   try {
     for (const c of chosen) {
-      log(id, `▶ Exportando corte ${c.n} (${fmt(c.start)}–${fmt(c.end)})...`);
+      log(id, `▶ Exportando corte ${c.n} (${fmt(c.start)}–${fmt(c.end)}), Haiku revisa a legenda...`);
       const mp4 = join(dirOf(id), 'out', `${c.n}.mp4`), s = join(dirOf(id), 'out', `${c.n}.srt`);
       // re-encode: a stream copy can only cut on keyframes and would start seconds early
       await run(id, 'ffmpeg', ['-y', '-v', 'error', '-ss', String(c.start), '-to', String(c.end), '-i', st.source, '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
         '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', mp4]);
-      writeFileSync(s, srt(words, c.start, c.end));
+      writeFileSync(s, await reviseSrt(st, srt(words, c.start, c.end)));
       st.exported[c.n] = { mp4: `${c.n}.mp4`, srt: `${c.n}.srt` };
       save(st);
     }
     log(id, `✓ ${chosen.length} corte(s) exportado(s) em ${join(dirOf(id), 'out')}`);
   } finally { st.status = 'ready'; save(st); }
   return st;
+}
+// Haiku fixes transcription slips, accents and names in the cue texts; the timing and the cue count stay. On any doubt the raw srt is kept.
+async function reviseSrt(st: State, raw: string): Promise<string> {
+  const cues = raw.trim().split('\n\n'), texts = cues.map(c => c.split('\n').slice(2).join(' '));
+  try {
+    const r = await ask<{ cues: string[] }>('cortesSrt', 'cortes-srt', {
+      system: 'You proofread Brazilian Portuguese subtitles from an automatic transcript. Fix misheard words, accents, names and obvious slips; add commas and periods; ' +
+        'keep every cue in the same order with the same meaning and roughly the same length; never merge, split, drop or add cues. Return exactly as many cues as given.',
+      content: texts.map((t, k) => `${k + 1}: ${t}`).join('\n'),
+      schema: { type: 'object', additionalProperties: false, required: ['cues'], properties: { cues: { type: 'array', items: { type: 'string' } } } },
+    }, c => { st.cost.push(c); save(st); });
+    if (r.cues.length !== cues.length) return raw;
+    return cues.map((c, k) => c.split('\n').slice(0, 2).concat(r.cues[k].trim() || texts[k]).join('\n')).join('\n\n') + '\n';
+  } catch (e) { log(st.id, `⚠ legenda sem revisão do Haiku: ${(e as Error).message}`); return raw; }
 }
 const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
