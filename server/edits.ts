@@ -33,6 +33,12 @@ export type Layers = { layers: Record<string, LayerEdit>; added: Added[]; order?
 export type Layer = { id: string; kind: string; start: number; end: number; track: number; clip: boolean; src?: string; comp?: string; volume?: number; texts: { i: number; text: string }[]; colors: string[] };
 
 const MARK = '<!--hf-edits-->', ORIGINAL = 'media/_original.mp4';
+// The marker goes right after the doctype: a comment before it made `hyperframes check` report the file as a bare fragment.
+const mark = (html: string) => /^<!doctype[^>]*>\r?\n?/i.test(html) ? html.replace(/^(<!doctype[^>]*>\r?\n?)/i, `$1${MARK}\n`) : MARK + '\n' + html;
+export const isMarked = (html: string) => html.slice(0, 300).includes(MARK);
+const unmark = (html: string) => html.replace(MARK + '\n', '');
+// The AI's pristine copy ends in .ai, not .html: hyperframes saw index.ai.html as a second root composition and stopped checking.
+export const aiCopy = (file: string) => file + '.ai';
 const bad = (m: string): never => { throw Object.assign(new Error(m), { user: true }); };
 const num = (v: unknown, lo: number, hi: number, what: string) => v === undefined ? undefined : typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : bad(`${what} must be a number from ${lo} to ${hi}`);
 const FAMILY = /^[\w ,'-]{1,60}$/, ID = /^[A-Za-z][\w-]{0,40}$/, HEXC = /^#[0-9a-f]{6}$/i;
@@ -309,7 +315,7 @@ export function applyEdits(html: string, d: Layers, warn: (m: string) => void = 
     ? '<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script><script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>' : '';
   const tail = (rules.length ? `<style data-hf-edits>${rules.join('\n')}</style>` : '') + three + editScript(d, id => !isAudio(id));
   html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, tail + '</body>') : html + tail;
-  return MARK + '\n' + html;
+  return mark(html);
 }
 
 // ---- the files: <dir> is the live composition (compose/ or proj/), <proj> the project with layers.json and media/ ----
@@ -319,10 +325,10 @@ export function readLayers(proj: string): Layers {
 }
 // the AI's own version of a file: a file without the marker is fresh AI output and becomes the pristine copy
 function pristine(file: string) {
-  const ai = file.replace(/\.html$/, '.ai.html');
+  const ai = aiCopy(file);
   const cur = readFileSync(file, 'utf8');
-  if (!cur.startsWith(MARK)) { writeFileSync(ai, cur); return cur; }
-  return existsSync(ai) ? readFileSync(ai, 'utf8') : cur.slice(MARK.length + 1);
+  if (!isMarked(cur)) { writeFileSync(ai, cur); return cur; }
+  return existsSync(ai) ? readFileSync(ai, 'utf8') : unmark(cur);
 }
 export function syncEdits(dir: string, proj: string) {
   const index = join(dir, 'index.html'), warnings: string[] = [];
@@ -348,10 +354,10 @@ export function syncEdits(dir: string, proj: string) {
   for (const m of base.matchAll(/<[a-z][\w-]*\b[^>]*\sid="([^"]+)"[^>]*\sdata-composition-src="([^"]+)"[^>]*>/gi)) {
     const file = join(dir, m[2]);
     if (!existsSync(file) || !file.startsWith(dir + '/')) continue;
-    const texts = d.layers[m[1]]?.texts ?? [], colors = d.layers[m[1]]?.colors ?? [], marked = readFileSync(file, 'utf8').startsWith(MARK);
+    const texts = d.layers[m[1]]?.texts ?? [], colors = d.layers[m[1]]?.colors ?? [], marked = isMarked(readFileSync(file, 'utf8'));
     if (!texts.length && !colors.length && !marked) continue;
     const src = pristine(file);
-    writeFileSync(file, texts.length || colors.length ? MARK + '\n' + applyColors(applyTexts(src, texts, warn), colors) : src);
+    writeFileSync(file, texts.length || colors.length ? mark(applyColors(applyTexts(src, texts, warn), colors)) : src);
   }
   writeFileSync(index, applyEdits(base, d, warn));
   return { warnings };

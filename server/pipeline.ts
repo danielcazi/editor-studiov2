@@ -10,7 +10,7 @@ import { agent, ask, type Cost } from './models.ts';
 import { applyDirectEdits, deleteCards, deepMerge, FORMATS, pickFormats, remapWords, safeId, shortcutPlan, spansFromWords, type Plan, type Word } from './lib.ts';
 import { CAPTION_PRESETS, CARD_TYPES, formatCardTypes, validateCaptionStyle, validateCard, validateFont, validateIcon } from './validate.ts';
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
-import { captionLines, checkLayers, colorsOf, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
+import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
 import { synthesize, synthesizeLong } from './voice.ts';
 import { carregarEmbrulho, compor, conferirCampos, extrairQuadro, listarEmbrulhos, precosDoSrt, renderCamadas, sugerirQuadros } from './embrulhos.ts';
 import { band, download as brollDownload, extOf, pick as brollPick, rightsOf, search as brollSearch } from './broll.ts';
@@ -50,9 +50,11 @@ type State = {
   id: string; name: string; brand: string; formatId?: string; preEdited: boolean; subtitle?: string; referenceUrl?: string; extraReferenceUrls?: string[]; referenceNote?: string; userImages?: string[]; formats: string[];
   override: Record<string, unknown>; step: string; plan?: Plan; cost: Cost[]; qa?: { pass: boolean; report: string; summary?: string };
   running?: BusyInfo | null;
+  workMs?: number;   // time AI and render steps held the lock, summed (human waiting between steps excluded)
   completed?: boolean;
   completedAt?: number;
   composerMode?: 'agent' | 'card';
+  style?: string;                      // illustration style pack (compose/estilos/<id>.md) chosen at creation; none = the director picks
   character?: { name: string; pose?: string };   // animation-brandkit character standing in for the speaker (cutout.webm is built from its pose)
   brollFill?: boolean;   // fill beats of the reel with stock b-roll in the lower band (see brollFill below)
 };
@@ -177,29 +179,41 @@ async function commit(id: string, msg: string) {
 }
 
 // One step at a time per project: two renders into the same folder would corrupt it.
-const busy = new Map<string, BusyInfo>();
-export const getBusy = (id: string): BusyInfo | null => busy.get(id) ?? null;
+// The lock is a file in workspace/locks/, not a Map: two servers on the same workspace (./start.sh and the preview one)
+// each accepted the same compose and two agents wrote the same folder. The pid says whether a leftover lock is stale.
+const lockFile = (id: string) => join(WS, 'locks', `${id}.lock`);
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } };
+const addWork = (id: string, startedAt: number) => { try { const st = load(id); st.workMs = (st.workMs ?? 0) + Date.now() - startedAt; save(st); } catch {} };
+export const getBusy = (id: string): BusyInfo | null => {
+  try { const l = JSON.parse(readFileSync(lockFile(id), 'utf8')); return alive(l.pid) ? { step: l.step, startedAt: l.startedAt } : null; } catch { return null; }
+};
+function acquire(id: string, step: string, startedAt: number) {
+  mkdirSync(join(WS, 'locks'), { recursive: true });
+  for (;;) {
+    try { writeFileSync(lockFile(id), JSON.stringify({ step, startedAt, pid: process.pid }), { flag: 'wx' }); return; }
+    catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      const cur = getBusy(id);
+      if (cur) fail(`project ${id} is busy (${cur.step} em execução há ${Math.round((Date.now() - cur.startedAt) / 1000)}s)`);
+      rmSync(lockFile(id), { force: true });   // left by a server that died mid-step
+    }
+  }
+}
 async function locked<T>(id: string, step: string, fn: (st: State) => Promise<T>): Promise<T> {
   const st = load(id);
-  if (busy.has(id)) {
-    const cur = busy.get(id)!;
-    const elapsed = Math.round((Date.now() - cur.startedAt) / 1000);
-    fail(`project ${id} is busy (${cur.step} em execução há ${elapsed}s)`);
-  }
   const startedAt = Date.now();
-  busy.set(id, { step, startedAt });
+  acquire(id, step, startedAt);
   emit(id, 'step', { step, status: 'start', startedAt });
   try {
     const r = await fn(st);
-    busy.delete(id);
     emit(id, 'step', { step, status: 'done' });
     return r;
   } catch (e) {
-    busy.delete(id);
-    emit(id, 'step', { step, status: 'error', error: String((e as Error).message) });
-    emit(id, 'log', `ERRO na etapa ${step}: ${(e as Error).message}`);
+    const quota = !!(e as { quota?: boolean }).quota;
+    emit(id, 'step', { step, status: 'error', error: String((e as Error).message), quota });
+    emit(id, 'log', quota ? `⏳ ${(e as Error).message}` : `ERRO na etapa ${step}: ${(e as Error).message}`);
     throw e;
-  } finally { busy.delete(id); }
+  } finally { rmSync(lockFile(id), { force: true }); addWork(id, startedAt); }
 }
 
 // ---- brands -------------------------------------------------------------------------------------------------------
@@ -993,6 +1007,20 @@ export const intake = (from: string, to: string) => from.startsWith(UPLOADS + '/
 // ---- formats (Editor 7.0) --------------------------------------------------------------------------------------------
 // every format id comes from a URL or a request body, so the folder is only built from a safe id
 const formatDir = (f: string) => safeId(f) ? join(WS, "formats", f) : fail('format id: letters, digits, - and _ only');
+// Illustration style packs (compose/estilos/*.md, adapted from lemo-opuscar): the user may pick one at creation (it becomes
+// compose/ESTILO.md); otherwise the director chooses one from the index inside the treatment (DIRETOR.md §6).
+const STYLES_DIR = join(K_DIR, 'estilos');
+export function listStyles() {
+  return readdirSync(STYLES_DIR).filter(f => f.endsWith('.md') && f !== 'README.md').sort().map(f => {
+    const id = f.slice(0, -3), md = readFileSync(join(STYLES_DIR, f), 'utf8');
+    return { id, name: md.match(/^# (.+?)(?: \(.+\))?$/m)?.[1] ?? id, line: md.match(/^> (.+)$/m)?.[1] ?? '', fit: md.match(/\*\*Encaixe:\*\*(.+)$/m)?.[1]?.trim() ?? '' };
+  });
+}
+function styleId(s: string) {
+  if (!safeId(s) || !existsSync(join(STYLES_DIR, `${s}.md`))) fail(`estilo ${JSON.stringify(s)} não existe: use ${listStyles().map(x => x.id).join(', ')}`);
+  return s;
+}
+
 export function listFormats(): string[] {
   const p = join(WS, "formats");
   if (!existsSync(p)) return [];
@@ -1147,6 +1175,40 @@ async function analyseVideoReference(id: string, st: State, url: string, P: stri
     schema: obj({ summary: str, pacing: str, cards: str, motion: str, captions: str, colors: str, fonts: str }),
   }, logCost(st));
   writeJSON(out, res);
+}
+
+// ILUSTRACAO.md: the brand's illustration style guide (what a film studio's STYLE.md is), written once by Opus from the site
+// screenshots and images, kept in workspace/brands/<brand>/ and copied into every compose/. Regenerated when the source site changes.
+async function ensureIllustrationStyle(id: string, st: State): Promise<string> {
+  const P = projDir(id), B = brandDir(st.brand), out = join(B, 'ILUSTRACAO.md'), meta = join(B, 'ilustracao.json');
+  const source = siteRef(st) ? st.referenceUrl! : 'brand';
+  if (existsSync(out) && existsSync(meta) && readJSON(meta).source === source) return out;
+  emit(id, 'log', `🎨 Escrevendo o guia de ilustração da marca (${source === 'brand' ? 'brand.md' : source})...`);
+  const brandMd = existsSync(join(P, 'brand.md')) ? readFileSync(join(P, 'brand.md'), 'utf8') : '';
+  const ref = existsSync(join(P, 'reference.json')) ? readJSON(join(P, 'reference.json')) : null;
+  const { markdown } = await ask<{ markdown: string }>('reference', 'reference:illustration', {
+    system: 'You are the illustration art director of a motion studio. Write ILUSTRACAO.md: the style guide a motion designer follows to DRAW the illustrations of this brand\'s reels in code ' +
+      '(Canvas 2D with ctx calls, and three.js scenes), the way a film studio writes a STYLE.md. Read the site screenshots and every image first: the style comes from what they show, not from their file names. ' +
+      'Write in Brazilian Portuguese, concrete and buildable (numbers, px, hex, ctx and three.js recipes), about 120 lines, with these sections: ' +
+      '1 Essência (e o que NÃO é: nunca pictograma de pessoa com cabeça redonda, nunca ícone de linha fina, nunca emoji, nunca balão de fala com texto de exemplo); ' +
+      '2 Materiais e render (como desenhar cada material em Canvas: pincel, papel, grão, contorno, duotone, sombra dura; receitas de ctx); ' +
+      '3 Lógica de cor (paleta por função: fundo, forma, acento, luz; o que nunca combina); 4 Linha e forma (silhuetas, proporções, espessuras em px, como simplificar um objeto real); ' +
+      '5 Luz e profundidade em 3D (material, luzes, sombra, fundo, câmera, para scene3d do kit); 6 Movimento nativo (como a ilustração entra, vive e sai: 6 moves próprios deste estilo); ' +
+      '7 Motivos (12 objetos e metáforas desta marca e do que ela vende, cada um com a receita de desenho em 2 linhas); 8 Armadilhas (o que faz parecer amador neste estilo). ' +
+      'Every illustration must be a specific object of the speech, drawn with material and light, never a generic symbol.',
+    readDir: P,
+    content: siteFiles(id) + (ref ? `
+Site analysis:
+${Object.entries(ref).map(([k, v]) => `- ${k}: ${v}`).join('\n')}
+` : '') + `
+brand.md:
+${brandMd}`,
+    schema: obj({ markdown: str }),
+  }, logCost(st));
+  writeFileSync(out, markdown);
+  writeJSON(meta, { source, at: new Date().toISOString() });
+  emit(id, 'log', `✓ Guia de ilustração salvo em brands/${st.brand}/ILUSTRACAO.md (reutilizado nos próximos reels)`);
+  return out;
 }
 
 const formatSkill = (id: string): string => { try { const f = join(formatDir(id), 'skill.md'); return existsSync(f) ? readFileSync(f, 'utf8') : ''; } catch { return ''; } };
@@ -1433,6 +1495,7 @@ export async function createProject(o: {
   formatId?: string;
   formats?: string[];
   composerMode?: 'agent' | 'card';
+  style?: string;                      // illustration style pack (compose/estilos/<id>.md) chosen at creation; none = the director picks
   brollFill?: boolean;
   /** Text → voice: the script is spoken as written; replaces the video. `voice` falls back to the brand's `voice`. */
   text?: string;
@@ -1477,6 +1540,7 @@ export async function createProject(o: {
     if (o.character.pose && !c.poses.some((x: any) => x.name === o.character!.pose)) fail(`pose ${JSON.stringify(o.character.pose)} não existe em ${c.name}`);
   }
   if (o.formatId) formatDir(o.formatId);   // only checks the id is safe: an unknown format still falls back to no format guide
+  const style = o.style ? styleId(o.style) : undefined;
   let own: string[] | null = null;   // default export: the chosen format's own aspect ratio
   try { own = pickFormats([getFormat(o.formatId || 'business-reels').aspectRatio]); } catch {}
   const formats = o.formats === undefined ? own ?? FORMATS : checkFormats(o.formats);   // a default: the final step picks again
@@ -1535,7 +1599,7 @@ export async function createProject(o: {
       return `assets/user/${name}`;
     });
     if (userImages.length) appendProjectLog(id, `🖼️ Imagens importadas: ${userImages.length}`);
-    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], composerMode, ...(o.character ? { character: o.character } : {}), ...(o.brollFill === true ? { brollFill: true } : {}) };
+    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], composerMode, ...(style ? { style } : {}), ...(o.character ? { character: o.character } : {}), ...(o.brollFill === true ? { brollFill: true } : {}) };
     save(st);
     await run(id, 'git', ['init', '-q', P]);
     await commit(id, 'project created');
@@ -1553,7 +1617,7 @@ export const getProject = (id: string) => {
   // aspects with a finished agent composition (index.html): the format's own and any compose-<aspect>/ made for another format
   const composedFormats = composedByAgent(st) ? FORMATS.filter(f => existsSync(join(composeDirOf(P, st, f), 'index.html'))) : [];
   const readyFinals = FORMATS.filter(f => existsSync(join(P, finalName(f))));
-  return { ...st, composed: usesAgent(st) || composedByAgent(st), composedFormats, readyFinals, primaryFormat: primaryAspect(st), running: busy.get(id) ?? null };
+  return { ...st, composed: usesAgent(st) || composedByAgent(st), composedFormats, readyFinals, primaryFormat: primaryAspect(st), running: getBusy(id) };
 };
 export const setComposerMode = (id: string, mode: 'agent' | 'card') => {
   const st = load(id);
@@ -1571,6 +1635,7 @@ export interface ProjectOverview {
   step: string;
   stepLabel: string;
   running: BusyInfo | null;
+  workMs: number;
   lastActivityAt: number;
   createdAt: number;
   requiresHumanConfirmation: boolean;
@@ -1627,7 +1692,7 @@ export const listProjectsOverview = (): ProjectOverview[] => {
     try {
       const st = load(id);
       const P = projDir(id);
-      const running = busy.get(id) ?? null;
+      const running = getBusy(id);
       const stateFile = join(P, 'state.json');
       let lastActivityAt = 0;
       let createdAt = 0;
@@ -1691,6 +1756,7 @@ export const listProjectsOverview = (): ProjectOverview[] => {
         step: st.step,
         stepLabel,
         running,
+        workMs: st.workMs ?? 0,
         lastActivityAt,
         createdAt,
         requiresHumanConfirmation,
@@ -1708,6 +1774,7 @@ export const listProjectsOverview = (): ProjectOverview[] => {
         step: 'unknown',
         stepLabel: 'Desconhecido',
         running: null,
+        workMs: 0,
         lastActivityAt: 0,
         createdAt: 0,
         requiresHumanConfirmation: false,
@@ -1764,6 +1831,7 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
     Object.assign(st, { plan, step: 'ingest' }); save(st);
     await commit(id, `step 1: ingest (pre-edited, transcribe: ${plan.transcribe})`);
     emit(id, 'log', `✓ Ingestão concluída com sucesso (${words.length} palavras transcritas).`);
+    cutoutInBackground(id);
     return st;
   }
 
@@ -1790,6 +1858,7 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
   Object.assign(st, { plan, step: 'ingest' }); save(st);
   await commit(id, `step 1: ingest (${plan.transcribe}, cut: ${plan.cut})`);
   emit(id, 'log', `✓ Ingestão concluída com sucesso (${master.length} palavras transcritas).`);
+  cutoutInBackground(id);
   return st;
 });
 
@@ -1822,12 +1891,14 @@ export const script = (id: string) => locked(id, 'script', async st => {
   const frames = await sampleFrames(id, dur, Math.min(8, Math.max(4, readJSON(join(P, 'edl.json')).keep.length)));
   emit(id, 'log', '✨ Concebendo roteiro e momentos com IA (Claude)...');
   const res = await ask<any>('script', 'script:moments', {
-    system: `${vocabulary()}\n\n# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatGuide(st)}` +
+    system: `${vocabulary()}\n\n# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatGuide(st)}\n# DIRETOR.md\n${readFileSync(join(K_DIR, 'DIRETOR.md'), 'utf8')}\n\n` +
       'You are an art director planning the graphics and motion design of a short talking-head reel. ' +
       'Return moments that each illustrate exactly what that line says, at the density the brand asks for ' +
       '("graphics": minimal 8-12 s, balanced 4-6 s, busy 2-4 s apart). Write texto in the language of the transcript.\n' +
       'Without a "graphics" value, follow the format pacing: a new moment every 2-3 s, and no moment over 3.5 s without an internal change written in visual_action. ' +
       'Split long sentences: each number, product, promise, list item and CTA gets its own moment. Read the whole script first and plan an arc (hook, offer/argument, proof, CTA).\n' +
+      'Direct it (DIRETOR.md below, §2-4 and §7): end every visual_action with "câmera: push|pull|pan|crane|tilt|orbit|roll|hold" plus the reason in three words, use at least four different camera moves across the reel, ' +
+      'never the same move in two moments in a row, mark exactly one moment "PLANO-ASSINATURA" (the oner, scale reveal or transition made from the medium) and give one moment before the turn or the CTA as "respiração" (a held pause).\n' +
       (siteRef(st) ? 'A site reference is attached (site in the content). Open the site screenshots and the images in assets/img/ with Read before planning. ' +
         'Tie each line to the site: when the speaker names something the site shows (a product, track, theme, testimonial, number, the brand on stage), that moment uses the site image ' +
         '(write its file name, e.g. "imagem: assets/img/12_tema-7.webp") or the site fact. Use at least one site image every ~10 s. In motivo, note when the speech and the site disagree on a number.\n' : '') +
@@ -2293,7 +2364,7 @@ export function getLayers(id: string) {
   const st = load(id), D = liveDir(st), P = projDir(id);
   if (!existsSync(join(D, 'index.html'))) fail('a composição ainda não foi montada: abra a Revisão (Etapa 3) primeiro');
   const { warnings } = syncEdits(D, P);
-  const html = readFileSync(join(D, 'index.ai.html'), 'utf8');
+  const html = readFileSync(aiCopy(join(D, 'index.html')), 'utf8');
   // a card reel: cards and captions are not clips, their windows come from edit.json
   const extra: { id: string; kind: string; start: number; end: number; track: number }[] = [];
   if (!composedByAgent(st) && existsSync(join(P, 'edit.json'))) {
@@ -2304,7 +2375,7 @@ export function getLayers(id: string) {
   const duration = Number(/data-composition-id="[^"]+"[^>]*data-duration="([\d.]+)"|data-duration="([\d.]+)"[^>]*data-composition-id=/.exec(html)?.slice(1).find(Boolean) ?? 0);
   const layers = listLayers(html, extra);
   for (const l of layers.filter(l => l.comp)) {   // a scene's texts live in its own file (the AI's copy, as edits index into it)
-    const f = resolve(D, l.comp!), ai = f.replace(/\.html$/, '.ai.html');
+    const f = resolve(D, l.comp!), ai = aiCopy(f);
     if (f.startsWith(D + '/') && existsSync(f)) {
       const src = readFileSync(existsSync(ai) ? ai : f, 'utf8');
       l.texts = textRuns(src).map(({ i, text }) => ({ i, text }));
@@ -2470,10 +2541,15 @@ export const final = (id: string, formats?: unknown) => locked(id, 'final', asyn
       rmSync(join(dir, 'out.mp4'), { force: true });
       if (format === primary) for (const w of syncEdits(dir, P).warnings) emit(id, 'log', `edição: ${w}`);
       emit(id, 'log', `🎬 Renderizando a composição ${format}...`);
-      await run(id, 'npx', ['--yes', 'hyperframes@0.8.192', 'render', '-o', 'out.mp4', '--fps', '30', '--quality', 'delivery'], {}, false, dir);
-      // the composer mixes voice + sfx without a master loudness pass: bring it to the -14 LUFS that qa.py expects
+      await run(id, 'npx', ['--yes', 'hyperframes@0.8.217', 'render', '-o', 'out.mp4', '--fps', '30', '--quality', 'delivery'], {}, false, dir);
+      // the composer mixes voice + sfx without a master loudness pass: bring it to the -14 LUFS that qa.py expects.
+      // Two passes, like render.sh: a single loudnorm undershoots on speech (measured -15.8 LUFS, outside qa.py's -15..-12.5)
+      const ln = join(P, 'final_ln.mp4');
       await run(id, 'ffmpeg', ['-y', '-v', 'error', '-i', join(dir, 'out.mp4'), '-c:v', 'copy',
+        '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', ln]);
+      await run(id, 'ffmpeg', ['-y', '-v', 'error', '-i', ln, '-c:v', 'copy',
         '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', join(P, 'final.mp4')]);
+      rmSync(ln, { force: true });
     } else await run(id, 'bash', [join(S, 'render.sh'), P, '--final'], { REEL_FORMAT: format, REEL_AFTER_BUILD: EDITS_CLI, ...await renderEnv(id, st) });
     const qa = await run(id, 'python3', [join(S, 'qa.py'), P], { REEL_FORMAT: format }, true);
     runs.push({ format, pass: qa.code === 0, out: qa.out.trim() });
@@ -2616,7 +2692,21 @@ async function characterCutout(id: string, st: State, out: string, dur: number) 
     '-t', String(dur), '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-b:v', '0', '-crf', '32', '-row-mt', '1', out]);
 }
 
-export async function ensureCutout(id: string, force = false) {
+// One cutout per project at a time: the ingest starts it in the background and compose() later waits on that same run instead of starting a second RVM.
+type CutoutResult = { cached: boolean; framesCount?: number };
+const cutoutJobs = new Map<string, Promise<CutoutResult>>();
+export function ensureCutout(id: string, force = false): Promise<CutoutResult> {
+  const running = cutoutJobs.get(id);
+  if (running) return force ? running.catch(() => {}).then(() => ensureCutout(id, true)) : running;   // force: redo after the running one, never two RVMs on one cutout.webm
+  const job = cutoutNow(id, force).finally(() => { if (cutoutJobs.get(id) === job) cutoutJobs.delete(id); });
+  cutoutJobs.set(id, job);
+  return job;
+}
+// Started right after ingest (master.mp4 exists) so the RVM pass overlaps the script step and the user's review of it.
+function cutoutInBackground(id: string) {
+  ensureCutout(id).catch(e => emit(id, 'log', `⚠ Recorte em segundo plano falhou (será refeito na composição): ${(e as Error).message}`));
+}
+async function cutoutNow(id: string, force: boolean): Promise<CutoutResult> {
   const P = projDir(id);
   const master = join(P, 'master.mp4');
   const raw = rawClip(P);
@@ -2703,12 +2793,21 @@ export const composeDirOf = (P: string, st: State, aspect?: string | null) => jo
 export async function composeScaffold(id: string, motion = false, aspect?: string | null) {
   const P = projDir(id), st = readJSON(join(P, 'state.json')), C = join(P, composeDirName(st, aspect, motion)), A = join(C, 'assets');
   await ensureComposeIgnored(id);
+  for (const old of [join(P, composeDirName(st, aspect, motion), 'index.ai.html')]) if (existsSync(old)) { if (!existsSync(old.replace(/\.ai\.html$/, '.html.ai'))) renameSync(old, old.replace(/\.ai\.html$/, '.html.ai')); else rmSync(old); }   // old pristine name broke `hyperframes check`
   if (!motion) await ensureCutout(id);
   await ensureComposeMedia(id);
   for (const d of ['fonts', 'img', 'sfx']) mkdirSync(join(A, d), { recursive: true });
   const K = join(SKILL, 'compose');
   copyFileSync(join(K, 'kit.py'), join(C, 'kit.py'));
   copyFileSync(join(K, motion ? 'GUIDE-motion.md' : 'GUIDE.md'), join(C, 'GUIDE.md'));
+  copyFileSync(join(K, 'DIRETOR.md'), join(C, 'DIRETOR.md'));
+  mkdirSync(join(C, 'engines'), { recursive: true });
+  for (const f of readdirSync(join(K, 'engines')).filter(f => f.endsWith('.js'))) copyFileSync(join(K, 'engines', f), join(C, 'engines', f));
+  mkdirSync(join(C, 'estilos'), { recursive: true });
+  for (const f of readdirSync(STYLES_DIR).filter(f => f.endsWith('.md'))) copyFileSync(join(STYLES_DIR, f), join(C, 'estilos', f));
+  if (st.style) copyFileSync(join(STYLES_DIR, `${st.style}.md`), join(C, 'ESTILO.md')); else rmSync(join(C, 'ESTILO.md'), { force: true });
+  try { copyFileSync(await ensureIllustrationStyle(id, st), join(C, 'ILUSTRACAO.md')); }
+  catch (e: any) { emit(id, 'log', `⚠ guia de ilustração não gerado (${e.message}); o compositor segue sem ILUSTRACAO.md`); }   // the style guide helps; it never blocks the compose
   // the HyperFrames catalog motions cached in engine/hf, offered in GUIDE.md; kept out of compositions/, which render() empties
   const HF = join(SKILL, 'engine/hf/compositions');
   mkdirSync(join(C, 'motions'), { recursive: true });
@@ -2790,7 +2889,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   });
   writeJSON(join(C, 'hyperframes.json'), { $schema: 'https://hyperframes.heygen.com/schema/hyperframes.json', registry: 'https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry',
     paths: { blocks: 'compositions', components: 'compositions/components', assets: 'assets' }, media: { autoProxy: true }, authoringSkill: 'hyperframes' });
-  const hf = (cmd: string) => `npx --yes hyperframes@0.8.192 ${cmd}`;
+  const hf = (cmd: string) => `npx --yes hyperframes@0.8.217 ${cmd}`;
   writeJSON(join(C, 'package.json'), { name: id, private: true, type: 'module', scripts: { dev: hf('preview'), check: hf('check'), render: hf('render') } });
   if (!existsSync(join(C, 'scenes.py'))) {
     const origScenes = join(P, 'compose', 'scenes.py');
@@ -2818,6 +2917,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
       : `## Marca (${st.brand})\nPaleta mapeada em compose.json (RED, RED2, AMB, BLK, CRM; ajuste se o brand.md pedir outra).\n\n${brandMd}`,
     !motion ? `## Estilo do formato escolhido (${fmt.name})\nAplique este estilo tipográfico dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.\n${fmtRefs.length ? `Quadros e imagens de referência do formato (abra cada um com Read antes de compor: o movimento, as texturas e a composição vêm daí, não as palavras): ${fmtRefs.join(', ')}\n` : ''}${(fmt.promptGuide ?? '').replace(/[^.]*(só texto|sem imagens)[^.]*\.\s*/gi, '')}\n${(fmt.styleCatalog ?? []).map((x: string) => `- ${x}`).join('\n')}\n${formatSkill(fmt.id) ? `## Skill do estilo (regras do usuário, valem sobre o resto)\n${formatSkill(fmt.id)}\n` : ''}${fmt.sfxRules?.length ? `## Efeitos sonoros do estilo (nomes em assets/sfx/manifest.json)${fmt.sfxGainDb ? `\nGanho geral dos SFX: ${fmt.sfxGainDb} dB.` : ''}${fmt.sfxForbidden?.length ? `\nProibido: ${fmt.sfxForbidden.join(', ')}.` : ''}\n${fmt.sfxRules.map((r: any) => `- ${r.when} → ${r.sfx || '(sem som equivalente)'} (${r.level})`).join('\n')}` : ''}\n${fmt.motionRecipes?.length ? `## Receitas de movimento do estilo (GSAP)\n${fmt.motionRecipes.map((r: any) => `- ${r.name} (${r.use}): ${r.gsap}`).join('\n')}` : ''}` : '',
     !motion && refAnalysis && !siteRef(st) ? `## Análise da referência (reference.json)\nÉ o estilo a reproduzir. Olhe os quadros em ../ref/ com Read antes de escrever.\n${refAnalysis}` : '',
+    `## Ilustração\n${st.style ? `Estilo de ilustração escolhido pelo usuário: ESTILO.md (${st.style}). Siga-o; a paleta e os motivos vêm do ILUSTRACAO.md.` : 'Nenhum estilo escolhido: o diretor escolhe um em estilos/README.md dentro do treatment (DIRETOR.md §6, item 0) e lê o pacote inteiro antes do scenes.py.'}\nILUSTRACAO.md (se existir) é o estilo de desenho desta marca: toda ilustração é desenhada em código seguindo-o, com \`canvas()\` (Canvas 2D) ou \`scene3d()\` (three.js) do kit, ou é uma imagem do site (assets/img/). Nunca pictograma de pessoa, ícone de linha fina, emoji ou balão com texto de exemplo, mesmo que a análise do site acima sugira "ícones de traço fino". Decida a câmera de cada plano pelo DIRETOR.md e escreva treatment.md antes do scenes.py.`,
     !motion && script.moments?.length ? `## Momentos do roteiro\nUm bloco por momento: tempo, fala e ação visual sugerida. O kit.py é opcional: use um helper só quando ele for a melhor ideia para o momento.\n${script.moments.map((m: any) => `- ${m.t_start}s–${m.t_end}s · "${m.texto ?? ''}" · ${m.visual_action ?? ''}`).join('\n')}` : '',
     charLines.length || brand.animation?.style ? `## Brandkit de animação\n${brand.animation?.style ? `Estilo de movimento: ${brand.animation.style}\n` : ''}${charLines.length ? `Personagens (PNG com fundo transparente; olhe cada um com Read). Anime entrada, gesto e troca de pose em GSAP, escolhendo a pose pela emoção da fala. Sem boca sincronizada: o personagem é voz em off, só reage.${st.character ? ` O locutor (cut.webm) é o personagem ${st.character.name}, parado e respirando: faça-o reagir com câmera e com as outras poses por cima (front), nunca invente outro rosto.` : ''}\n${charLines.join('\n')}` : ''}` : '',
     script.accentWords?.length ? `## Palavras-chave sugeridas\n${script.accentWords.join(', ')}` : '',
@@ -2846,28 +2946,50 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
   const [targetW, targetH] = other ? ASPECT_SIZE[other] : [agentFmt.width ?? 1080, agentFmt.height ?? 1920];
   const system = (motion ? `You are an elite motion designer composing a ${targetAspect} (${targetW}x${targetH}) motion-graphics and infographic reel with NO speaker on screen, as a HyperFrames project, working only inside the current folder. `
     : `You are an elite motion designer composing a ${targetAspect} (${targetW}x${targetH}) reel as a HyperFrames project, working only inside the current folder. `) +
-    'Read brief.md and GUIDE.md first. Follow brief.md: build each scene from the script moments listed there.kit.py and the motions/ components in GUIDE.md are an optional library: invent the motion each moment deserves and use a helper or component only when it is the best idea.Tipografias gigantes e elementos descritos como atrás do locutor DEVEM ser colocados em back (nunca em front sobrepondo o locutor). Never use artificial thick text strokes (-webkit-text-stroke) over the speaker when the text was planned behind him. Follow GUIDE.md for technical execution, framing, and deterministic GSAP. ' +
-    'Loop: write scenes.py, run it (it also runs the speaker layout check: its errors stop the render, its warnings must be fixed or justified; the check writes review/recorte.png, the green-screen cut sheet to Read), run hyperframes check (fix all errors), take snapshots and LOOK at the contact sheets with Read, fix what you see' +
+    'Read brief.md, DIRETOR.md, ESTILO.md or the style chosen in treatment.md (the illustration technique: estilos/<slug>.md), ILUSTRACAO.md (the brand\'s drawing style: every illustration is drawn in code with canvas()/scene3d() following it, or is a site image; never pictograms, line icons, emoji or placeholder speech bubbles) and GUIDE.md first. Follow brief.md: build each scene from the script moments listed there.kit.py and the motions/ components in GUIDE.md are an optional library: invent the motion each moment deserves and use a helper or component only when it is the best idea.Tipografias gigantes e elementos descritos como atrás do locutor DEVEM ser colocados em back (nunca em front sobrepondo o locutor). Never use artificial thick text strokes (-webkit-text-stroke) over the speaker when the text was planned behind him. Follow GUIDE.md for technical execution, framing, and deterministic GSAP. ' +
+    'Loop: write scenes.py, run it (it also runs the speaker layout check: its errors stop the render, its warnings must be fixed or justified, the camera ones included: at least 4 distinct world camera moves and one signature=True scene; the check writes review/recorte.png, the green-screen cut sheet to Read), run hyperframes check (fix all errors), take snapshots and LOOK at the contact sheets with Read, fix what you see' +
     (motion ? ', then render out.mp4. ' : '. Do NOT render a video: the reviewer plays index.html live, and the final render happens later. ') +
     'Review rule: score the contact sheet 1-10 on hook (first 2 s), legibility at phone size, motion quality, variety, brand fidelity; fix the 3 worst and repeat until all are 8+. Every timed object must be hidden at the start of each seek so none lingers as a ghost. ' +
     'Never touch assets/ except to add files. Finish with one short paragraph: what you built and any known issue.';
   const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nEdite scenes.py e rode \`python3 -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
-    : motion ? 'Componha o reel completo agora. Termine com out.mp4 renderizado (npx --yes hyperframes@0.8.192 render -o out.mp4 --fps 30 --quality delivery).'
+    : motion ? 'Componha o reel completo agora. Termine com out.mp4 renderizado (npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery).'
     : other ? `Adapte a composição original (já pré-carregada em scenes.py a partir do formato primário) para o novo formato ${targetAspect} (${targetW}x${targetH}). Ajuste layouts, zonas de segurança, enquadramentos de câmera (FR) e posições/tamanhos de texto para esta proporção. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.`
     : 'Componha o reel completo agora. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.';
   const started = Date.now();
   rmSync(join(C, 'out.mp4'), { force: true });   // a stale out.mp4 from the last run must not pass as this run's result
-  const summary = await agent('compose', { system, prompt, cwd: C, noRender: !motion }, logCost(st));
+  // Direction first, in its own call (DIRETOR.md §6): benchmark, structure, shot list with the world camera, signature shot, sound map.
+  // A note or another aspect keeps the treatment the primary composition was built on.
+  if (!note && !other) {
+    emit(id, 'log', '🎬 Claude está escrevendo o tratamento (DIRETOR.md): benchmark, estrutura, shot list e câmera...');
+    const t = await agent('compose:treatment', { system: system + ' In this call you are the director only: write treatment.md and nothing else (no scenes.py, no render).',
+      prompt: 'Comece pelo estilo de ilustração (DIRETOR.md §6, item 0): ESTILO.md se existir; senão escolha em estilos/README.md e leia o pacote escolhido inteiro. Depois leia brief.md, DIRETOR.md, ILUSTRACAO.md, GUIDE.md e assets/transcript.json; abra as imagens de assets/img/ e os quadros de referência com Read. Escreva treatment.md com as seis seções do DIRETOR.md §6 (benchmark, três estruturas, logline e arco, shot list cena a cena com enquadramento, world= e motivo, mapa de som, o que difere do clichê). Na shot list, diga o que cada cena desenha (canvas, scene3d ou imagem do site) e com qual motivo do ILUSTRACAO.md. Marque o plano-assinatura. Não escreva scenes.py.',
+      cwd: C, noRender: true }, logCost(st));
+    const tf = join(C, 'treatment.md');
+    if (!existsSync(tf) || statSync(tf).mtimeMs < started) fail(`O diretor não escreveu treatment.md: ${t.slice(0, 300)}`);
+    emit(id, 'log', '🎬 Tratamento pronto. Claude está compondo o reel a partir dele...');
+  }
+  // scenes.py edited but never run would leave the player on the old composition while the notes read as applied
+  // index.html is also rewritten by the Edição step (marked): then its pristine copy index.ai.html says whether scenes.py ran
+  const html = join(C, 'index.html'), ai = aiCopy(html), hadHtml = existsSync(html);
+  const fresh = () => existsSync(html) && statSync(html).mtimeMs >= started && !isMarked(readFileSync(html, 'utf8')) || existsSync(ai) && statSync(ai).mtimeMs >= started;
+  let summary: string;
+  try {
+    summary = await agent('compose', { system, prompt: existsSync(join(C, 'treatment.md')) ? `Siga treatment.md (shot list, world= de cada cena, plano-assinatura e mapa de som); se mudar algo, atualize o treatment antes. ${prompt}` : prompt, cwd: C, noRender: !motion }, logCost(st));
+  } catch (e) {
+    // A first adaptation runs the copied primary scenes.py before adapting it: that index.html is the wrong aspect, and left
+    // behind it reads as a finished composition in the Entrega. The primary is the opposite: the agent usually has a playable
+    // index.html when the timeout or the quota cuts it, and a step that never advanced left the project stuck in 'script'.
+    if (other && !hadHtml) rmSync(html, { force: true });
+    if (other || motion || !fresh()) throw e;
+    summary = `⚠ Compositor interrompido (${(e as Error).message}): a composição que ele chegou a gerar abriu na Revisão.`;
+    emit(id, 'log', summary);
+  }
   if (motion) {
     if (!existsSync(join(C, 'out.mp4'))) fail(`O compositor não gerou out.mp4: ${summary.slice(0, 300)}`);
     copyFileSync(join(C, 'out.mp4'), join(P, 'preview-motion.mp4'));   // o teste só motion não sobrescreve o preview com locutor
     emit(id, 'preview', { file: 'preview-motion.mp4' });
   } else {
-    // scenes.py edited but never run would leave the player on the old composition while the notes read as applied
-    // index.html is also rewritten by the Edição step (marked): then its pristine copy index.ai.html says whether scenes.py ran
-    const html = join(C, 'index.html'), ai = join(C, 'index.ai.html');
-    const fresh = existsSync(html) && statSync(html).mtimeMs >= started && !readFileSync(html, 'utf8').startsWith('<!--hf-edits-->') || existsSync(ai) && statSync(ai).mtimeMs >= started;
-    if (!fresh) fail(`O compositor não gerou um index.html novo (rode scenes.py): ${summary.slice(0, 300)}`);
+    if (!fresh()) fail(`O compositor não gerou um index.html novo (rode scenes.py): ${summary.slice(0, 300)}`);
     emit(id, 'built', {});
   }
   if (!motion && stepRank(st.step) < stepRank('motion')) st.step = 'motion';

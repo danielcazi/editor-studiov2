@@ -30,6 +30,17 @@ assert len(kit.lint_world(['push', 'pan'])) == 2
 kit.S.clear(); kit.scene(1, 0, 2, 'red', None, world=dict(scale=2, d=5)); kit.world_track()
 assert len(kit.ERROS) == 2 and 'fora do limite' in kit.ERROS[0] and 'd=5.0' in kit.ERROS[1], kit.ERROS
 kit.ERROS.clear(); kit.S.clear()
+# motores por estilo: engine() lê engines/<nome>.js uma vez, canvas(engine=) marca o uso da cena, e cada motor é JS válido
+import shutil, subprocess
+shutil.copytree(KIT / "engines", Path(d) / "engines")
+for name, obj in (("silkscreen", "SK"), ("briefing", "BB"), ("swiss", "SW"), ("deco", "AD"), ("sketch", "SB"), ("launch", "LA"), ("cinetic", "CN"), ("diorama", "DI")):
+    kit._ENG_USED.clear(); h, j = kit.canvas("b01", "ctx.fillRect(0,0,w,h)", 2, engine=name)
+    assert name in kit.ENGINES and kit._ENG_USED == {name} and f"const {obj} = " in kit.ENGINES[name], name
+    assert subprocess.run(["node", "--check", str(KIT / "engines" / f"{name}.js")]).returncode == 0, name
+h, j = kit.canvas("b02", "ctx.fillRect(0,0,w,h)", 2, over=80, bg="#FFF8EA")
+assert 'width="1240" height="2080"' in h and "left:-80px;top:-80px" in h and 'OVER=80,BG="#FFF8EA"' in j, (h, j[:160])
+try: kit.engine("nope"); assert False
+except AssertionError as e: assert "não existe" in str(e)
 # ilustração em código: canvas e scene3d devolvem (html, js) com o desenho do agente dentro, ligados ao tempo da cena
 h, j = kit.canvas("b01", "ctx.fillStyle='#f00';ctx.fillRect(0,0,w*eo(t/2),h)", 2.5, at=.5, k="ilu")
 assert 'id="b01-ilu"' in h and 'width="1080" height="1920"' in h and "ctx.fillRect(0,0,w*eo(t/2),h)" in j and "AT=0.50,D=2.50" in j, (h, j[:200])

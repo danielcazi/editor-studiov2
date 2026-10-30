@@ -830,21 +830,23 @@ def engine(name):
     _ENG_USED.add(name)
     return ''
 
-_CANVAS = r"""(function(){const cv=document.getElementById('@ID@'),ctx=cv.getContext('2d'),AT=@AT@,D=@D@,CW=@W@,CH=@H@;
+_CANVAS = r"""(function(){const cv=document.getElementById('@ID@'),ctx=cv.getContext('2d'),AT=@AT@,D=@D@,CW=@W@,CH=@H@,OVER=@OVER@,BG=@BG@;
 const draw=(ctx,t,w,h)=>{@DRAW@};
-const R=()=>{ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,CW,CH);draw(ctx,Math.max(0,Math.min(tl.time()-AT,D)),CW,CH)};
-tl.set(cv,{opacity:0},0);tl.set(cv,{opacity:1},AT);tl.set(cv,{opacity:0},AT+D);tl.to({},{duration:D,onUpdate:R},AT);R();})();"""
+const R=()=>{ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,CW+2*OVER,CH+2*OVER);if(BG){ctx.fillStyle=BG;ctx.fillRect(0,0,CW+2*OVER,CH+2*OVER)}ctx.setTransform(1,0,0,1,OVER,OVER);ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.filter='none';ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.letterSpacing='0px';ctx.lineWidth=1;draw(ctx,Math.max(0,Math.min(tl.time()-AT,D)),CW,CH)};
+if(AT>0)tl.set(cv,{opacity:0},0);else cv.style.opacity=1;tl.set(cv,{opacity:1},AT);tl.set(cv,{opacity:0},AT+D);tl.to({},{duration:D,onUpdate:R},AT);R();})();"""
 
-def canvas(p, draw, d, x=0, y=0, w=None, h=None, at=0.0, k='cv', engine=None):
+def canvas(p, draw, d, x=0, y=0, w=None, h=None, at=0.0, k='cv', engine=None, over=0, bg=None):
     """Ilustração desenhada em Canvas 2D. `draw` é JS: o corpo de (ctx, t, w, h) => {...}, função pura de t (segundos desde `at`,
     de 0 a d): nada de Math.random (use mulberry(seed)/hash/vnoise), nada de estado fora da função. Disponíveis no escopo:
     clamp, lerp, seg, ss, eo, ei, eio, bk, spring, mulberry, hash, vnoise, grain(ctx,w,h,n,a,seed), cache(k,w,h,f). Siga ILUSTRACAO.md.
-    engine='silkscreen'|'briefing'|'swiss'|'deco' põe o motor do estilo no escopo (SK, BB, SW, AD)."""
+    engine='silkscreen'|'briefing'|'swiss'|'deco'|'sketch'|'launch'|'cinetic' põe o motor do estilo no escopo (SK, BB, SW, AD, SB, LA, CN).
+    over=80, bg=CRM: o canvas ganha 80 px de sobra em volta (para pan/orbit do world=) pintados com bg; o draw continua em (0,0)..(w,h)."""
     if engine: globals()['engine'](engine)
     w = w or W; h = h or H
     i = f'{p}-{k}'
-    html = f'<canvas id="{i}" width="{w}" height="{h}" {AO} style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;opacity:0"></canvas>'
-    js = (_CANVAS.replace('@ID@', i).replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}').replace('@W@', str(w)).replace('@H@', str(h)).replace('@DRAW@', draw))
+    html = f'<canvas id="{i}" width="{w + 2 * over}" height="{h + 2 * over}" {AO} style="position:absolute;left:{x - over}px;top:{y - over}px;width:{w + 2 * over}px;height:{h + 2 * over}px;opacity:0"></canvas>'
+    js = (_CANVAS.replace('@ID@', i).replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}').replace('@W@', str(w)).replace('@H@', str(h)).replace('@DRAW@', draw)
+          .replace('@OVER@', str(over)).replace('@BG@', json.dumps(bg) if bg else 'null'))
     return html, js
 
 # scene3d(): cena three.js inteira (luz, sombra, névoa, câmera) com o objeto que o agente constrói; pose = função de t
@@ -855,7 +857,7 @@ window.__hfThree=window.__hfThree||import('https://cdn.jsdelivr.net/npm/three@0.
 window.__hf.buildReady['@ID@']=window.__hfThree.then(T=>{
   const rd=new T.WebGLRenderer({canvas:cv,alpha:true,antialias:true,preserveDrawingBuffer:true});rd.setPixelRatio(1);rd.setSize(CW,CH,false);
   rd.shadowMap.enabled=true;rd.shadowMap.type=T.PCFSoftShadowMap;rd.toneMapping=T.NeutralToneMapping;
-  const sc=new T.Scene(),cam=new T.PerspectiveCamera(@FOV@,CW/CH,.1,100);cam.position.set(0,0,@DIST@);
+  const sc=new T.Scene(),ORTHO=@ORTHO@,cam=ORTHO?new T.OrthographicCamera(-ORTHO*CW/CH,ORTHO*CW/CH,ORTHO,-ORTHO,.1,100):new T.PerspectiveCamera(@FOV@,CW/CH,.1,100);cam.position.set(0,0,@DIST@);
   @FOG@
   const clay=(c,l=0)=>new T.MeshPhysicalMaterial({color:new T.Color(c).offsetHSL(0,0,l),roughness:.38,clearcoat:.8,clearcoatRoughness:.2});
   const matte=(c,l=0)=>new T.MeshStandardMaterial({color:new T.Color(c).offsetHSL(0,0,l),roughness:.9,metalness:0});
@@ -866,20 +868,21 @@ window.__hf.buildReady['@ID@']=window.__hfThree.then(T=>{
   const update=(function(T,sc,cam,clay,matte){@BUILD@})(T,sc,cam,clay,matte);
   R=()=>{const t=Math.max(0,Math.min(tl.time()-AT,D));if(typeof update==='function')update(t);rd.render(sc,cam)};R()});
 const U=()=>R&&R();
-tl.set(cv,{opacity:0},0);tl.set(cv,{opacity:1},AT);tl.set(cv,{opacity:0},AT+D);tl.to({},{duration:D,onUpdate:U},AT);
+if(AT>0)tl.set(cv,{opacity:0},0);else cv.style.opacity=1;tl.set(cv,{opacity:1},AT);tl.set(cv,{opacity:0},AT+D);tl.to({},{duration:D,onUpdate:U},AT);
 })();"""
 
-def scene3d(p, build, d, x=0, y=0, w=None, h=None, at=0.0, fov=35, dist=8, fog=None, rim=None, k='s3', engine=None):
+def scene3d(p, build, d, x=0, y=0, w=None, h=None, at=0.0, fov=35, dist=8, fog=None, rim=None, k='s3', engine=None, ortho=0):
     """Cena three.js com luz de chave com sombra, luz de recorte e névoa opcional. `build` é JS que recebe (T, sc, cam, clay, matte),
     monta a cena (meshes em sc; clay(cor) e matte(cor) são materiais prontos; mesh.castShadow/receiveShadow à vontade) e devolve
-    update(t) (pose em função de t, segundos desde `at`). fog = (cor, perto, longe). Um canvas WebGL por chamada: até ~2 por cena."""
+    update(t) (pose em função de t, segundos desde `at`). fog = (cor, perto, longe). Um canvas WebGL por chamada: até ~2 por cena.
+    ortho=6: câmera ortográfica com meia-altura 6 (isométrico, diorama); 0 = perspectiva com `fov`."""
     if engine: globals()['engine'](engine)
     w = w or W; h = h or H
     i = f'{p}-{k}'
     html = f'<canvas id="{i}" width="{w}" height="{h}" {AO} style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;opacity:0"></canvas>'
     fogjs = f"sc.fog=new T.Fog('{fog[0]}',{fog[1]},{fog[2]});" if fog else ''
     js = (_SCENE3D.replace('@ID@', i).replace('@W@', str(w)).replace('@H@', str(h)).replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}')
-          .replace('@FOV@', str(fov)).replace('@DIST@', str(dist)).replace('@FOG@', fogjs).replace('@RIM@', f"'{rim or AMB}'").replace('@BUILD@', build))
+          .replace('@FOV@', str(fov)).replace('@DIST@', str(dist)).replace('@ORTHO@', str(ortho)).replace('@FOG@', fogjs).replace('@RIM@', f"'{rim or AMB}'").replace('@BUILD@', build))
     return html, js
 
 
@@ -887,11 +890,11 @@ def obj3d(p, kind, x, y, size=520, at=0.0, d=2.4, color=None, spin=False, tilt=0
     """Objeto 3D flutuante com centro em (x,y) px. kind: cursor|card|layers|bolt. Entra em `at`, sai em at+d. Use dentro de both()."""
     assert kind in ('cursor', 'card', 'layers', 'bolt'), kind
     i = f'{p}-{k}'
-    html = f'<canvas id="{i}" width="{size}" height="{size}" {AO} style="position:absolute;left:{x - size / 2:.0f}px;top:{y - size / 2:.0f}px;width:{size}px;height:{size}px;opacity:0"></canvas>'
+    html = f'<canvas id="{i}" width="{size}" height="{size}" {AO} style="position:absolute;left:{x - size / 2:.0f}px;top:{y - size / 2:.0f}px;width:{size}px;height:{size}px;opacity:{0 if at > 0 else 1}"></canvas>'
     code = (_OBJ3D.replace('@ID@', i).replace('@SIZE@', str(size)).replace('@COLOR@', color or '#6f6fc9').replace('@KIND@', kind)
             .replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}').replace('@SEED@', f'{seed:.2f}')
             .replace('@SPIN@', 'true' if spin else 'false').replace('@TILT@', f'{tilt:.2f}'))
-    js = f'tl.set("#{i}",{{opacity:0}},0);tl.set("#{i}",{{opacity:1}},{at:.2f});tl.set("#{i}",{{opacity:0}},{at + d:.2f});{code}'
+    js = (f'tl.set("#{i}",{{opacity:0}},0);' if at > 0 else '') + f'tl.set("#{i}",{{opacity:1}},{at:.2f});tl.set("#{i}",{{opacity:0}},{at + d:.2f});{code}'
     return html, js
 
 

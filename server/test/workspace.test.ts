@@ -135,6 +135,26 @@ test('review notes are checked, live files stay inside proj/, and an open note b
   await assert.rejects(P.final(st.id, ['9:16']), /1 anotação/);
 });
 
+test('illustration styles come from compose/estilos and a project keeps the one chosen at creation', async () => {
+  const styles = P.listStyles();
+  assert.ok(styles.some(s => s.id === 'silkscreen-poster') && styles.every(s => s.name && s.line && s.fit), JSON.stringify(styles));
+  // every pack keeps the shape the composer is told to expect: the 11 sections, the credit line and sounds that exist
+  const COMPOSE_DIR = join(import.meta.dirname, '../../claude-reel-editor/skills/reel-editor/compose');
+  const sfx = Object.keys(JSON.parse(readFileSync(join(COMPOSE_DIR, 'sfx/manifest.json'), 'utf8')));
+  for (const st of styles) {
+    const md = readFileSync(join(COMPOSE_DIR, 'estilos', `${st.id}.md`), 'utf8');
+    for (let n = 1; n <= 11; n++) assert.match(md, new RegExp(`^## ${n}\\. `, 'm'), `${st.id}: falta a seção ${n}`);
+    assert.match(md, /Adaptado de `lemo-opuscar|^> Referências?:/m, `${st.id}: sem crédito ou referência`);
+    const sons = (md.match(/^## 9\. [^]*?(?=^## 10\.)/m)?.[0] ?? '').match(/`([a-z0-9-]+)`/g)?.map(x => x.slice(1, -1)) ?? [];
+    for (const x of sons) if (/^(chime|click|error|glitch|impact|key|notification|ping|pop|riser|sparkle|typing|whoosh)/.test(x)) assert.ok(sfx.includes(x), `${st.id}: som ${x} não existe em sfx/manifest.json`);
+  }
+  const clip = join(tmp, 'style_test.mp4');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
+  const st = await P.createProject({ name: 'Style Test', video: clip, preEdited: true, brand: 'padrao', composerMode: 'agent', style: 'silkscreen-poster' });
+  assert.equal(P.getProject(st.id).style, 'silkscreen-poster');
+  await assert.rejects(P.createProject({ name: 'Style Bad', video: clip, preEdited: true, brand: 'padrao', style: 'nope' }), /estilo/);
+});
+
 test('composerMode can be set at creation and toggled via setComposerMode', async () => {
   const clip = join(tmp, 'agent_mode.mp4');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
@@ -177,4 +197,19 @@ test('final refuses a master longer than the brand max_seconds before any render
   const st = await P.createProject({ name: 'Long', video: clip, preEdited: true, brand: 'curta' });
   execFileSync('cp', [clip, join(P.WS, 'projects', st.id, 'master.mp4')]);
   await assert.rejects(P.final(st.id, ['9:16']), /limite da marca é 0\.5 s/);
+});
+
+test('the step lock is a file: another live server holds it, a dead one does not', async () => {
+  const clip = join(tmp, 'lock.mp4');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
+  const st = await P.createProject({ name: 'Lock', video: clip, preEdited: true, brand: 'padrao' });
+  const lock = join(P.WS, 'locks', `${st.id}.lock`);
+  mkdirSync(join(P.WS, 'locks'), { recursive: true });
+  writeFileSync(lock, JSON.stringify({ step: 'compose', startedAt: Date.now() - 5000, pid: process.pid }));   // "another server", still alive
+  assert.equal(P.getBusy(st.id)?.step, 'compose');
+  await assert.rejects(P.final(st.id, ['9:16']), /busy \(compose em execução/);
+  writeFileSync(lock, JSON.stringify({ step: 'compose', startedAt: Date.now(), pid: 2147483000 }));   // a server that died: the lock is stale
+  assert.equal(P.getBusy(st.id), null);
+  await assert.rejects(P.final(st.id, ['9:16']), /master\.mp4|ffprobe/);   // got past the lock, failed later on the missing master
+  assert.ok(!existsSync(lock), 'the lock is released after the step');
 });

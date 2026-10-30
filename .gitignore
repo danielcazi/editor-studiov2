@@ -12,3 +12,7 @@ workspace/scratch/
 claude-reel-editor/skills/reel-editor/engine/gsap.min.js
 claude-reel-editor/skills/reel-editor/engine/sfx/
 claude-reel-editor/skills/reel-editor/engine/hf/
+# saída do usuário e estado de execução
+workspace/cortes/
+workspace/testes/
+workspace/locks/

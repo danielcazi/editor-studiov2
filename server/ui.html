@@ -1413,6 +1413,10 @@
   .sidebar-section-title.action { color: var(--yellow); }
   .sidebar-section-title.running { color: #00e676; }
   .sidebar-section-title.normal { color: var(--mute); }
+  .sidebar-section-title { cursor: pointer; user-select: none; }
+  .side-caret { width: 10px; display: inline-block; }
+  .side-card.is-current { border-color: var(--yellow); background: rgba(242, 230, 0, 0.07); }
+  .side-card.is-current .side-card-name::before { content: '▶ '; color: var(--yellow); }
 
   .sidebar-body {
     flex: 1;
@@ -1428,18 +1432,17 @@
     background: var(--panel2);
     border: 1px solid var(--line);
     border-radius: 10px;
-    padding: 11px;
+    padding: 8px 10px;
     cursor: pointer;
     transition: all .14s ease;
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 4px;
     position: relative;
     text-decoration: none;
     color: inherit;
   }
   .side-card:hover {
-    transform: translateY(-2px);
     border-color: var(--line-strong);
     box-shadow: 0 4px 14px rgba(0,0,0,0.18);
   }
@@ -2780,6 +2783,7 @@
   }
 
   /* Form Fields */
+  [hidden] { display: none !important; }
   .np-field {
     display: flex;
     flex-direction: column;
@@ -5814,10 +5818,11 @@ let dashBrand = '';
 let dashSearch = '';
 
 async function projects() {
-  const [overviewList, bl, flIds] = await Promise.all([
+  let [overviewList, bl, flIds, styles] = await Promise.all([
     api('GET', '/projects/overview').catch(() => []),
     api('GET', '/brands').catch(() => []),
-    api('GET', '/formats').catch(() => [])
+    api('GET', '/formats').catch(() => []),
+    api('GET', '/styles').catch(() => [])
   ]);
   globalProjectsData = overviewList;
 
@@ -5960,8 +5965,10 @@ async function projects() {
             <button type="button" class="primary" onclick="setDashFilter('all'); dashSearch=''; dashBrand=''; projects();">Limpar Filtros</button>
           </div>
         ` : `
+          ${groupByDay(filtered).map(([day, items]) => `
+          <div class="sidebar-section-title normal" style="padding:18px 0 8px;font-size:11px">📅 ${day} · ${items.length}</div>
           <div class="pgrid">
-            ${filtered.map(p => {
+            ${items.map(p => {
               const isRun = !!p.running;
               const isCompleted = !!p.completed;
               const isNeedsConfirm = !isCompleted && !!p.requiresHumanConfirmation;
@@ -6047,13 +6054,13 @@ async function projects() {
                   ${statusBarHtml}
 
                   <div class="pcard-foot">
-                    <span>${isRun ? 'Em andamento' : (isCompleted ? 'Encerrado' : (p.hasFinal ? 'Concluído' : 'Última ação'))}: <span class="side-time-val" data-started="${startTimestamp}">${elapsedFmt}</span></span>
+                    <span>${isRun ? 'Em andamento' : (isCompleted ? 'Encerrado' : (p.hasFinal ? 'Concluído' : 'Última ação'))}: <span class="side-time-val" data-started="${startTimestamp}">${elapsedFmt}</span>${iaTimeHtml(p, now) ? ' · ' + iaTimeHtml(p, now) : ''}</span>
                     <span style="font-weight:600;color:var(--cream)">Abrir ➔</span>
                   </div>
                 </div>
               `;
             }).join('')}
-          </div>
+          </div>`).join('')}
         `}
       </div>
     `;
@@ -6296,6 +6303,10 @@ async function projects() {
                   `).join('')}
                 </select>
                 <div class="np-format-preview" id="npFmtPreview"></div>
+                <select class="np-select" name="style" id="npStyleSelect" title="Estilo de ilustração: como o compositor desenha as ilustrações em código">
+                  <option value="">Ilustração: automático (o diretor escolhe o estilo)</option>
+                  ${styles.map(s => `<option value="${esc(s.id)}" title="${esc(s.line)}">Ilustração: ${esc(s.name)} · ${esc(s.fit)}</option>`).join('')}
+                </select>
               </div>
 
               <!-- 4. Vídeo já pré-editado? (Cortes de fala) -->
@@ -6900,7 +6911,7 @@ async function projects() {
           name: nameInput.value.trim() || 'novo-video', text: speechEl.value, voice: { provider: provEl.value, voice: voiceEl.value }, character: charEl.value ? { name: charEl.value } : undefined,
           referenceUrl: refUrlInput.value.trim() || undefined, referenceNote: $('#npRefNote').value.trim() || undefined,
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
-          composerMode: isAgentMode ? 'agent' : 'card', brollFill
+          composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, brollFill
         });
         location.hash = `#/p/${st.id}`;
         api('POST', `/projects/${st.id}/ingest`).catch(() => {});
@@ -6934,7 +6945,7 @@ async function projects() {
             brand,
             formatId,
             images: imagePaths,
-            composerMode: isAgentMode ? 'agent' : 'card',
+            composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined,
             brollFill
           });
           api('POST', `/projects/${st.id}/ingest`).catch(() => {});
@@ -6959,7 +6970,7 @@ async function projects() {
         brand,
         formatId,
         images: imagePaths,
-        composerMode: isAgentMode ? 'agent' : 'card',
+        composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined,
         brollFill
       });
 
@@ -6978,6 +6989,7 @@ async function projects() {
   };
   window.renderDashProjects = () => {
     if (location.hash === '' || location.hash === '#/' || location.hash === '#/projects') {
+      overviewList = globalProjectsData;
       if (dashCurrentTab === 'esteira') renderEsteiraGrid();
     }
   };
@@ -7209,16 +7221,9 @@ async function project(id) {
         if (d.step === 'ingest') {
           // Ingestão concluída com sucesso: avança automaticamente a visualização e esteira para o Roteiro
           viewStep = 'script';
-          line('⚡ Ingestão concluída! Avançando esteira: iniciando Etapa 2 (Roteiro com IA)...');
-          running = { step: 'script', startedAt: Date.now() };
-          updateBusyStatus();
+          line('⚡ Ingestão concluída! Avançando para a Etapa 2 (Roteiro com IA)...');
+          // the server starts the script step right after ingest; its 'start' event sets running
           render();
-          api('POST', `/projects/${id}/script`).catch(err => {
-            running = null;
-            updateBusyStatus();
-            line(`ERRO na geração do roteiro: ${err.message}`);
-            render();
-          });
         } else if (d.step === 'script') {
           viewStep = 'script';
           render();
@@ -7232,7 +7237,7 @@ async function project(id) {
     } else if (d.status === 'error') {
       running = null;
       updateBusyStatus();
-      line(`ERRO na etapa ${d.step || ''}: ${d.error}`);
+      line(d.quota ? `⏳ ${d.error}` : `ERRO na etapa ${d.step || ''}: ${d.error}`);
       if (isMajor) {
         render();
       }
@@ -7438,16 +7443,12 @@ async function project(id) {
           <div class="box">
             <h3>Etapa 3: Revisão</h3>
             <p class="muted">Aprove o roteiro (Etapa 2): o Claude gera os cards e o vídeo abre aqui no player ao vivo.</p>
-            <button class="primary" id="to-script">Ir para o Roteiro (Etapa 2) ➔</button>
           </div>`;
-        $('#to-script').onclick = () => { viewStep = 'script'; render(); };
       }
     } else if (viewStep === 'edit') {
       if (maxReachable >= 4) await editStep(id, body, st);
       else {
-        body.innerHTML = `<div class="box"><h3>Etapa 4: Edição</h3><p class="muted">Gere e revise o vídeo na Etapa 3 antes de editar as camadas.</p>
-          <button class="primary" id="to-review">Ir para a Revisão (Etapa 3) ➔</button></div>`;
-        $('#to-review').onclick = () => { viewStep = 'motion'; render(); };
+        body.innerHTML = `<div class="box"><h3>Etapa 4: Edição</h3><p class="muted">Gere e revise o vídeo na Etapa 3 antes de editar as camadas.</p></div>`;
       }
     } else if (viewStep === 'final') {
       if (maxReachable >= 5) {
@@ -7457,9 +7458,7 @@ async function project(id) {
           <div class="box">
             <h3>Etapa 5: Entrega</h3>
             <p class="muted">Revise e aprove o vídeo na Etapa 3 antes das entregas.</p>
-            <button class="primary" id="to-review">Ir para a Revisão (Etapa 3) ➔</button>
           </div>`;
-        $('#to-review').onclick = () => { viewStep = 'motion'; render(); };
       }
     }
 
@@ -7469,6 +7468,8 @@ async function project(id) {
       const activeMeta = STEP_INFO[activePipelineStep] || { name: activePipelineStep };
       const activeInfo = STEP_INFO[activePipelineStep] || { title: `Etapa ${activePipelineStep} em execução`, desc: 'Processamento em andamento...', short: activePipelineStep };
       const banner = document.createElement('div');
+      // the jump button only advances: viewing a step ahead of the active one gets no button (the steps bar goes back)
+      const ahead = stepIdx(viewStep) > stepIdx(activePipelineStep);
       if (isMajorRunning) {
         banner.className = 'box running-step-box';
         banner.style.marginBottom = '20px';
@@ -7493,11 +7494,11 @@ async function project(id) {
                 </div>
               </div>
             </div>
-            <div>
+            ${ahead ? '' : `<div>
               <button id="nav-return-btn" class="nav-return-btn" style="padding:10px 18px;font-size:12px;font-weight:700">
                 Ver ${esc(activeMeta.name || activePipelineStep)} (em andamento) ➔
               </button>
-            </div>
+            </div>`}
           </div>
           <div class="running-bar-track"><div class="running-bar-fill"></div></div>
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -7511,12 +7512,14 @@ async function project(id) {
           <div class="nav-step-left">
             <span class="nav-step-tag">Visualizando ${esc(curMeta.name || viewStep)}</span>
             <span class="nav-step-info">
-              O projeto já avançou até a etapa <b>${esc(activeMeta.name || activePipelineStep)}</b>. Navegue livremente sem perder nada do que já foi enviado.
+              ${ahead
+                ? `Esta etapa ainda não foi liberada: o projeto está em <b>${esc(activeMeta.name || activePipelineStep)}</b>. Conclua a etapa atual para avançar.`
+                : `O projeto já avançou até a etapa <b>${esc(activeMeta.name || activePipelineStep)}</b>. Navegue livremente sem perder nada do que já foi enviado.`}
             </span>
           </div>
-          <button id="nav-return-btn" class="nav-return-btn">
+          ${ahead ? '' : `<button id="nav-return-btn" class="nav-return-btn">
             Ir para ${esc(activeMeta.name || activePipelineStep)} ➔
-          </button>
+          </button>`}
         `;
       }
       body.insertBefore(banner, body.firstChild);
@@ -9056,22 +9059,22 @@ async function deliveryStep(id, body, st) {
           </p>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${missing.map(f => `<button type="button" class="primary" style="background:var(--ay);color:#000;font-weight:700;font-size:12px;padding:6px 14px;border-color:var(--ay)" data-compose-fmt="${esc(f)}">🤖 Compor ${esc(f)} com o agente</button>`).join('')}
+            ${missing.length > 1 ? `<button type="button" class="primary" style="font-weight:700;font-size:12px;padding:6px 14px" data-compose-fmt="${esc(missing.join(','))}">🤖 Compor todos (${esc(missing.join(', '))}) em fila</button>` : ''}
           </div>
         </div>`;
 
       container.querySelectorAll('[data-compose-fmt]').forEach(b => {
-        b.onclick = () => {
-          const f = b.dataset.composeFmt;
+        b.onclick = async () => {
+          // one format at a time: the server runs one step per project, so several formats go in sequence
+          const queue = b.dataset.composeFmt.split(',');
           window.setProjectRunning({ step: 'motion', startedAt: Date.now() });
           window.renderProject();
-          api('POST', `/projects/${id}/compose`, { format: f }).then(() => {
-            window.setProjectRunning(null);
-            window.renderProject();
-          }).catch(err => {
-            window.setProjectRunning(null);
-            alert(`Erro ao compor ${f}: ${err.message}`);
-            window.renderProject();
-          });
+          for (const f of queue) {
+            try { await api('POST', `/projects/${id}/compose`, { format: f }); }
+            catch (err) { alert(`Erro ao compor ${f}: ${err.message}`); break; }
+          }
+          window.setProjectRunning(null);
+          window.renderProject();
         };
       });
     }
@@ -10588,6 +10591,34 @@ function formatDuration(s) {
   return `${h}h ${remM < 10 ? '0' : ''}${remM}m`;
 }
 
+// Total time the AI and renders spent on a project (human waiting excluded); ticks live while a step runs.
+function iaTimeHtml(p, now) {
+  const ms = (p.workMs || 0) + (p.running ? now - (p.running.startedAt || now) : 0);
+  if (ms < 1000) return '';
+  return `🤖 IA: <span class="side-time-val" data-started="${p.running ? now - ms : 0}">${formatDuration(Math.floor(ms / 1000))}</span>`;
+}
+
+// Newest first, one group per creation day.
+function groupByDay(list) {
+  const today = new Date().toDateString(), yest = new Date(Date.now() - 864e5).toDateString();
+  const groups = new Map();
+  for (const p of [...list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))) {
+    const d = new Date(p.createdAt || 0).toDateString();
+    const key = d === today ? 'Hoje' : d === yest ? 'Ontem' : new Date(p.createdAt || 0).toLocaleDateString('pt-BR');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  return [...groups];
+}
+
+let sidebarCollapsed = new Set();
+try { sidebarCollapsed = new Set(JSON.parse(localStorage.getItem('sidebarCollapsed') || '[]')); } catch {}
+function toggleSidebarGroup(title) {
+  sidebarCollapsed.has(title) ? sidebarCollapsed.delete(title) : sidebarCollapsed.add(title);
+  try { localStorage.setItem('sidebarCollapsed', JSON.stringify([...sidebarCollapsed])); } catch {}
+  renderSidebarProjects();
+}
+
 function renderSidebarProjects() {
   const sb = $('#projects-sidebar');
   const toggleBtn = $('#sidebar-toggle');
@@ -10599,7 +10630,7 @@ function renderSidebarProjects() {
   const brandSelect = $('#sidebar-brand-select');
   if (!sb || !listEl || !sidebarCurrentProjectId) return;
 
-  const allOthers = (globalProjectsData || []).filter(p => p.id !== sidebarCurrentProjectId);
+  const allOthers = globalProjectsData || [];
 
   // Popula marcas no dropdown
   if (brandSelect) {
@@ -10677,45 +10708,13 @@ function renderSidebarProjects() {
     const elapsedSec = Math.max(0, Math.floor((now - startTimestamp) / 1000));
     const elapsedFmt = formatDuration(elapsedSec);
 
-    let stepBadge = '';
-    if (isRun) {
-      stepBadge = `<div class="side-card-step-row is-running"><span class="pulse-dot"></span> <span class="side-card-step-tag">⚡ ${esc(p.stepLabel)}</span></div>`;
-    } else if (isCompleted) {
-      stepBadge = `<div class="side-card-step-row is-done"><span style="color:#00e676">✓</span> <span class="side-card-step-tag" style="color:#00e676;font-weight:700">Concluído</span></div>`;
-    } else if (p.hasFinal) {
-      stepBadge = `<div class="side-card-step-row is-done"><span style="color:#00e676">✓</span> <span class="side-card-step-tag">Vídeo Pronto</span></div>`;
-    } else {
-      stepBadge = `<div class="side-card-step-row"><span style="color:var(--yellow)">◈</span> <span class="side-card-step-tag">${esc(p.stepLabel)}</span></div>`;
-    }
-
-    let timeLabel = '';
-    if (isRun) {
-      timeLabel = `⏱️ Rodando há <span class="side-time-val" data-started="${startTimestamp}">${elapsedFmt}</span>`;
-    } else if (isNeedsConfirm) {
-      timeLabel = `⏳ Aguardando há <span class="side-time-val" data-started="${startTimestamp}">${elapsedFmt}</span>`;
-    } else {
-      timeLabel = `Última etapa: há <span class="side-time-val" data-started="${startTimestamp}">${elapsedFmt}</span>`;
-    }
-
-    let actionBox = '';
-    if (isNeedsConfirm) {
-      actionBox = `
-        <div class="side-card-human-action" title="Ação humana pendente neste projeto">
-          <div style="display:flex;align-items:center;gap:6px">
-            <span class="action-alert-icon">⚠️</span>
-            <span>Confirmação: <b>${esc(p.humanConfirmationLabel)}</b></span>
-          </div>
-          <span style="font-size:12px;opacity:0.8">➔</span>
-        </div>`;
-    } else if (isRun) {
-      actionBox = `
-        <div class="side-card-running-pill">
-          <span class="step-spinner" style="width:11px;height:11px;border-width:2px"></span>
-          <span>IA / Render em execução...</span>
-        </div>`;
-    }
+    const icon = isRun ? '<span class="pulse-dot"></span>' : isNeedsConfirm ? '⚠️' : (isCompleted || p.hasFinal) ? '<span style="color:#00e676">✓</span>' : '◈';
+    const label = isRun ? p.stepLabel : isNeedsConfirm ? p.humanConfirmationLabel : isCompleted ? 'Concluído' : p.hasFinal ? 'Vídeo Pronto' : p.stepLabel;
+    const stepBadge = `<div class="side-card-step-row">${icon} <span class="side-card-step-tag">${esc(label)}</span> · <span class="side-time-val" data-started="${startTimestamp}">${elapsedFmt}</span></div>`;
+    const timeLabel = iaTimeHtml(p, now);
 
     const cardClasses = ['side-card'];
+    if (p.id === sidebarCurrentProjectId) cardClasses.push('is-current');
     if (isNeedsConfirm) cardClasses.push('needs-confirmation');
     if (isRun) cardClasses.push('is-running');
 
@@ -10726,27 +10725,20 @@ function renderSidebarProjects() {
           ${p.brand ? `<span class="side-card-brand">${esc(p.brand)}</span>` : ''}
         </div>
         ${stepBadge}
-        <div class="side-card-time">${timeLabel}</div>
-        ${actionBox}
+        ${timeLabel ? `<div class="side-card-time">${timeLabel}</div>` : ''}
       </div>
     `;
   };
 
-  let html = '';
-  if (groupAction.length > 0) {
-    html += `<div class="sidebar-section-title action">⚠️ REQUER SUA AÇÃO (${groupAction.length})</div>`;
-    html += groupAction.map(renderCard).join('');
-  }
-  if (groupRunning.length > 0) {
-    html += `<div class="sidebar-section-title running">⚡ EM EXECUÇÃO (${groupRunning.length})</div>`;
-    html += groupRunning.map(renderCard).join('');
-  }
-  if (groupNormal.length > 0) {
-    if (groupAction.length > 0 || groupRunning.length > 0) {
-      html += `<div class="sidebar-section-title normal">📁 DEMAIS PROJETOS (${groupNormal.length})</div>`;
-    }
-    html += groupNormal.map(renderCard).join('');
-  }
+  // Collapsible group: the title toggles it; the set of collapsed groups survives reloads.
+  const section = (cls, title, items) => {
+    if (!items.length) return '';
+    const closed = sidebarCollapsed.has(title);
+    return `<div class="sidebar-section-title ${cls}" onclick="toggleSidebarGroup(${JSON.stringify(title).replace(/"/g, '&quot;')})"><span class="side-caret">${closed ? '▸' : '▾'}</span>${title} (${items.length})</div>`
+      + (closed ? '' : items.map(renderCard).join(''));
+  };
+  let html = section('action', '⚠️ REQUER SUA AÇÃO', groupAction) + section('running', '⚡ EM EXECUÇÃO', groupRunning);
+  for (const [day, items] of groupByDay(groupNormal)) html += section('normal', `📁 ${day}`, items);
 
   listEl.innerHTML = html;
 }

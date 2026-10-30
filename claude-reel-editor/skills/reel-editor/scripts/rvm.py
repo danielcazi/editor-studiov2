@@ -7,6 +7,7 @@ ds = float(sys.argv[4]) if len(sys.argv) > 4 else 0.4  # 0.4: upper-body close-u
 maxf = int(sys.argv[5]) if len(sys.argv) > 5 else 0
 W, H = 1920, 1080
 
+# CPU on purpose: measured on an M3 Pro at 1080p, CPU 5.9 fps; CoreML 3.8 fps (MLProgram/ALL 4.4): the recurrent graph falls back node by node.
 sess = ort.InferenceSession(model, providers=['CPUExecutionProvider'])
 rec = [np.zeros([1, 1, 1, 1], np.float32)] * 4
 dsr = np.array([ds], np.float32)
@@ -17,7 +18,9 @@ sw, sh = map(int, subprocess.check_output(['ffprobe', '-v', 'error', '-select_st
 fw = min(W, round(sw * H / sh / 2) * 2); x0 = (W - fw) // 2
 dec = subprocess.Popen(['ffmpeg', '-v', 'error', '-i', src, '-vf', f'fps=30,scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], stdout=subprocess.PIPE)
 enc = subprocess.Popen(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', f'{W}x{H}', '-r', '30', '-i', '-',
-                        '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '6M', '-auto-alt-ref', '0', '-g', '30', out], stdin=subprocess.PIPE)
+                        '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '6M', '-auto-alt-ref', '0', '-g', '30',
+                        # 17 fps instead of 7 (same file size): the default encoder competed with the inference for the CPU
+                        '-row-mt', '1', '-cpu-used', '4', '-deadline', 'good', out], stdin=subprocess.PIPE)
 n, t0 = 0, time.time()
 while True:
     buf = dec.stdout.read(W * H * 3)

@@ -5,7 +5,7 @@ Usage: python3 transcribe.py <video|audio|.srt|.vtt> <out.json>     REEL_LANG=pt
 import json, os, subprocess, sys
 from pathlib import Path
 
-HF = "hyperframes@0.8.145"
+HF = "hyperframes@0.8.217"
 
 def split_words(entries):
     """HyperFrames returns one entry per subtitle: give each word a slice of its subtitle, proportional to its length."""

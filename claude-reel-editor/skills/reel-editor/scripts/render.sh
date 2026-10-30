@@ -22,8 +22,8 @@ if [ -n "${REEL_AFTER_BUILD:-}" ]; then node "$REEL_AFTER_BUILD" "$REEL/proj"; f
 stamp "render:start"
 # finals capture in software (SwiftShader): the GPU capture drifts by a few levels between runs (SPEC §7 criterion 6)
 GPU_ARG=(); [ "$FINAL" = 1 ] && GPU_ARG=(--no-browser-gpu)
-# no nice: hyperframes 0.8.145 sets its workers' priority itself and EACCES-fails when started already niced
-npx -y hyperframes@0.8.145 render "$REEL/proj" --workers "$WORKERS" -o "$REEL/final.mp4" ${RES_ARG[@]+"${RES_ARG[@]}"} ${GPU_ARG[@]+"${GPU_ARG[@]}"} --quality delivery --quiet
+# no nice: hyperframes 0.8.217 sets its workers' priority itself and EACCES-fails when started already niced
+npx -y hyperframes@0.8.217 render "$REEL/proj" --workers "$WORKERS" -o "$REEL/final.mp4" ${RES_ARG[@]+"${RES_ARG[@]}"} ${GPU_ARG[@]+"${GPU_ARG[@]}"} --quality delivery --quiet
 stamp "render:end"
 # Final mix. Optional music bed (brand.json "music": path) sits ~11 dB under the measured voice and ducks further while she talks.
 # Then bring the whole mix to -14 LUFS (video copied, not re-encoded).

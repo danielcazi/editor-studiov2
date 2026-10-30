@@ -33,6 +33,7 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['DELETE', /^\/settings\/keys\/([^/]+)$/, m => K.deleteKey(m[1])],
   ['POST', /^\/settings\/keys\/([^/]+)\/test$/, m => K.testKey(m[1])],
   ['GET', /^\/formats$/, () => P.listFormats()],
+  ['GET', /^\/styles$/, () => P.listStyles()],
   ['GET', /^\/formats\/([^/]+)$/, m => P.getFormat(m[1])],
   ['POST', /^\/formats\/([^/]+)\/refine$/, (m, b) => P.refineFormat(m[1], b)],
   ['POST', /^\/formats\/clone$/, (_, b) => P.cloneFormat(b)],

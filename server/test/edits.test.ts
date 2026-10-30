@@ -73,7 +73,7 @@ test('captions: up to 4 words, broken on pauses and sentence ends', () => {
   assert.deepEqual(captionLines([w('um', 0), w('dois.', 0.2), w('tres', 0.4), w('quatro', 1.5)]).map(l => l.text), ['um dois.', 'tres', 'quatro']);
 });
 
-test('sync keeps the AI file as index.ai.html and reapplies the edits to a new AI pass', () => {
+test('sync keeps the AI file as index.html.ai and reapplies the edits to a new AI pass', () => {
   const P = mkdtempSync(join(tmpdir(), 'edits-')), D = join(P, 'compose');
   mkdirSync(join(D, 'compositions'), { recursive: true });
   writeFileSync(join(D, 'index.html'), HTML);
@@ -81,12 +81,12 @@ test('sync keeps the AI file as index.ai.html and reapplies the edits to a new A
   writeFileSync(join(P, 'layers.json'), JSON.stringify({ layers: { b01: { texts: [{ i: 0, from: 'PALAVRA', to: 'OUTRA' }] }, plate: { hidden: true } }, added: [] }));
   syncEdits(D, P);
   syncEdits(D, P);   // idempotent: built from the pristine copy, not from its own output
-  assert.equal(readFileSync(join(D, 'index.ai.html'), 'utf8'), HTML);
+  assert.equal(readFileSync(join(D, 'index.html.ai'), 'utf8'), HTML);
   assert.equal(readFileSync(join(D, 'index.html'), 'utf8').match(/display:none/g)?.length, 1);
   assert.match(readFileSync(join(D, 'compositions/b01.html'), 'utf8'), /OUTRA/);
   writeFileSync(join(D, 'index.html'), HTML.replace('data-duration="2"', 'data-duration="4"'));   // the AI rewrites it
   syncEdits(D, P);
-  assert.match(readFileSync(join(D, 'index.ai.html'), 'utf8'), /data-duration="4"/);
+  assert.match(readFileSync(join(D, 'index.html.ai'), 'utf8'), /data-duration="4"/);
   assert.match(readFileSync(join(D, 'index.html'), 'utf8'), /#plate\{display:none/);
   writeFileSync(join(P, 'layers.json'), '{"layers":{},"added":[]}');
   syncEdits(D, P);

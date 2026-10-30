@@ -19,27 +19,40 @@ export type ModelStep = keyof typeof MODEL_BY_STEP;
 
 const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', cloneFormat: 'high', broll: 'low', cortes: 'medium', cortesSrt: 'low', embrulhos: 'medium' };
 
-export type Cost = { at: string; stage: string; step: ModelStep; model: string; in: number; out: number; cacheRead: number; cacheWrite: number };
+export type Cost = { at: string; stage: string; step: ModelStep; model: string; in: number; out: number; cacheRead: number; cacheWrite: number; turns?: number; ms?: number };   // turns/ms from the CLI result: wall time per call, to see where the pipeline's time goes
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN ?? 'claude';   // the Claude Code CLI on this machine, logged in with its own account
 
 type ClaudeResult = {
   is_error: boolean; result: string; structured_output?: unknown;
   usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+  num_turns?: number; duration_ms?: number;
 };
 
 // A call that never answers would hold the project's step lock until the server restarts: give up after this long (Opus at high effort included).
 const CALL_TIMEOUT_MS = Number(process.env.CLAUDE_TIMEOUT_MS ?? 20 * 60_000);
 
-function claude(args: string[], input: string, cwd?: string): Promise<string> {
+// The composer works for 15-30 min (treatment, scenes.py, check, snapshots): its own ceiling, above the per-call default.
+const COMPOSE_TIMEOUT_MS = Number(process.env.COMPOSE_TIMEOUT_MS ?? 45 * 60_000);
+
+// A spent subscription window ("You've hit your 5-hour limit · resets 6:30pm") is not a failure of the step: the user waits and clicks again.
+export const quotaMessage = (msg: string) => /hit your .*limit|usage limit|rate limit/i.test(msg)
+  ? `Cota do Claude esgotada (${msg.replace(/^claude exited \d+: /, '')}). A etapa não rodou: espere o horário indicado e clique de novo.` : null;
+
+function claude(args: string[], input: string, cwd?: string, timeoutMs = CALL_TIMEOUT_MS): Promise<string> {
   return new Promise((ok, fail) => {
-    const p = spawn(CLAUDE_BIN, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+    const p = spawn(CLAUDE_BIN, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], signal: AbortSignal.timeout(timeoutMs) });
     let out = '', err = '';
     p.stdout.on('data', d => out += d);
     p.stderr.on('data', d => err += d);
-    p.on('error', e => fail(e.name === 'AbortError' ? new Error(`claude gave no answer in ${Math.round(CALL_TIMEOUT_MS / 60_000)} min`) : e));
+    p.on('error', e => fail(e.name === 'AbortError' ? new Error(`claude gave no answer in ${Math.round(timeoutMs / 60_000)} min`) : e));
     // On failure the CLI prints a JSON result on stdout (e.g. "OAuth session expired"): show that message, not the raw JSON head.
-    p.on('close', code => code === 0 ? ok(out) : fail(new Error(`claude exited ${code}: ${err.trim() || (() => { try { return JSON.parse(out).result; } catch { return out.slice(0, 300); } })()}`)));
+    p.on('close', code => {
+      if (code === 0) return ok(out);
+      const msg = `claude exited ${code}: ${err.trim() || (() => { try { return JSON.parse(out).result; } catch { return out.slice(0, 300); } })()}`;
+      const quota = quotaMessage(msg);
+      fail(Object.assign(new Error(quota ?? msg), quota ? { quota: true } : {}));
+    });
     p.stdin.end(input);
   });
 }
@@ -61,7 +74,7 @@ export async function ask<T>(step: ModelStep, stage: string, opts: {
   const r = JSON.parse(await claude(args, opts.content)) as ClaudeResult;
   const u = r.usage;
   logCost({ at: new Date().toISOString(), stage, step, model, in: u.input_tokens, out: u.output_tokens,
-    cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 });
+    cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, turns: r.num_turns, ms: r.duration_ms });
   if (r.is_error) throw new Error(`${model} failed in ${stage}: ${r.result}`);
   if (r.structured_output === undefined) throw new Error(`${model} returned no structured output in ${stage}`);
   return r.structured_output as T;
@@ -75,13 +88,13 @@ export async function agent(stage: string, opts: { system: string; prompt: strin
   const model = MODEL_BY_STEP.compose;
   const args = ['-p', '--model', model, '--effort', EFFORT.compose, '--output-format', 'json', '--system-prompt', opts.system,
     '--no-session-persistence', '--setting-sources', 'user', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    '--tools', 'Read,Write,Edit,Bash', '--allowedTools', 'Read', 'Write', 'Edit', 'Bash(python3:*)','Bash(npx --yes hyperframes@0.8.192:*)',
+    '--tools', 'Read,Write,Edit,Bash', '--allowedTools', 'Read', 'Write', 'Edit', 'Bash(python3:*)','Bash(npx --yes hyperframes@0.8.217:*)',
     'Bash(ffmpeg:*)', 'Bash(ffprobe:*)', 'Bash(ls:*)', 'Bash(cat:*)',
-    ...opts.noRender ? ['--disallowedTools', 'Bash(npx --yes hyperframes@0.8.192 render:*)'] : []];
-  const r = JSON.parse(await claude(args, opts.prompt, opts.cwd)) as ClaudeResult;
+    ...opts.noRender ? ['--disallowedTools', 'Bash(npx --yes hyperframes@0.8.217 render:*)'] : []];
+  const r = JSON.parse(await claude(args, opts.prompt, opts.cwd, COMPOSE_TIMEOUT_MS)) as ClaudeResult;
   const u = r.usage;
   logCost({ at: new Date().toISOString(), stage, step: 'compose', model, in: u.input_tokens, out: u.output_tokens,
-    cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 });
+    cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, turns: r.num_turns, ms: r.duration_ms });
   if (r.is_error) throw new Error(`${model} failed in ${stage}: ${r.result}`);
   return r.result;
 }

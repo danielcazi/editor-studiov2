@@ -10,7 +10,7 @@ Contexto para uma sessão nova. Leia também `CLAUDE.md` na raiz.
 
 ## 2. Fatos do render (confirmados lendo `build_reel.py`, 522 linhas)
 
-Arquivo: `claude-reel-editor/skills/reel-editor/scripts/build_reel.py`. Gera um projeto HyperFrames; `render.sh` o renderiza (`npx hyperframes@0.8.145 render`).
+Arquivo: `claude-reel-editor/skills/reel-editor/scripts/build_reel.py`. Gera um projeto HyperFrames; `render.sh` o renderiza (`npx hyperframes@0.8.217 render`).
 
 ```
 #cam (zoom/punch)
