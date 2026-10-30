@@ -35,10 +35,10 @@ const erros = [], avisos = [], vistos = new Set();
 const reporta = (tipo, chave, msg) => { if (vistos.has(chave)) return; vistos.add(chave); (tipo === 'erro' ? erros : avisos).push(msg); console.log(`${tipo}: ${msg}`); };
 const sair = (code, msg) => { if (msg) console.error(msg); process.exit(code); };
 
-// Geometria do #ccam (kit.py): a fonte 1920×1080 fica com a base no rodapé e o rosto (faceX) como origem do zoom.
-const ccamLeft = W / 2 - FACE, ccamTop = H - SRC_H, ox = FACE, oy = SRC_H;
-const paraTela = (x, y, cam) => ({ X: ccamLeft + ox + cam.e + cam.s * (x - ox), Y: ccamTop + oy + cam.f + cam.s * (y - oy) });
-const daTela = (X, Y, cam) => ({ x: ox + (X - ccamLeft - ox - cam.e) / cam.s, y: oy + (Y - ccamTop - oy - cam.f) / cam.s });
+// Geometria do #ccam na tela: a caixa medida no Chrome (getBoundingClientRect) já inclui o zoom do recorte e a câmera de mundo (#world, kit.py).
+// shortcut: mapeamento afim pela caixa; com rotações do mundo até 8° o erro fica abaixo de 2 px (WORLD_LIM no kit)
+const paraTela = (x, y, cam) => ({ X: cam.x0 + cam.sx * x, Y: cam.y0 + cam.sy * y });
+const daTela = (X, Y, cam) => ({ x: (X - cam.x0) / cam.sx, y: (Y - cam.y0) / cam.sy });
 const retangulo = (x0, y0, x1, y1) => ({ x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) });
 const cabecaNaTela = (cam, cx) => {
   const a = paraTela(cx - HEAD.halfW, HEAD.top, cam), b = paraTela(cx + HEAD.halfW, HEAD.bottom, cam);
@@ -89,9 +89,8 @@ function coletaNaPagina(ids) {
   const cc = document.getElementById('ccam');
   let cam = null;
   if (cc) {
-    const tr = getComputedStyle(cc).transform;
-    const m = tr === 'none' ? new DOMMatrix() : new DOMMatrix(tr);
-    cam = { s: m.a, e: m.e, f: m.f, op: opac(cc) };
+    const r = cc.getBoundingClientRect();
+    cam = { s: r.width / 1920, sx: r.width / 1920, sy: r.height / 1080, x0: r.left, y0: r.top, op: opac(cc) };
     const v = document.getElementById('cut');
     if (v) cam.video = { rs: v.readyState, ct: +v.currentTime.toFixed(2), paused: v.paused, op: opac(v), err: v.error ? v.error.code : null, src: (v.currentSrc || '').slice(-20) };
   }
@@ -161,7 +160,7 @@ function folhaDoRecorte() {
 }
 
 // ---- preparo: puppeteer, Chrome, runtime ----
-if (!fs.existsSync(CUT)) sair(2, 'sem cut.webm: nada a medir');
+const COM_LOCUTOR = fs.existsSync(CUT);   // sem cut.webm (reel só motion) mede-se só texto e zonas seguras
 let puppeteer;
 try { puppeteer = createRequire(import.meta.url)('puppeteer-core'); }
 catch { sair(2, 'puppeteer-core não encontrado: rode "npm install" em server/'); }
@@ -227,7 +226,7 @@ try {
       const back = out[ids[0]]?.texts ?? [];
       const front = [...(out[ids[1]]?.texts ?? []), ...(out[ids[1]]?.boxes ?? [])];
 
-      // zonas seguras: texto inteiro dentro da zona (§6); sem locutor na tela vira aviso
+      // zonas seguras: texto inteiro dentro da zona (§6 e §9), com ou sem locutor
       if (VERBOSO) for (const x of [...back.map((x) => ['fundo', x]), ...(out[ids[1]]?.texts ?? []).map((x) => ['frente', x])]) {
         console.log(`  ${c.n} ${x[0]} "${x[1].t}" x=${x[1].x.toFixed(0)} y=${x[1].y.toFixed(0)} w=${x[1].w.toFixed(0)} h=${x[1].h.toFixed(0)}`);
       }
@@ -236,10 +235,10 @@ try {
         if (x.frac < 0.9) { reporta('aviso', `${c.n}|parcial|${x.t}`, `cena ${c.n}: "${x.t}" parcialmente fora do quadro ou do recorte neste instante (animação ou corte); confira na folha`); continue; }
         if (x.x < ZONA.left || x.x + x.w > ZONA.right || x.y < ZONA.top || x.y + x.h > ZONA.bottom) {
           const msg = `cena ${c.n}: "${x.t}" fora da zona segura (topo ${ZONA.top}, base ${H - ZONA.bottom}, laterais ${ZONA.left})`;
-          reporta(locutor ? 'erro' : 'aviso', msg, msg);
+          reporta('erro', msg, msg);
         }
       }
-      if (!locutor) break amostra;
+      if (!locutor || !COM_LOCUTOR) break amostra;
 
       // máscara do recorte neste instante; o centro da cabeça vem dela (o faceX do projeto pode estar errado)
       const mask = alfa(t);
@@ -301,9 +300,9 @@ try {
 
 if (codigo === 0) {
   fs.mkdirSync(path.join(DIR, 'review'), { recursive: true });
-  folhaDoRecorte();
+  if (COM_LOCUTOR) folhaDoRecorte();
   fs.writeFileSync(path.join(DIR, 'review', 'layout.json'), JSON.stringify({ erros, avisos }, null, 1));
-  console.log(`layout: ${erros.length} erro(s), ${avisos.length} aviso(s); recorte em review/recorte.png`);
+  console.log(`layout: ${erros.length} erro(s), ${avisos.length} aviso(s)${COM_LOCUTOR ? '; recorte em review/recorte.png' : ''}`);
   codigo = erros.length ? 1 : 0;
 }
 process.exit(codigo);

@@ -63,11 +63,84 @@ def ladder(p, hi, bg, fg, rows, at=.05):
     return f'<div class="card" id="{p}-card" style="left:14%;right:14%;top:11%;padding:{u(3.5)} {u(4)};background:{bg};color:{fg};font-size:{u(5)};line-height:2.1">{h}</div>', js
 
 # Cada cena: n, início, fim, fundo, câmera(enquadramento, modo, final), back(p,d)->(html,js), front(p,d)->(html,js), sons[(nome, atraso, volume)]
-# fundo: foot | red | amber | black | cream | broll ; câmera: None (recorte some) ou (M|L|XL|XXL, hold|snap|push|shake, final)
+# fundo: foot | red | amber | black | cream | broll | plate (só o fundo desfocado, sem véu) ; câmera: None (recorte some) ou (M|L|XL|XXL, hold|snap|push|shake, final)
 S = []
-def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False):
+TRS = ('push', 'fade', 'slide', 'wipe', 'cut')
+TRD = .3   # duração da saída da cena anterior, sobreposta à entrada da nova (crossfade)
+def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push', move=1.05, world=None, signature=False):
     # cta=True marca a cena do call to action: o lint exige locutor XXL nela
-    S.append(dict(n=n, a=a, b=b, bg=bg, cam=cam, back=back, front=front, sfx=sfx, cta=cta))
+    # tr: como esta cena entra (a anterior sai por baixo em TRD s): push (zoom+fade) | fade | slide (da direita) | wipe (de baixo) | cut
+    # move: escala final do fundo ao longo da cena (push-in lento, sine.inOut); 1 = parado
+    # world: câmera de mundo (as 4 camadas juntas, com parallax): pose-alvo no fim da cena, dict com x, y (px), scale, rx, ry, rz (graus),
+    #   e opcionais d (s, padrão = a cena), ease (padrão sine.inOut), snap=True (pula para a pose no início em vez de ir da pose anterior).
+    #   A pose fica para a cena seguinte: um oner é uma cena longa ou cenas vizinhas sem snap. Limites em WORLD_LIM.
+    # signature=True: o plano-assinatura (DIRETOR.md §3); o lint avisa quando nenhum existe
+    S.append(dict(n=n, a=a, b=b, bg=bg, cam=cam, back=back, front=front, sfx=sfx, cta=cta, tr=tr, move=move, world=world, signature=signature))
+
+# câmera de mundo: perspectiva do palco e profundidade de cada camada (translateZ), compensada em escala para o repouso ser idêntico
+WORLD_P = 1800
+WORLD_Z = {'deep': -300, 'mid': -110, 'near': 80}   # plate · fundo+texto atrás · (ccam em 0) · frente
+WORLD_LIM = {'x': 120, 'y': 120, 'rx': 8, 'ry': 8, 'rz': 6, 'scale': (.9, 1.35)}   # shortcut: a checagem de layout aproxima a câmera por afim; ângulos pequenos mantêm o erro < 2 px
+WORLD_KEYS = ('x', 'y', 'scale', 'rx', 'ry', 'rz')
+WORLD_KIND = {'x': 'pan', 'y': 'crane', 'rx': 'tilt', 'ry': 'orbit', 'rz': 'roll'}
+GSAP_KEY = {'x': 'x', 'y': 'y', 'scale': 'scale', 'rx': 'rotationX', 'ry': 'rotationY', 'rz': 'rotation'}
+
+def world_track():
+    """Tweens do #world na linha do tempo principal e os tipos de movimento usados, cena a cena. Erros entram em ERROS."""
+    cur = dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)
+    js = ['tl.set("#world",{x:0,y:0,scale:1,rotationX:0,rotationY:0,rotation:0},0);']
+    kinds = []
+    for s in S:
+        w = s['world']
+        if not w:
+            continue
+        n, a, d = s['n'], s['a'], s['b'] - s['a']
+        bad = set(w) - set(WORLD_KEYS) - {'d', 'ease', 'snap'}
+        if bad: erro(f'cena {n}: world com chaves desconhecidas {sorted(bad)} (use {", ".join(WORLD_KEYS)}, d, ease, snap)')
+        tgt = {k: w.get(k, cur[k]) for k in WORLD_KEYS}
+        for k, v in tgt.items():
+            lo, hi = (WORLD_LIM['scale'] if k == 'scale' else (-WORLD_LIM[k], WORLD_LIM[k]))
+            if not lo <= v <= hi: erro(f'cena {n}: world {k}={v} fora do limite [{lo}, {hi}]')
+        moved = [k for k in WORLD_KEYS if abs(tgt[k] - cur[k]) > 1e-6]
+        if 'scale' in moved: kinds.append('push' if tgt['scale'] > cur['scale'] else 'pull')
+        kinds.extend(WORLD_KIND[k] for k in moved if k != 'scale')
+        props = ','.join(f'{GSAP_KEY[k]}:{tgt[k]:.3f}' for k in WORLD_KEYS)
+        if w.get('snap'):
+            js.append(f'tl.set("#world",{{{props}}},{a:.2f});')
+        else:
+            dur = float(w.get('d', d))
+            if not 0 < dur <= d + 1e-6: erro(f'cena {n}: world d={dur} precisa ficar entre 0 e a duração da cena ({d:.2f})')
+            js.append(f'tl.to("#world",{{{props},duration:{dur:.2f},ease:"{w.get("ease", "sine.inOut")}"}},{a:.2f});')
+        cur = tgt
+    return js, kinds
+
+def lint_world(kinds):
+    """Avisos de direção (DIRETOR.md §3): quatro gramáticas de câmera e um plano-assinatura."""
+    out = []
+    used = sorted(set(kinds))
+    if len(used) < 4:
+        out.append(f'câmera: {len(used)} movimento(s) de mundo distinto(s) ({", ".join(used) or "nenhum: nenhuma cena usa world="}); use pelo menos 4 entre push, pull, pan, crane, tilt, orbit, roll (DIRETOR.md §3)')
+    if not any(s['signature'] for s in S):
+        out.append('câmera: nenhuma cena marcada signature=True; escolha o plano-assinatura (oner, revelação de escala ou transição feita do meio)')
+    return out
+
+GRAIN = ("url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E"
+         "%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E"
+         "%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")")
+
+def transition(cid, kind, a, b, tr, ext):
+    # tweens no host da cena (linha do tempo principal): a nova entra em cima, a anterior sai por baixo durante ext s
+    sel, out = f'"#{cid}"', []
+    if kind == 'b' and tr != 'cut':
+        ent = {'push': 'tl.fromTo(S,{scale:1.08,opacity:0},{scale:1,opacity:1,duration:.45,ease:"power3.out"},A);',
+               'fade': 'tl.fromTo(S,{opacity:0},{opacity:1,duration:.35,ease:"power2.out"},A);',
+               'slide': f'tl.fromTo(S,{{x:{W},opacity:1}},{{x:0,duration:.5,ease:"power4.out"}},A);',
+               'wipe': 'tl.fromTo(S,{clipPath:"inset(100% 0 0 0)"},{clipPath:"inset(0% 0 0 0)",duration:.45,ease:"power3.inOut"},A);'}[tr]
+        out.append(ent.replace('S', sel, 1).replace('A)', f'{a:.2f})'))
+    if ext:
+        fade = 'scale:.96,opacity:0' if kind == 'b' else 'opacity:0'
+        out.append(f'tl.to({sel},{{{fade},duration:{ext:.2f},ease:"power2.in"}},{b:.2f});')
+    return out
 
 def both(*parts):
     return "".join(x[0] for x in parts), "".join(x[1] for x in parts)
@@ -94,19 +167,18 @@ def aviso(msg): AVISOS.append(msg)
 # Lint de variedade: medido no que o agente de fato gerou, porque o repertório embutido estava ficando sem uso
 # (48 dos 66 helpers nunca usados, catálogo motions/ nunca usado) e quase todo tween era só entrada/saída.
 KIT_HELPERS = set(re.findall(r'^def ([a-z]\w*)\((?:p|sel)\b', open(__file__, encoding='utf8').read(), re.M))
-MIN_HELPERS, MAX_PLAIN = 5, 0.7
+MAX_PLAIN = 0.7
 PLAIN = {'opacity', 'x', 'y', 'xPercent', 'yPercent', 'scale'}
 NOT_PROPS = {'duration', 'ease', 'delay', 'stagger', 'repeat', 'yoyo', 'immediateRender', 'transformOrigin', 'overwrite'}
 
 def lint_variety(src, html, js):
     """src = scenes.py; html/js = tudo que render() escreveu. Devolve avisos (nunca erros: o gosto é do agente, o lint só cobra repertório)."""
     out = []
-    used = sorted(h for h in KIT_HELPERS if re.search(r'(?<![\w.])' + h + r'\(', src))
-    if len(used) < MIN_HELPERS:
-        out.append(f'variedade: só {len(used)} helper(s) do kit ({", ".join(used) or "nenhum"}); use pelo menos {MIN_HELPERS} distintos (ver "Estilos prontos" no GUIDE.md)')
-    if 'motions/' not in html:
-        out.append('variedade: nenhum componente do catálogo motions/ (count-up, chart-story, chat-message, notification...); use ao menos um onde a fala pede')
     tweens = [m.group(2) for m in re.finditer(r'tl\.(to|fromTo|from)\(([^;\n]{0,400})', js)]
+    durs = [float(m.group(1)) for t in tweens for m in [re.search(r'duration:\s*(\.?\d+\.?\d*)', t)] if m]
+    short = sum(1 for x in durs if x <= .3)
+    if durs and short / len(durs) > .5:
+        out.append(f'fluidez: {short} de {len(durs)} tweens duram ≤ 0,3 s (animação travada); entradas de .4–.7 s com power3.out/expo.out, saídas de .25–.4 s com power2.in, e movimento sustentado (> 1 s) em cada cena')
     plain = sum(1 for t in tweens if set(re.findall(r'(?<![\w"\'])([A-Za-z]\w*)\s*:', t)) - NOT_PROPS <= PLAIN)
     if tweens and plain / len(tweens) > MAX_PLAIN:
         out.append(f'variedade: {plain} de {len(tweens)} tweens só animam opacity/x/y/scale (entrada e saída); use rotation, clipPath, filter, skew, stagger, morph ou movimento sustentado (>1 s) em parte deles')
@@ -123,6 +195,7 @@ def lint_static():
             if s['bg'] == 'broll': erro(f'cena {n}: fundo broll com locutor: o recorte some, use câmera None')
             if mode == 'hold' and s['b'] - s['a'] > 4: aviso(f'cena {n}: {s["b"] - s["a"]:.1f} s com locutor parado; divida em duas com enquadramentos diferentes')
         if s['cta'] and not (cam and cam[0] == 'XXL'): erro(f'cena {n}: CTA exige locutor XXL')
+        if s['tr'] not in TRS: erro(f'cena {n}: transição {s["tr"]!r} inválida (use {", ".join(TRS)})')
     for x, y in zip(S, S[1:]):
         if x['cam'] and y['cam'] and x['cam'][0] == y['cam'][0]:
             aviso(f'cenas {x["n"]} e {y["n"]}: mesmo enquadramento {x["cam"][0]} em cenas vizinhas (alterne XL, L, M)')
@@ -139,7 +212,7 @@ def render():
     STYLE = FONT + """
     #root{position:absolute;inset:0;font-family:Aspekta,Montserrat,sans-serif;font-weight:600;overflow:hidden}
     #root *{box-sizing:border-box}
-    .bgfill{position:absolute;inset:0}
+    .bgfill{position:absolute;inset:-12%}   /* sobra para a câmera de mundo: pan e orbit não revelam o plate atrás do fundo */
     .giant{position:absolute;left:-2%;right:-2%;text-align:center;line-height:.84;letter-spacing:-.045em;text-transform:uppercase}
     .ln{display:block}
     .cn{line-height:.84;height:.84em}
@@ -161,7 +234,7 @@ def render():
     .mural img{width:100%;border-radius:32px;display:block}
     """.replace('@0@', u(32)).replace('@1@', u(1.6)).replace('@2@', u(4.5)).replace('@3@', u(4.6)).replace('@4@', u(2.4)).replace('@5@', u(2.4)).replace('@6@', u(1.6))
 
-    def comp(cid, body, js):
+    def comp(cid, body, js, eng=''):
         return f"""<template>
     <style>{STYLE}</style>
     <div id="root" data-composition-id="{cid}" data-width="{W}" data-height="{H}">
@@ -169,6 +242,7 @@ def render():
     </div>
     <script>
     {EASES}
+    {eng}
     const tl = gsap.timeline({{ paused: true }});
     {js}
     window.__timelines = window.__timelines || {{}}; window.__timelines["{cid}"] = tl;
@@ -176,31 +250,39 @@ def render():
     </template>
     """
 
-    BGS = {'foot': 'background:rgba(0,0,0,.6)', 'red': f'background:radial-gradient(120% 80% at 50% 30%,{RED},{RED2})', 'amber': f'background:{AMB}',
-           'black': 'background:#000', 'cream': f'background:{CRM}', 'broll': 'background:#000'}
+    # fundos com luz e vinheta (um sólido chapado lê como flat): o centro mais claro e as bordas mais escuras
+    BGS = {'foot': 'background:rgba(0,0,0,.6)', 'red': f'background:radial-gradient(120% 80% at 50% 30%,{RED},{RED2})',
+           'amber': f'background:radial-gradient(110% 75% at 50% 35%,{AMB},color-mix(in srgb,{AMB} 78%,#000))',
+           'black': 'background:radial-gradient(110% 70% at 50% 38%,#1c1c1c,#000)',
+           'cream': f'background:radial-gradient(110% 75% at 50% 35%,{CRM},color-mix(in srgb,{CRM} 93%,#000))', 'broll': 'background:#000', 'plate': 'background:transparent'}
     os.makedirs('compositions', exist_ok=True)
     for f in os.listdir('compositions'):
         os.remove(os.path.join('compositions', f))
-    hosts, sfx_tags, cam, all_html, all_js = [], [], [], [], []
+    hosts, sfx_tags, cam, trans, all_html, all_js = [], [], [], [], [], []
     fx_n = 0
     SFXLEN = {k: v['duration'] for k, v in json.load(open('assets/sfx/manifest.json')).items()}
-    for s in S:
+    for i, s in enumerate(S):
         n, a, b = s['n'], s['a'], s['b']; d = round(b - a, 3)
+        nxt = S[i + 1] if i + 1 < len(S) else None
+        ext = round(min(TRD, (nxt['b'] - nxt['a']) / 2), 3) if nxt and nxt['tr'] != 'cut' else 0   # sobra para sair sob a próxima cena
         for kind in ('b', 's'):
             cid = f"{kind}{n:02d}"
+            _ENG_USED.clear()
             if kind == 'b':
                 h, js = s['back'](cid, d) if s['back'] else ("", "")
                 body = f'<div class="bgfill" style="{BGS[s["bg"]]}"></div>' + h
+                if s['move'] != 1: js += f'tl.fromTo("#root",{{scale:1}},{{scale:{s["move"]},duration:{d + ext:.2f},ease:"sine.inOut"}},0);'
             else:
                 if not s['front']:
                     continue
                 body, js = s['front'](cid, d)
             if 'text-stroke' in body: erro(f'cena {n}: -webkit-text-stroke para forçar texto na frente do corpo; use back')
             if kind == 's' and 'class="giant"' in body: erro(f'cena {n}: tipografia gigante em front; use back, atrás do locutor')
-            open(f'compositions/{cid}.html', 'w').write(comp(cid, body, js))
+            open(f'compositions/{cid}.html', 'w').write(comp(cid, body, js, ''.join(ENGINES[e] for e in sorted(_ENG_USED))))
             all_html.append(body); all_js.append(js)
             z, track = (2, 1 + n % 2) if kind == 'b' else (4, 4 + n % 2)
-            hosts.append(f'<div id="{cid}" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" data-start="{a}" data-duration="{d}" data-track-index="{track}" data-track-kind="graphics" data-width="{W}" data-height="{H}" style="z-index:{z}"></div>')
+            hosts.append(f'<div id="{cid}" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" data-start="{a}" data-duration="{d + ext}" data-track-index="{track}" data-track-kind="graphics" data-width="{W}" data-height="{H}" style="z-index:{z}"></div>')
+            trans.extend(transition(cid, kind, a, b, s['tr'], ext if kind == 'b' else min(ext, .25)))
         for i, (name, off, vol) in enumerate(s['sfx']):
             fx_n += 1  # trilhas 9..14 em rodízio global: efeitos vizinhos nunca dividem a mesma trilha
             sfx_tags.append(f'<audio id="fx{n:02d}{i}" class="clip" src="assets/sfx/{name}.mp3" data-start="{a + off:.2f}" data-duration="{min(SFXLEN[name], DUR - a - off):.2f}" data-track-index="{9 + fx_n % 6}" data-volume="{vol}"></audio>')
@@ -220,8 +302,18 @@ def render():
 
     cam = cam if SPEAKER else []
     pcam_js = 'tl.set("#pcam", { scale:1.12 }, 0);' if SPEAKER else ''
+    world_js, world_kinds = world_track()
+    AVISOS.extend(lint_world(world_kinds))
+    # ordem de pintura dentro do #world (preserve-3d) é a profundidade: deep < mid < ccam (0) < near; o z-index dos hosts fica só como documentação
+    depth = lambda name: f'position:absolute;inset:0;transform:translateZ({WORLD_Z[name]}px) scale({(WORLD_P - WORLD_Z[name]) / WORLD_P:.4f})'
+    mid_hosts = [h for h in hosts if 'z-index:2' in h]; near_hosts = [h for h in hosts if 'z-index:4' in h]
+    # acabamento: grão de filme que troca de posição 6x por segundo (determinístico) e vinheta, sobre todas as camadas
+    grain = CFG.get('grain', .13)
+    finish_html = (f'<div id="grain" style="position:absolute;inset:-40px;z-index:5;pointer-events:none;background:{GRAIN};opacity:{grain};mix-blend-mode:overlay"></div>'
+                   f'<div id="vig" style="position:absolute;inset:0;z-index:5;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 58%,rgba(0,0,0,.24) 100%)"></div>') if grain else ''
+    finish_js = ''.join(f'tl.set("#grain",{{x:{(i * 37) % 40 - 20},y:{(i * 53) % 40 - 20}}},{i / 6:.2f});' for i in range(int(DUR * 6))) if grain else ''
     speaker_html = (f"""
-      <div id="pcam" style="z-index:1"><video id="plate" class="clip" src="assets/plate.mp4" data-start="0" data-duration="{DUR}" data-track-index="0" muted playsinline></video></div>
+      <div id="pcam" style="z-index:1;position:absolute;inset:0"><video id="plate" class="clip" src="assets/plate.mp4" data-start="0" data-duration="{DUR}" data-track-index="0" muted playsinline></video></div>
       <div id="ccam" style="z-index:3"><video id="cut" class="clip" src="assets/cut.webm" data-start="0" data-duration="{DUR}" data-track-index="3" muted playsinline data-layout-allow-occlusion data-layout-allow-overflow></video></div>
 """ if SPEAKER else '')
     open('index.html', 'w').write(f"""<!doctype html>
@@ -233,8 +325,8 @@ def render():
     <style>
     * {{ margin:0; padding:0; box-sizing:border-box; }}
     html, body {{ width:{W}px; height:{H}px; overflow:hidden; background:#000; }}
-    #root {{ position:relative; width:100%; height:100%; background:#000; }}
-    #pcam {{ position:absolute; inset:0; }}
+    #root {{ position:relative; width:100%; height:100%; background:#000; perspective:{WORLD_P}px; }}
+    #world {{ position:absolute; inset:0; transform-style:preserve-3d; }}
     #pcam video {{ position:absolute; left:0; top:0; width:{W}px; height:{H}px; object-fit:cover; }}
     /* recorte em largura inteira (1920x1080): rosto (x={FACE_X}) no centro da tela, base no rodapé; escala a partir desse ponto */
     #ccam {{ position:absolute; left:{W // 2 - FACE_X}px; top:{H - 1080}px; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
@@ -243,28 +335,36 @@ def render():
     </head>
     <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="{DUR}" data-width="{W}" data-height="{H}">
-      {speaker_html}
-      {(chr(10) + '  ').join(hosts)}
+      <div id="world">
+      <div id="deep" style="{depth('deep')}">{speaker_html.split('<div id="ccam"')[0] if SPEAKER else ''}</div>
+      <div id="mid" style="{depth('mid')}">{(chr(10) + '  ').join(mid_hosts)}</div>
+      {('<div id="ccam"' + speaker_html.split('<div id="ccam"')[1]) if SPEAKER else ''}
+      <div id="near" style="{depth('near')}">{(chr(10) + '  ').join(near_hosts)}</div>
+      </div>
+      {finish_html}
       <audio id="voice" class="clip" src="assets/voice.m4a" data-start="0" data-duration="{DUR}" data-track-index="8" data-volume="1"></audio>
       {(chr(10) + '  ').join(sfx_tags)}
     </div>
     <script>
     const tl = gsap.timeline({{ paused: true }});
     {pcam_js}
+    {chr(10).join(world_js)}
     {chr(10).join(cam)}
+    {chr(10).join(trans)}
+    {finish_js}
     window.__timelines = window.__timelines || {{}}; window.__timelines["main"] = tl;
     </script>
     </body>
     </html>
     """)
     print(len(S), "cenas,", len(hosts), "hosts,", len(sfx_tags), "sons")
-    json.dump([dict(n=s['n'], a=s['a'], b=s['b'], bg=s['bg'], cam=s['cam'], cta=s['cta']) for s in S], open('scenes.json', 'w'), indent=1)
+    json.dump([dict(n=s['n'], a=s['a'], b=s['b'], bg=s['bg'], cam=s['cam'], cta=s['cta'], world=s['world'], signature=s['signature']) for s in S], open('scenes.json', 'w'), indent=1)
     AVISOS.extend(lint_variety(open(sys.argv[0], encoding='utf8').read() if sys.argv and os.path.isfile(sys.argv[0]) else '', '\n'.join(all_html), '\n'.join(all_js)))
     for m in AVISOS: print('aviso:', m)
     if ERROS: raise AssertionError('\n'.join(ERROS))
     # medição no Chrome (layout_check.mjs): caixas de texto, zonas seguras, rosto e cobertura pela cabeça
     check = CFG.get('layoutCheck')
-    if SPEAKER and check and os.path.exists(check):
+    if check and os.path.exists(check):
         r = subprocess.run(['node', check, '.'], capture_output=True, text=True)
         print(r.stdout, end='')
         if r.returncode == 2: print('aviso: checagem de layout não rodou:', r.stderr.strip()[-300:])
@@ -284,7 +384,17 @@ MONO = "ui-monospace,'SF Mono',Menlo,monospace"
 # curvas no script de cada cena: ONE = cubic-bezier(.45,0,.15,1), a curva única dos morphs; CD = assentamento
 # criticamente amortecido (o que pousa); SQ = raiz (inundação: a área cresce por igual)
 EASES = ("const ONE=p=>{if(p<=0)return 0;if(p>=1)return 1;let u=p;for(let i=0;i<8;i++){u-=(((1.9*u-2.25)*u+1.35)*u-p)/((5.7*u-4.5)*u+1.35)}return u*u*(3-2*u)};"
-         "const CD=p=>(1-(1+7*p)*Math.exp(-7*p))/0.992705;const SQ=p=>Math.sqrt(p);")
+         "const CD=p=>(1-(1+7*p)*Math.exp(-7*p))/0.992705;const SQ=p=>Math.sqrt(p);"
+         # biblioteca de desenho (canvas/scene3d): easing, random com semente e ruído, tudo função pura de t (sem Math.random)
+         "const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x)),lerp=(a,b,t)=>a+(b-a)*t,seg=(t,a,b)=>clamp((t-a)/(b-a)),ss=t=>{t=clamp(t);return t*t*(3-2*t)},"
+         "eo=t=>1-Math.pow(1-clamp(t),3),ei=t=>Math.pow(clamp(t),3),eio=t=>{t=clamp(t);return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2},"
+         "bk=(t,s=1.8)=>{t=clamp(t)-1;return 1+t*t*((s+1)*t+s)},spring=(t,k=7,z=.35)=>{t=Math.max(0,t);return 1-Math.exp(-z*k*t)*Math.cos(k*Math.sqrt(1-z*z)*t*1.6)},"
+         "mulberry=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296},"
+         "hash=n=>{n=Math.sin(n*127.1+311.7)*43758.5453;return n-Math.floor(n)},vnoise=x=>{const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return lerp(hash(i),hash(i+1),u)},"
+         # grão sobre o que já foi desenhado (pontos com semente fixa): textura de papel ou filme sem Math.random
+         "grain=(ctx,w,h,n=4000,a=.08,seed=1)=>{const r=mulberry(seed);ctx.save();ctx.globalAlpha=a;for(let i=0;i<n;i++){ctx.fillStyle=r()<.5?'#000':'#fff';ctx.fillRect(r()*w,r()*h,1.5,1.5)}ctx.restore()},"
+         # camada estática (papel, folha, grade, letreiro amostrado) desenhada uma vez: determinística porque não depende de t
+         "__cv={},cache=(k,w,h,f)=>{if(!__cv[k]){const c=document.createElement('canvas');c.width=w;c.height=h;f(c.getContext('2d'),w,h);__cv[k]=c}return __cv[k]};")
 
 
 def _x(s):
@@ -697,6 +807,73 @@ tl.fromTo(st,{s:0},{s:1,duration:.5,ease:'back.out(1.8)',onUpdate:U},AT);
 tl.to(st,{s:0,duration:.3,ease:'power2.in',onUpdate:U},AT+D-.3);
 tl.to({},{duration:Math.max(D-.8,.01),onUpdate:U},AT+.5);
 })();"""
+
+# Motores por estilo (engines/<nome>.js, copiados de compose/engines/): funções de desenho testadas de um estilo, expostas ao draw
+# como um objeto (SK silkscreen, BB briefing, SW swiss, AD deco). O código entra uma vez por composição de cena, antes do script.
+ENGINES = {}
+_ENG_USED = set()
+
+def engine(name):
+    """Marca o motor `name` para a cena atual (canvas(..., engine=) e scene3d(..., engine=) chamam por você). Lê engines/<name>.js uma vez."""
+    if name not in ENGINES:
+        f = os.path.join('engines', f'{name}.js')
+        assert os.path.exists(f), f'motor {name!r} não existe: ver engines/'
+        ENGINES[name] = open(f, encoding='utf8').read()
+    _ENG_USED.add(name)
+    return ''
+
+_CANVAS = r"""(function(){const cv=document.getElementById('@ID@'),ctx=cv.getContext('2d'),AT=@AT@,D=@D@,CW=@W@,CH=@H@;
+const draw=(ctx,t,w,h)=>{@DRAW@};
+const R=()=>{ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,CW,CH);draw(ctx,Math.max(0,Math.min(tl.time()-AT,D)),CW,CH)};
+tl.set(cv,{opacity:0},0);tl.set(cv,{opacity:1},AT);tl.set(cv,{opacity:0},AT+D);tl.to({},{duration:D,onUpdate:R},AT);R();})();"""
+
+def canvas(p, draw, d, x=0, y=0, w=None, h=None, at=0.0, k='cv', engine=None):
+    """Ilustração desenhada em Canvas 2D. `draw` é JS: o corpo de (ctx, t, w, h) => {...}, função pura de t (segundos desde `at`,
+    de 0 a d): nada de Math.random (use mulberry(seed)/hash/vnoise), nada de estado fora da função. Disponíveis no escopo:
+    clamp, lerp, seg, ss, eo, ei, eio, bk, spring, mulberry, hash, vnoise, grain(ctx,w,h,n,a,seed), cache(k,w,h,f). Siga ILUSTRACAO.md.
+    engine='silkscreen'|'briefing'|'swiss'|'deco' põe o motor do estilo no escopo (SK, BB, SW, AD)."""
+    if engine: globals()['engine'](engine)
+    w = w or W; h = h or H
+    i = f'{p}-{k}'
+    html = f'<canvas id="{i}" width="{w}" height="{h}" {AO} style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;opacity:0"></canvas>'
+    js = (_CANVAS.replace('@ID@', i).replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}').replace('@W@', str(w)).replace('@H@', str(h)).replace('@DRAW@', draw))
+    return html, js
+
+# scene3d(): cena three.js inteira (luz, sombra, névoa, câmera) com o objeto que o agente constrói; pose = função de t
+_SCENE3D = r"""(function(){
+const cv=document.getElementById('@ID@'),CW=@W@,CH=@H@,AT=@AT@,D=@D@;let R=null;
+window.__hf=window.__hf||{};window.__hf.buildReady=window.__hf.buildReady||{};
+window.__hfThree=window.__hfThree||import('https://cdn.jsdelivr.net/npm/three@0.181.2/+esm');
+window.__hf.buildReady['@ID@']=window.__hfThree.then(T=>{
+  const rd=new T.WebGLRenderer({canvas:cv,alpha:true,antialias:true,preserveDrawingBuffer:true});rd.setPixelRatio(1);rd.setSize(CW,CH,false);
+  rd.shadowMap.enabled=true;rd.shadowMap.type=T.PCFSoftShadowMap;rd.toneMapping=T.NeutralToneMapping;
+  const sc=new T.Scene(),cam=new T.PerspectiveCamera(@FOV@,CW/CH,.1,100);cam.position.set(0,0,@DIST@);
+  @FOG@
+  const clay=(c,l=0)=>new T.MeshPhysicalMaterial({color:new T.Color(c).offsetHSL(0,0,l),roughness:.38,clearcoat:.8,clearcoatRoughness:.2});
+  const matte=(c,l=0)=>new T.MeshStandardMaterial({color:new T.Color(c).offsetHSL(0,0,l),roughness:.9,metalness:0});
+  sc.add(new T.HemisphereLight(0xffffff,0x404060,1.6));
+  const key=new T.DirectionalLight(0xffffff,2.4);key.position.set(-3,4,5);key.castShadow=true;key.shadow.mapSize.set(2048,2048);key.shadow.bias=-.0005;
+  const sh=key.shadow.camera;sh.left=sh.bottom=-6;sh.right=sh.top=6;sc.add(key);
+  const rim=new T.DirectionalLight(@RIM@,1.2);rim.position.set(4,-1,-3);sc.add(rim);
+  const update=(function(T,sc,cam,clay,matte){@BUILD@})(T,sc,cam,clay,matte);
+  R=()=>{const t=Math.max(0,Math.min(tl.time()-AT,D));if(typeof update==='function')update(t);rd.render(sc,cam)};R()});
+const U=()=>R&&R();
+tl.set(cv,{opacity:0},0);tl.set(cv,{opacity:1},AT);tl.set(cv,{opacity:0},AT+D);tl.to({},{duration:D,onUpdate:U},AT);
+})();"""
+
+def scene3d(p, build, d, x=0, y=0, w=None, h=None, at=0.0, fov=35, dist=8, fog=None, rim=None, k='s3', engine=None):
+    """Cena three.js com luz de chave com sombra, luz de recorte e névoa opcional. `build` é JS que recebe (T, sc, cam, clay, matte),
+    monta a cena (meshes em sc; clay(cor) e matte(cor) são materiais prontos; mesh.castShadow/receiveShadow à vontade) e devolve
+    update(t) (pose em função de t, segundos desde `at`). fog = (cor, perto, longe). Um canvas WebGL por chamada: até ~2 por cena."""
+    if engine: globals()['engine'](engine)
+    w = w or W; h = h or H
+    i = f'{p}-{k}'
+    html = f'<canvas id="{i}" width="{w}" height="{h}" {AO} style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;opacity:0"></canvas>'
+    fogjs = f"sc.fog=new T.Fog('{fog[0]}',{fog[1]},{fog[2]});" if fog else ''
+    js = (_SCENE3D.replace('@ID@', i).replace('@W@', str(w)).replace('@H@', str(h)).replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}')
+          .replace('@FOV@', str(fov)).replace('@DIST@', str(dist)).replace('@FOG@', fogjs).replace('@RIM@', f"'{rim or AMB}'").replace('@BUILD@', build))
+    return html, js
+
 
 def obj3d(p, kind, x, y, size=520, at=0.0, d=2.4, color=None, spin=False, tilt=0.0, seed=0.0, k='o3'):
     """Objeto 3D flutuante com centro em (x,y) px. kind: cursor|card|layers|bolt. Entra em `at`, sai em at+d. Use dentro de both()."""
