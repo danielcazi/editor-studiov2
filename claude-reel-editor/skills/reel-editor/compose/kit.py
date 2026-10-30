@@ -164,6 +164,13 @@ ERROS, AVISOS = [], []
 def erro(msg): ERROS.append(msg)
 def aviso(msg): AVISOS.append(msg)
 
+def lint_sfx():
+    # DIRETOR.md §5: nada começa antes do reel; o mesmo arquivo duas vezes a menos de 0,1 s vira um borrão
+    at = sorted((name, s['a'] + off, s['n']) for s in S for name, off, _ in s['sfx'])   # por nome: o mesmo arquivo fica vizinho
+    for i, (name, t, n) in enumerate(at):
+        if t < 0: erro(f'cena {n}: som {name} começa em {t:.2f} s, antes do reel')
+        if i and at[i - 1][0] == name and t - at[i - 1][1] < .1: erro(f'cena {n}: {name} duas vezes a menos de 0,1 s ({at[i - 1][1]:.2f} e {t:.2f})')
+
 # Lint de variedade: medido no que o agente de fato gerou, porque o repertório embutido estava ficando sem uso
 # (48 dos 66 helpers nunca usados, catálogo motions/ nunca usado) e quase todo tween era só entrada/saída.
 KIT_HELPERS = set(re.findall(r'^def ([a-z]\w*)\((?:p|sel)\b', open(__file__, encoding='utf8').read(), re.M))
@@ -260,7 +267,8 @@ def render():
         os.remove(os.path.join('compositions', f))
     hosts, sfx_tags, cam, trans, all_html, all_js = [], [], [], [], [], []
     fx_n = 0
-    SFXLEN = {k: v['duration'] for k, v in json.load(open('assets/sfx/manifest.json')).items()}
+    SFX = json.load(open('assets/sfx/manifest.json'))   # name -> file, duration, onset, peak (DIRETOR.md §5)
+    lint_sfx()
     for i, s in enumerate(S):
         n, a, b = s['n'], s['a'], s['b']; d = round(b - a, 3)
         nxt = S[i + 1] if i + 1 < len(S) else None
@@ -285,7 +293,7 @@ def render():
             trans.extend(transition(cid, kind, a, b, s['tr'], ext if kind == 'b' else min(ext, .25)))
         for i, (name, off, vol) in enumerate(s['sfx']):
             fx_n += 1  # trilhas 9..14 em rodízio global: efeitos vizinhos nunca dividem a mesma trilha
-            sfx_tags.append(f'<audio id="fx{n:02d}{i}" class="clip" src="assets/sfx/{name}.mp3" data-start="{a + off:.2f}" data-duration="{min(SFXLEN[name], DUR - a - off):.2f}" data-track-index="{9 + fx_n % 6}" data-volume="{vol}"></audio>')
+            sfx_tags.append(f'<audio id="fx{n:02d}{i}" class="clip" src="assets/sfx/{SFX[name]['file']}" data-start="{a + off:.2f}" data-duration="{min(SFX[name]['duration'], DUR - a - off):.2f}" data-track-index="{9 + fx_n % 6}" data-volume="{vol}"></audio>')
         # câmera do recorte: escala fixa por enquadramento, origem no rosto/base (regra 1 e 2)
         if s['cam']:
             fr, mode, fin = s['cam']

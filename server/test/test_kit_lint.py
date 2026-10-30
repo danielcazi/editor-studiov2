@@ -40,3 +40,9 @@ assert "mulberry=" in kit.EASES and "grain=" in kit.EASES
 assert kit.transition("b01", "b", 0, 2, "push", .3) == ['tl.fromTo("#b01",{scale:1.08,opacity:0},{scale:1,opacity:1,duration:.45,ease:"power3.out"},0.00);', 'tl.to("#b01",{scale:.96,opacity:0,duration:0.30,ease:"power2.in"},2.00);']
 assert kit.transition("s01", "s", 0, 2, "cut", 0) == [] and len(kit.transition("b02", "b", 2, 4, "slide", 0)) == 1
 print("kit variety lint: ok")
+# sincronia de som (DIRETOR.md §5): nada antes do reel, o mesmo arquivo nunca duas vezes a menos de 0,1 s
+kit.S.clear(); kit.ERROS.clear()
+kit.scene(1, 0, 2, 'red', None, sfx=[('whoosh', -.12, .5)])
+kit.scene(2, 2, 4, 'black', None, sfx=[('pop', .3, .5), ('pop', .35, .5), ('click', .35, .5)])
+kit.lint_sfx()
+assert len(kit.ERROS) == 2 and any('antes do reel' in e for e in kit.ERROS) and any('duas vezes' in e for e in kit.ERROS), kit.ERROS

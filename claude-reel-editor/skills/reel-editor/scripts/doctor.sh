@@ -22,7 +22,7 @@ HF=0; for d in ~/.claude/skills/hyperframes ~/.agents/skills/hyperframes; do [ -
 [ "$HF" = 1 ] && ok "HyperFrames skills" || no "HyperFrames skills" "npx skills add heygen-com/hyperframes"
 
 ENG="$(cd "$(dirname "$0")/.." && pwd)/engine"
-if [ -s "$ENG/gsap.min.js" ] && [ -s "$ENG/sfx/whoosh.wav" ]; then ok "reel template engine"
+if [ -s "$ENG/gsap.min.js" ]; then ok "reel template engine"
 else bash "$(dirname "$0")/setup_engine.sh" >/dev/null 2>&1 && ok "reel template engine (just set up)" || no "reel template engine" "bash scripts/setup_engine.sh"; fi
 
 if ! command -v deepFilter >/dev/null; then warn "DeepFilterNet not installed" "noise removal falls back to ffmpeg's weaker filter. Install: uv tool install deepfilternet --with torch --with torchaudio"

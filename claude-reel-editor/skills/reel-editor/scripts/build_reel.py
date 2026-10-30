@@ -26,6 +26,7 @@ from pathlib import Path
 reel = Path(sys.argv[1]).expanduser()
 HOME = Path(os.environ.get("REELS_HOME", "~/reels")).expanduser()
 ENGINE = Path(__file__).resolve().parent.parent / "engine"
+BANK = Path(__file__).resolve().parent.parent / "compose/sfx"   # the sound bank: wavs rendered by make_sfx.py, manifest.json has onset/peak
 brand = json.load(open(HOME / "brand.json"))
 edit = json.load(open(reel / "edit.json"))
 
@@ -132,7 +133,6 @@ if proj.exists(): shutil.rmtree(proj)
 shutil.copy(ENGINE / "gsap.min.js", proj / "vendor/gsap.min.js")
 try: os.link(reel / "master.mp4", proj / "master.mp4")
 except OSError: shutil.copy(reel / "master.mp4", proj / "master.mp4")
-for f in (ENGINE / "sfx").glob("*.wav"): shutil.copy(f, proj / "sfx" / f.name)
 (proj / "img").mkdir()
 HF = ENGINE / "hf"
 if any(k["type"] in ("motion", "follow") for k in edit.get("cards", [])):
@@ -185,15 +185,17 @@ def sfx(name, t, db=-12, level="subtle", dur=None):
     level = lowest brand sfx setting that still plays it."""
     global n_sfx
     global CARD_SFX
-    name = {"coin": "chime", "sparkle": "chime"}.get(name, name)   # engine/sfx has no coin or sparkle file
+    name = {"coin": "chime"}.get(name, name)   # the bank has no coin
     if CARD_MUTE: return                                  # this graphic's sound was switched off in the review
     if CARD_SFX and level == "subtle":                    # the sound approved in the review replaces the entrance sound
-        name, db = {"sparkle": "chime"}.get(CARD_SFX["name"], CARD_SFX["name"]), CARD_SFX.get("db", db)
+        name, db = CARD_SFX["name"], CARD_SFX.get("db", db)
         CARD_SFX = None
     if brand.get("sfx", "subtle") == "none" or (level == "lots" and brand.get("sfx") != "lots") or t >= DUR: return
-    vol = round(min(1.0, 10 ** ((db + brand.get("sfx_gain_db", 8)) / 20)), 3)   # +8 dB: clearly audible under a voice with no music bed
+    vol = round(min(1.0, 10 ** ((db + brand.get("sfx_gain_db", 14)) / 20)), 3)   # +14 dB: the bank files sit 3-9 dB under peak (earshot launch levels), and the voice has no music bed
     p = proj / "sfx" / f"{name}.wav"
-    if not p.exists(): return
+    if not p.exists():
+        if not (BANK / p.name).exists(): return
+        shutil.copy(BANK / p.name, p)                       # only the sounds a reel plays travel with it
     n_sfx += 1
     d = min(dur or dur_of(p), dur_of(p), DUR - t)
     audio.append(f'<audio id="sx{n_sfx}" src="sfx/{name}.wav" data-start="{q(t)}" data-duration="{q(d)}" '
