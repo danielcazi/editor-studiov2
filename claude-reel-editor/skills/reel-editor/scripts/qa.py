@@ -38,6 +38,12 @@ if layout.exists():
 else:
     print("overlap   skipped (no proj/captions_layout.json: build the reel first)")
 
+# pace: measured on the render; the speaker box comes from the agent composer (compose/motion_mask.json), words from the master clock
+mask = reel / "compose" / "motion_mask.json"; words = reel / "master_transcript.json"
+pace_args = (["--mask", str(mask)] if mask.exists() else []) + (["--words", str(words)] if words.exists() else [])
+if subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "pace.py"), str(video), *pace_args]).returncode:
+    fails.append("pace")
+
 exp = reel / "expected.txt"
 if exp.exists():
     tok = lambda s: re.sub(r"[^\w' ]", " ", s.lower()).split()

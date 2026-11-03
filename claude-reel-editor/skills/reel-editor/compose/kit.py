@@ -1,6 +1,6 @@
 # Biblioteca de composição do compositor "agent". O Claude escreve scenes.py (importa este módulo, chama scene(...) e render()).
 # Constantes vêm de compose.json (W, H, DUR, colors, faceX). Regras: GUIDE.md. Rode: python3 scenes.py
-import json, os, re, subprocess, sys
+import json, os, re, subprocess, sys, unicodedata
 
 CFG = json.load(open('compose.json'))
 W, H, DUR = CFG['W'], CFG['H'], CFG['DUR']
@@ -11,6 +11,20 @@ FONT = "@font-face{font-family:Aspekta;src:url('assets/fonts/font.otf');font-wei
 FR = {'M': .95, 'L': 1.2, 'XL': 1.5, 'XXL': 1.8} if H >= W else {'M': .65, 'L': .85, 'XL': 1.05, 'XXL': 1.25}
 FACE_X = CFG.get('faceX', 980)
 SPEAKER = CFG.get('speaker', True)   # false = reel só de motion: sem plate, sem recorte, sem câmera
+CUTS = CFG.get('cuts', [])          # emendas do corte (s, no relógio do reel): o recorte ganha um zoom alternado em cada uma
+
+# Relógio por palavra: toda batida cai numa palavra da fala, nunca num segundo digitado. assets/transcript.json vem do master.
+WORDS = json.load(open('assets/transcript.json')) if os.path.exists('assets/transcript.json') else []
+MISSING = []
+_norm = lambda w: re.sub(r'[^\w]', '', ''.join(c for c in unicodedata.normalize('NFD', w.lower()) if unicodedata.category(c) != 'Mn'))
+def T(phrase, after=0.0, end=False):
+    """Início (end=True: fim) da primeira ocorrência de `phrase` na fala a partir de `after` s, no relógio do reel.
+    Frase de várias palavras casa em sequência; acento e pontuação não contam. Sem casar: devolve `after` e o render avisa."""
+    want = [_norm(w) for w in phrase.split()]
+    for i in range(len(WORDS) - len(want) + 1):
+        if WORDS[i]['start'] >= after and [_norm(WORDS[i + k]['text']) for k in range(len(want))] == want:
+            return WORDS[i + len(want) - 1]['end'] if end else WORDS[i]['start']
+    MISSING.append(f'"{phrase}" depois de {after:.2f} s'); return after
 
 ICON = {
  'fire': f'<svg viewBox="0 0 24 24" fill="{CRM}"><path d="M12 2s5 4.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-4 1-6.5 1-8.5z"/></svg>',
@@ -302,12 +316,13 @@ def render():
             if mode == 'snap':
                 cam.append(f'tl.to("#ccam",{{scale:{cs:.3f},duration:.45,ease:"expo.out"}},{a + .02:.2f});')
             elif mode == 'push':
-                cam.append(f'tl.to("#ccam",{{scale:{cs * fin:.3f},duration:{d - .05:.2f},ease:"sine.inOut"}},{a + .02:.2f});')
+                cam.append(f'tl.to("#ccam",{{scale:{FR[fin]:.3f},duration:{d - .05:.2f},ease:"sine.inOut"}},{a + .02:.2f});')
             elif mode == 'shake':
                 cam.append(f'tl.fromTo("#ccam",{{x:-22}},{{x:0,duration:.45,ease:"elastic.out(1.2,0.25)"}},{a + .55:.2f});')
         else:
             cam.append(f'tl.set("#ccam",{{opacity:0}},{a});')
 
+    cam.extend(f'tl.set("#cut",{{scale:{1.06 if i % 2 == 0 else 1}}},{t:.3f});' for i, t in enumerate(CUTS) if 0 < t < DUR)
     cam = cam if SPEAKER else []
     pcam_js = 'tl.set("#pcam", { scale:1.12 }, 0);' if SPEAKER else ''
     world_js, world_kinds = world_track()
@@ -338,7 +353,7 @@ def render():
     #pcam video {{ position:absolute; left:0; top:0; width:{W}px; height:{H}px; object-fit:cover; }}
     /* recorte em largura inteira (1920x1080): rosto (x={FACE_X}) no centro da tela, base no rodapé; escala a partir desse ponto */
     #ccam {{ position:absolute; left:{W // 2 - FACE_X}px; top:{H - 1080}px; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
-    #ccam video {{ position:absolute; inset:0; width:1920px; height:1080px; }}
+    #ccam video {{ position:absolute; inset:0; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
     </style>
     </head>
     <body>
@@ -367,6 +382,11 @@ def render():
     """)
     print(len(S), "cenas,", len(hosts), "hosts,", len(sfx_tags), "sons")
     json.dump([dict(n=s['n'], a=s['a'], b=s['b'], bg=s['bg'], cam=s['cam'], cta=s['cta'], world=s['world'], signature=s['signature']) for s in S], open('scenes.json', 'w'), indent=1)
+    # caixa do corpo do locutor por cena (≈840 px em volta do rosto, escala do enquadramento): o pace.py não conta o locutor mexendo
+    json.dump([dict(t0=s['a'], ignore=[[round(W / 2 - 420 * k), round(H - 1080 * k), round(840 * k), round(1080 * k)]] if s['cam'] else [])
+               for s in S for k in [max(FR[s['cam'][0]], FR[s['cam'][2]] if s['cam'][1] == 'push' else 0) if s['cam'] and SPEAKER else 0]],
+              open('motion_mask.json', 'w'))
+    if MISSING: aviso('T() sem palavra na fala (a batida caiu em `after`): ' + '; '.join(MISSING))
     AVISOS.extend(lint_variety(open(sys.argv[0], encoding='utf8').read() if sys.argv and os.path.isfile(sys.argv[0]) else '', '\n'.join(all_html), '\n'.join(all_js)))
     for m in AVISOS: print('aviso:', m)
     if ERROS: raise AssertionError('\n'.join(ERROS))

@@ -46,6 +46,9 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
 2. **Três estruturas** e a escolhida.
 3. **Logline e arco:** uma frase, depois setup → virada → final.
 4. **Shot list:** para cada cena, o tempo, a fala, o enquadramento do locutor, o movimento de mundo (`world=`) e o motivo, o destaque único e a transição para a próxima. Marque o plano-assinatura.
+   Mais duas linhas por cena, sem as quais a cena não está planejada:
+   - **Na batida:** cada palavra tônica da fala → o que entra ou muda nela (um evento por palavra tônica, a cada 0,4–0,8 s), escrito como `T('palavra')` (kit.py: o tempo vem da fala, nunca de um segundo digitado). O pouso, o corte e o carimbo caem **na** palavra, nunca antes.
+   - **Vivo:** a vida ociosa de cada elemento enquanto fica em cena (deriva, tique, piscar, digitar, balanço): nada parado por mais de 1 s; o `pace.py` mede isso no vídeo e reprova.
 5. **Mapa de som:** por cena, o SFX e onde ficam os dois silêncios.
 6. **O que vai diferir do clichê do estilo** (abertura, plano-assinatura, caminho de câmera, final).
 O scenes.py segue o treatment; se mudar de ideia ao compor, atualize o treatment antes.

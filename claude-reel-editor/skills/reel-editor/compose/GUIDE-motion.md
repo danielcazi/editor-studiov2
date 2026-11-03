@@ -7,7 +7,7 @@ Reel 100% de animação e infográfico: **não há locutor na tela**. A voz (`as
 
 ## Fluxo
 1. Leia `brief.md`, `DIRETOR.md`, `treatment.md` (se existir), `ref_site/site.md` e `assets/transcript.json` (cada corte cai numa palavra).
-2. Escreva `scenes.py`: `from kit import *`, chamadas `scene(n, a, b, bg, None, back=..., front=...)` (câmera sempre `None`), `render()` no fim. Rode `python3 -B scenes.py`.
+2. Escreva `scenes.py`: `from kit import *`, chamadas `scene(n, a, b, bg, None, back=..., front=...)` (câmera sempre `None`), `render()` no fim. Rode `python3 -B scenes.py`. Todo tempo de batida vem de `T('palavra')` / `T('frase', after=, end=True)` (segundos do reel; dentro da cena use `T(...) - a`); uma palavra que não existe na fala vira aviso no render.
 3. `npx --yes hyperframes@0.8.217 check --json > check.json` (meta: 0 erros), depois `npx --yes hyperframes@0.8.217 snapshot --at "<meio de cada cena>" --no-end -o snaps` e olhe as folhas de contato com Read.
 4. Corrija o que viu e repita. Só então renderize: `npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery`.
 

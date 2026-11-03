@@ -4,7 +4,14 @@ from pathlib import Path
 KIT = Path(__file__).resolve().parents[2] / "claude-reel-editor/skills/reel-editor/compose"
 d = tempfile.mkdtemp(); os.chdir(d)   # kit.py reads compose.json from the cwd at import
 json.dump({"W": 1080, "H": 1920, "DUR": 10, "colors": {k: "#000" for k in ("RED", "RED2", "AMB", "BLK", "CRM")}}, open("compose.json", "w"))
+os.makedirs("assets"); json.dump([{"text": "Eu", "start": 0, "end": .1}, {"text": "já", "start": .1, "end": .2}, {"text": "sei,", "start": .2, "end": .5},
+                                   {"text": "Já", "start": 2.0, "end": 2.2}, {"text": "sei", "start": 2.2, "end": 2.6}], open("assets/transcript.json", "w"))
 sys.path.insert(0, str(KIT)); import kit
+
+# cue por palavra: acento e pontuação não contam, frase casa em sequência, `after` pula a primeira ocorrência, falta vira aviso
+assert kit.T("ja sei") == .1 and kit.T("sei", end=True) == .5 and kit.T("já sei", after=1) == 2.0 and kit.T("nada", after=3) == 3, kit.MISSING
+assert kit.MISSING == ['"nada" depois de 3.00 s'], kit.MISSING
+kit.MISSING.clear()
 
 assert {"giant", "pill", "counter", "lintel", "obj3d"} <= kit.KIT_HELPERS and "render" not in kit.KIT_HELPERS, sorted(kit.KIT_HELPERS)
 poor = kit.lint_variety("from kit import *\nscene(1,0,10,'red',None,back=lambda p,d: giant(p,['A'],30,10,BLK))\nrender()",
@@ -30,8 +37,17 @@ assert len(kit.lint_world(['push', 'pan'])) == 2
 kit.S.clear(); kit.scene(1, 0, 2, 'red', None, world=dict(scale=2, d=5)); kit.world_track()
 assert len(kit.ERROS) == 2 and 'fora do limite' in kit.ERROS[0] and 'd=5.0' in kit.ERROS[1], kit.ERROS
 kit.ERROS.clear(); kit.S.clear()
+# render(): máscara do locutor por cena para o pace.py e zoom alternado do recorte nas emendas do corte (compose.json "cuts")
+kit.CUTS[:] = [1.5, 3.0, 12.0]; os.makedirs("compositions", exist_ok=True); import shutil; shutil.copytree(KIT / "sfx", "assets/sfx")
+kit.scene(1, 0, 4, 'red', ('L', 'push', 'XL'), back=lambda p, d: (kit.giant(p, ['A'], 30, 10, kit.BLK), '')); kit.scene(2, 4, 10, 'black', None); kit.T("nada")
+kit.render()
+mask = json.load(open("motion_mask.json")); html = open("index.html").read()
+assert mask == [{"t0": 0, "ignore": [[-90, 300, 1260, 1620]]}, {"t0": 4, "ignore": []}], mask
+assert 'tl.set("#cut",{scale:1.06},1.500);' in html and 'tl.set("#cut",{scale:1},3.000);' in html and ',12.000);' not in html
+assert any('T() sem palavra' in a and '"nada"' in a for a in kit.AVISOS), kit.AVISOS
+kit.S.clear(); kit.CUTS.clear()
 # motores por estilo: engine() lê engines/<nome>.js uma vez, canvas(engine=) marca o uso da cena, e cada motor é JS válido
-import shutil, subprocess
+import subprocess
 shutil.copytree(KIT / "engines", Path(d) / "engines")
 for name, obj in (("silkscreen", "SK"), ("briefing", "BB"), ("swiss", "SW"), ("deco", "AD"), ("sketch", "SB"), ("launch", "LA"), ("cinetic", "CN"), ("diorama", "DI")):
     kit._ENG_USED.clear(); h, j = kit.canvas("b01", "ctx.fillRect(0,0,w,h)", 2, engine=name)
