@@ -2,7 +2,41 @@
 
 Do zero ao editor aberto no navegador em ~10 minutos. Testado em macOS (Apple Silicon). Windows e Linux rodam o mesmo código (nunca foram testados de ponta a ponta); o recorte de pessoa com Apple Vision só existe no macOS, nos outros sistemas ele precisa do RVM.
 
-## 1. O que você precisa
+## Instalação rápida (recomendada)
+
+Depois de clonar o repositório, um único comando instala tudo **na ordem de prioridade** abaixo e confere no final. Pode rodar de novo quando quiser: só instala o que falta.
+
+| macOS (Terminal) | Windows (PowerShell ou CMD) |
+|---|---|
+| `git clone <URL-DO-REPOSITORIO> "Editor 7.0"` | `git clone <URL-DO-REPOSITORIO> "Editor 7.0"` |
+| `cd "Editor 7.0"` | `cd "Editor 7.0"` |
+| `bash instalar.sh` | `instalar.cmd` |
+
+Ordem em que o instalador trabalha (o que bloqueia tudo vem primeiro):
+
+1. Gerenciador de pacotes: Homebrew (macOS) ou winget (Windows, já vem no Windows 11)
+2. Node.js 23.6+
+3. Python 3.12+
+4. ffmpeg 7+
+5. Git
+6. Google Chrome
+7. Claude Code (CLI)
+8. yt-dlp
+9. `npm install` do servidor
+10. Skills do HyperFrames (`npx skills add heygen-com/hyperframes`)
+11. Motor de animação e efeitos sonoros, e a verificação final (`doctor.py`)
+
+No Windows, o winget só atualiza o PATH em um terminal novo: se o instalador instalou algo, ele avisa, você fecha o terminal, abre outro e roda `instalar.cmd` de novo.
+
+Ao terminar, falta só **fazer login no Claude Code** (`claude`, uma vez) e abrir com `./start.sh` (macOS) ou `start.cmd` (Windows) em http://127.0.0.1:4400.
+
+> Os scripts baixam instaladores oficiais (brew.sh, claude.ai, winget). Leia `instalar.sh` / `instalar.cmd` antes de rodar se quiser ver o que fazem. Se preferir instalar à mão, use as seções abaixo.
+
+---
+
+## Instalação manual
+
+### 1. O que você precisa
 
 | Item | Versão | macOS | Windows |
 |---|---|---|---|

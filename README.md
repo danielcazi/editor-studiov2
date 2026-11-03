@@ -48,7 +48,7 @@ Detalhes de uso em [GUIA.md](GUIA.md); arquitetura em [CLAUDE.md](CLAUDE.md).
 
 ## Como Rodar
 
-> Primeira vez? Siga a [Instalação](INSTALACAO.md) e depois o [Guia de uso](GUIA.md).
+> Primeira vez? Depois do `git clone`, rode `bash instalar.sh` (macOS) ou `instalar.cmd` (Windows): instala tudo em ordem. Detalhes na [Instalação](INSTALACAO.md) e depois o [Guia de uso](GUIA.md).
 
 ```bash
 cd "/Volumes/Extreme SSD/Connect-hub/Editor 7.0"
