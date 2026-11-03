@@ -61,6 +61,10 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/brands\/([^/]+)\/icons$/, (m, b) => P.addIcon(m[1], b.name, b.tags ?? [], b.path)],
   ['POST', /^\/projects$/, (_, b) => P.createProject(b)],
   ['GET', /^\/projects\/([^/]+)$/, m => P.getProject(m[1])],
+  ['PUT', /^\/projects\/([^/]+)$/, (m, b) => P.renameProject(m[1], b?.name)],
+  ['DELETE', /^\/projects\/([^/]+)$/, m => P.deleteProject(m[1])],
+  ['POST', /^\/projects\/([^/]+)\/review\/approve$/, m => P.approveReview(m[1])],
+  ['POST', /^\/projects\/([^/]+)\/compose\/ack$/, m => P.ackCompose(m[1])],
   ['GET', /^\/projects\/([^/]+)\/logs$/, m => P.getProjectLogs(m[1])],
   ['POST', /^\/projects\/([^/]+)\/log$/, (m, b) => P.logFromClient(m[1], b?.text)],
   ['POST', /^\/projects\/([^/]+)\/ingest$/, m => P.ingest(m[1]).then(r => { P.script(m[1]).catch(() => {}); return r; })],  // ingest chains into the script suggestion; errors reach the UI via step events
@@ -79,7 +83,7 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/projects\/([^/]+)\/formats$/, (m, b) => P.setFormats(m[1], b?.formats)],
   ['POST', /^\/projects\/([^/]+)\/complete$/, (m, b) => P.completeProject(m[1], b?.completed ?? true)],
   ['GET', /^\/projects\/([^/]+)\/review$/, m => P.getReview(m[1])],
-  ['PUT', /^\/projects\/([^/]+)\/review$/, (m, b) => P.putReviewNotes(m[1], b.notes)],
+  ['PUT', /^\/projects\/([^/]+)\/review$/, (m, b) => P.putReviewNotes(m[1], b.notes, b.version)],
   ['POST', /^\/projects\/([^/]+)\/review\/apply$/, m => P.applyReview(m[1])],
   ['POST', /^\/projects\/([^/]+)\/review\/build$/, m => P.buildReview(m[1])],
   ['GET', /^\/projects\/([^/]+)\/layers$/, m => P.getLayers(m[1])],
@@ -96,7 +100,7 @@ function events(id: string, res: ServerResponse) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
   const off = P.subscribe(id, (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
   const cur = P.getBusy(id);
-  if (cur) res.write(`event: step\ndata: ${JSON.stringify({ step: cur.step, status: 'start', startedAt: cur.startedAt })}\n\n`);
+  if (cur) res.write(`event: step\ndata: ${JSON.stringify({ ...cur, status: 'start' })}\n\n`);
   res.on('close', off);
 }
 

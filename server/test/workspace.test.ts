@@ -133,7 +133,16 @@ test('review notes are checked, live files stay inside proj/, and an open note b
   assert.ok(P.liveFile(st.id, 'index.html').endsWith('/proj/index.html'));
   assert.throws(() => P.liveFile(st.id, '../state.json'), /no \.\.\/state\.json/);
   await assert.rejects(P.final(st.id, ['9:16']), /1 anotação/);
+  // approval: refused with an open note; final refuses without it; a stale version (another tab) cannot overwrite the notes
+  assert.throws(() => P.approveReview(st.id), /1 anotação/);
+  assert.throws(() => P.putReviewNotes(st.id, [], 0), /outra aba/);
+  P.putReviewNotes(st.id, [], r.version);
+  await assert.rejects(P.final(st.id, ['9:16']), /não foi aprovado/);
+  assert.ok((P.approveReview(st.id).approvedAt ?? 0) > 0);
+  await assert.rejects(P.final(st.id, ['9:16']), /master\.mp4|ffprobe/);   // past the approval, failed on the missing master
 });
+// the approval the final render needs, written straight into state.json (approveReview needs a live composition)
+const approve = (id: string) => { const f = join(P.WS, 'projects', id, 'state.json'); writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), approvedAt: 1 })); };
 
 test('illustration styles come from compose/estilos and a project keeps the one chosen at creation', async () => {
   const styles = P.listStyles();
@@ -196,6 +205,7 @@ test('final refuses a master longer than the brand max_seconds before any render
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
   const st = await P.createProject({ name: 'Long', video: clip, preEdited: true, brand: 'curta' });
   execFileSync('cp', [clip, join(P.WS, 'projects', st.id, 'master.mp4')]);
+  approve(st.id);
   await assert.rejects(P.final(st.id, ['9:16']), /limite da marca é 0\.5 s/);
 });
 
@@ -204,6 +214,7 @@ test('the step lock is a file: another live server holds it, a dead one does not
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
   const st = await P.createProject({ name: 'Lock', video: clip, preEdited: true, brand: 'padrao' });
   const lock = join(P.WS, 'locks', `${st.id}.lock`);
+  approve(st.id);
   mkdirSync(join(P.WS, 'locks'), { recursive: true });
   writeFileSync(lock, JSON.stringify({ step: 'compose', startedAt: Date.now() - 5000, pid: process.pid }));   // "another server", still alive
   assert.equal(P.getBusy(st.id)?.step, 'compose');

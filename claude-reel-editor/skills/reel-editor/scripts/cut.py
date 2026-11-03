@@ -13,14 +13,18 @@ edl = json.load(open(reel / "edl.json"))
 src, audio = reel / edl["source"], reel / edl.get("audio", "voice.wav")
 spans = edl["keep"]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pacing import pacing
+from pacing import pacing, jl_video_spans
 speed = edl.get("speed") or pacing(brand)["speed"]   # pre-edited clips: edl.json "speed": 1
 grade = brand.get("grade")
 FADE = 0.012  # tiny audio fades at every join so cuts never click
 
+# edl.json "jl": frames of J/L cut at every join (0 = hard cuts, the default); picture moves, sound stays
+jl = int(edl.get("jl", 0))
+dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(src)], capture_output=True, text=True).stdout or 0) if jl else None
+vspans = jl_video_spans(spans, jl, 30, dur) if jl else spans
 vp, ap = [], []
-for k, (a, b) in enumerate(spans):
-    vp.append(f"[0:v]trim=start={a}:end={b},setpts=PTS-STARTPTS[v{k}]")
+for k, ((a, b), (va, vb)) in enumerate(zip(spans, vspans)):
+    vp.append(f"[0:v]trim=start={va:.3f}:end={vb:.3f},setpts=PTS-STARTPTS[v{k}]")
     ap.append(f"[1:a]atrim=start={a}:end={b},asetpts=PTS-STARTPTS,"
               f"afade=t=in:d={FADE},afade=t=out:st={max(b - a - FADE, 0):.3f}:d={FADE}[a{k}]")
 n = len(spans)

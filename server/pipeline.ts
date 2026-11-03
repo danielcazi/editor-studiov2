@@ -44,6 +44,7 @@ const fail = (msg: string): never => { throw new UserError(msg); };
 export interface BusyInfo {
   step: string;
   startedAt: number;
+  phase?: string;   // what the step is doing now (compose: tratamento, ilustrações, composição); survives a page reload
 }
 
 type State = {
@@ -53,6 +54,7 @@ type State = {
   workMs?: number;   // time AI and render steps held the lock, summed (human waiting between steps excluded)
   completed?: boolean;
   completedAt?: number;
+  approvedAt?: number;   // the reviewer approved the AI composition (Revisão); cleared by any new AI pass, not by manual edits
   composerMode?: 'agent' | 'card';
   style?: string;                      // illustration style pack (compose/estilos/<id>.md) chosen at creation; none = the director picks
   character?: { name: string; pose?: string };   // animation-brandkit character standing in for the speaker (cutout.webm is built from its pose)
@@ -185,8 +187,16 @@ const lockFile = (id: string) => join(WS, 'locks', `${id}.lock`);
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } };
 const addWork = (id: string, startedAt: number) => { try { const st = load(id); st.workMs = (st.workMs ?? 0) + Date.now() - startedAt; save(st); } catch {} };
 export const getBusy = (id: string): BusyInfo | null => {
-  try { const l = JSON.parse(readFileSync(lockFile(id), 'utf8')); return alive(l.pid) ? { step: l.step, startedAt: l.startedAt } : null; } catch { return null; }
+  try { const l = JSON.parse(readFileSync(lockFile(id), 'utf8')); return alive(l.pid) ? { step: l.step, startedAt: l.startedAt, ...(l.phase ? { phase: l.phase } : {}) } : null; } catch { return null; }
 };
+// the running step names its current phase: the lock keeps it for a reload, the event updates the open page
+function setPhase(id: string, phase: string) {
+  try {
+    const l = JSON.parse(readFileSync(lockFile(id), 'utf8'));
+    writeFileSync(lockFile(id), JSON.stringify({ ...l, phase }));
+    emit(id, 'step', { step: l.step, status: 'start', startedAt: l.startedAt, phase });
+  } catch {}
+}
 function acquire(id: string, step: string, startedAt: number) {
   mkdirSync(join(WS, 'locks'), { recursive: true });
   for (;;) {
@@ -987,6 +997,8 @@ export async function testClip(brand: any, project?: string) {
 export const expandHome = (p: string) => typeof p === 'string' && /^~(\/|$)/.test(p) ? join(homedir(), p.slice(1)) : p;
 const UPLOADS = join(WS, 'uploads');
 export function pickFile(kind: string): Promise<{ path: string | null; paths: string[] }> {
+  // osascript só existe no macOS: fora dele devolve 400 e a UI abre o <input type="file"> do navegador
+  if (process.platform !== 'darwin') fail('native file picker only on macOS');
   const types = kind === 'video' ? '"public.movie"' : kind === 'subtitle' ? '"srt","vtt"' : fail('kind: video or subtitle');
   const script = `set fs to choose file of type {${types}} with multiple selections allowed
 set p to ""
@@ -997,8 +1009,6 @@ return p`;
   return new Promise(ok => execFile('osascript', ['-e', script], (err, out) => {
     if (err || !out.trim()) return ok({ path: null, paths: [] });
     const paths = out.trim().split('\n').map(s => s.trim()).filter(Boolean);
-  // osascript só existe no macOS: fora dele devolve 400 e a UI abre o <input type="file"> do navegador
-  if (process.platform !== 'darwin') fail('native file picker only on macOS');
     ok({ path: paths[0] || null, paths });
   }));
 }
@@ -1655,8 +1665,35 @@ export const getProject = (id: string) => {
   // aspects with a finished agent composition (index.html): the format's own and any compose-<aspect>/ made for another format
   const composedFormats = composedByAgent(st) ? FORMATS.filter(f => existsSync(join(composeDirOf(P, st, f), 'index.html'))) : [];
   const readyFinals = FORMATS.filter(f => existsSync(join(P, finalName(f))));
-  return { ...st, composed: usesAgent(st) || composedByAgent(st), composedFormats, readyFinals, primaryFormat: primaryAspect(st), running: getBusy(id) };
+  const running = getBusy(id);
+  return { ...st, composed: usesAgent(st) || composedByAgent(st), composedFormats, readyFinals, primaryFormat: primaryAspect(st), running,
+    interrupted: !running && existsSync(composeMarker(id)) };   // a compose cut by a server restart (the marker outlived the lock)
 };
+// the marker compose() keeps while it runs; the user acknowledges it from the Revisão
+const composeMarker = (id: string) => join(projDir(id), 'compose.running');
+export function ackCompose(id: string) {
+  const st = load(id);
+  if (getBusy(id)) fail('a composição está rodando');
+  rmSync(composeMarker(id), { force: true });
+  if (existsSync(join(projDir(id), 'compose', 'index.html')) && stepRank(st.step) < stepRank('motion')) { st.step = 'motion'; save(st); }
+  return getProject(id);
+}
+// to workspace/trash/, not rm: a wrong click is undone from the Finder
+export function deleteProject(id: string) {
+  load(id);
+  if (getBusy(id)) fail('espere a etapa em execução terminar');
+  const T = join(WS, 'trash');
+  mkdirSync(T, { recursive: true });
+  renameSync(projDir(id), join(T, `${id}-${Date.now()}`));
+  return { ok: true };
+}
+export async function renameProject(id: string, name: unknown) {
+  const st = load(id), n = String(name ?? '').trim();
+  if (!n || n.length > 120) fail('nome: 1 a 120 caracteres');
+  st.name = n; save(st);
+  await commit(id, `rename: ${st.name}`);
+  return getProject(id);
+}
 export const setComposerMode = (id: string, mode: 'agent' | 'card') => {
   const st = load(id);
   st.composerMode = mode;
@@ -1882,6 +1919,8 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
   writeJSON(join(P, 'edl.json'), { source: basename(raw), audio: 'voice.wav', keep });
   if (plan.cut === 'tighten') await py(id, 'tighten.py', [P]);
   await py(id, 'cut.py', [P], { REEL_PREVIEW: '1' });
+  // every join transcribed on its own: a retake left in or a word clipped by the cut shows up here, not in the final (exit 3 = no local Whisper)
+  if (plan.cut === 'tighten' && (await run(id, 'python3', [join(S, 'check_joins.py'), P], {}, true)).code === 1) emit(id, 'log', '⚠ emendas com problema (ver FLAG acima e joins.txt): confira o corte antes de seguir');
   const long = await overLength(id, P, brand);
   if (long) emit(id, 'log', `⚠ ${long}: corte antes da entrega ou suba o limite`);
   // Whisper glues words across pauses, so after tighten its times can sit inside a cut: re-transcribe the master
@@ -2014,8 +2053,25 @@ export const brandStep = (id: string, b: { brand?: string; override?: Record<str
   if (stepRank(st.step) < stepRank('script')) st.step = 'script';
   save(st);
   await commit(id, 'brand settings updated');
+  if (stepRank(st.step) >= stepRank('motion')) await retheme(id, st);   // the review player shows the new fonts and colours at once
   return brand;
 });
+// A brand change on an existing composition: cards are rebuilt; an agent reel gets the brand font file again and scenes.py rerun (no model call).
+// shortcut: a font the composer wrote by name inside scenes.py does not change, only the kit's font.otf; a note to the composer does the rest
+async function retheme(id: string, st: State) {
+  if (!composedByAgent(st)) return buildLive(id, st);
+  const C = join(projDir(id), 'compose'), font = brandFontFile(st, writeBrand(st));
+  if (font) copyFileSync(font, join(C, 'assets', 'fonts', 'font.otf'));
+  await run(id, 'python3', ['-B', 'scenes.py'], {}, false, C);
+  delete st.approvedAt; save(st);
+  emit(id, 'built', {});
+}
+// the brand's heading font file: the one brand.json names, else the first in the brand's fonts/ folder
+const brandFontFile = (st: State, brand: any) => {
+  const fontDir = join(brandDir(st.brand), 'fonts');
+  return brand.fonts?.head?.file && existsSync(brand.fonts.head.file) ? brand.fonts.head.file as string
+    : existsSync(fontDir) ? (readdirSync(fontDir).filter(f => !f.startsWith('.') && /\.(otf|ttf|woff2?)$/i.test(f)).map(f => join(fontDir, f))[0] ?? '') : '';
+};
 
 // "Save as default": this project's override becomes the brand's.
 export const saveBrandDefault = (id: string) => locked(id, 'brand:default', async st => {
@@ -2162,6 +2218,11 @@ const motionCards = (id: string) => locked(id, 'motion', async st => {
   edit.cards = cards;
   writeJSON(join(P, 'edit.json'), edit);
   Object.assign(st, { step: 'motion' }); save(st);
+  const r = readReview(id), stale = r.notes.filter(n => n.status === 'open');
+  if (stale.length) {   // they pointed at cards that no longer exist
+    for (const n of stale) Object.assign(n, { status: 'skipped', reply: 'Os cards foram refeitos a partir do roteiro: anote de novo o que ainda valer.' });
+    writeReview(id, r);
+  }
   await commit(id, `step 4: ${cards.length} cards`);
   await buildLive(id, st);   // the review player plays it live: no render until the delivery step
   return edit;
@@ -2199,8 +2260,9 @@ export const putEdit = (id: string, edit: any) => locked(id, 'edit', async st =>
   const errors = edit.cards.flatMap((c: any, i: number) => validateCard(c, dur, palette).map(e => `card ${i}: ${e}`));
   if (errors.length) fail(errors.join('; '));
   writeJSON(join(P, 'edit.json'), { punch: [], ...edit });
+  if (stepRank(st.step) < stepRank('motion')) { st.step = 'motion'; save(st); }   // cards written by hand: the review opens without the model
   await commit(id, 'edit: timeline');
-  await preview(id, st);
+  await buildLive(id, st);   // the review player plays it live; POST /preview renders preview.mp4 on demand
   return readJSON(join(P, 'edit.json'));
 });
 
@@ -2312,7 +2374,7 @@ export const batchEdit = (id: string, body: { items?: BatchItem[]; edit?: any } 
 
   writeJSON(join(P, 'edit.json'), { punch: [], ...edit });
   await commit(id, `batch: ${items.length} alterations (${sonnetList.length} standard, ${opusList.length} custom)`);
-  await preview(id, st);
+  await buildLive(id, st);
   return readJSON(join(P, 'edit.json'));
 });
 
@@ -2342,7 +2404,7 @@ export const askCard = (id: string, index: number, instruction: string) => locke
 
 // ---- Step 5 review: the browser plays proj/index.html live (no render); notes pinned to a time and a spot on the frame ----
 export type Note = { id: string; t: number; end?: number; x?: number; y?: number; text: string; status: 'open' | 'done' | 'skipped'; reply?: string; round?: number };
-type Review = { notes: Note[]; round: number };
+type Review = { notes: Note[]; round: number; version?: number };   // version: bumped on every write; a PUT must send the one it read
 const reviewFile = (id: string) => join(projDir(id), 'review.json');
 const readReview = (id: string): Review => existsSync(reviewFile(id)) ? readJSON(reviewFile(id)) : { notes: [], round: 0 };
 // an agent-composed reel lives in compose/ (scenes.py writes its index.html); every other reel in proj/ (build_reel.py)
@@ -2367,17 +2429,31 @@ function checkNote(n: any): Note {
 }
 
 // No lock: saving notes must not wait for or block a step. Only a running review round writes review.json too.
-export function putReviewNotes(id: string, notes: unknown) {
+// The reviewer's approval: final() needs it. Manual edits (Edição) keep it; any AI pass clears it.
+export function approveReview(id: string) {
+  const st = load(id);
+  if (getBusy(id)) fail('espere a etapa em execução terminar');
+  const open = readReview(id).notes.filter(n => n.status === 'open').length;
+  if (open) fail(`há ${open} anotação(ões) aberta(s): aplique ou remova antes de aprovar`);
+  if (!existsSync(join(liveDir(st), 'index.html'))) fail('a composição ainda não foi montada: abra a Revisão primeiro');
+  st.approvedAt = Date.now(); save(st);
+  return getProject(id);
+}
+export function putReviewNotes(id: string, notes: unknown, version?: unknown) {
   load(id);
   if (getBusy(id)?.step === 'review') fail('as anotações estão sendo aplicadas; espere a rodada terminar');
   if (!Array.isArray(notes) || notes.length > 500) fail('notes must be an array (at most 500)');
-  writeJSON(reviewFile(id), { ...readReview(id), notes: (notes as unknown[]).map(checkNote) });
+  const cur = readReview(id);
+  if ((cur.version ?? 0) !== (Number(version) || 0)) fail('as anotações mudaram em outra aba: recarregue a Revisão antes de salvar');
+  writeReview(id, { ...cur, notes: (notes as unknown[]).map(checkNote) });
   return getReview(id);
 }
+const writeReview = (id: string, r: Review) => writeJSON(reviewFile(id), { ...r, version: (r.version ?? 0) + 1 });
 
 // The composition alone, without capturing it: seconds instead of the minutes of a render.
 async function buildLive(id: string, st: State) {
   writeBrand(st);
+  if (st.approvedAt) { delete st.approvedAt; save(st); }   // a new composition is not the approved one
   if (!existsSync(join(SKILL, 'engine/hf/hyperframes-player.global.js'))) await run(id, 'bash', [join(S, 'setup_engine.sh')]);
   await py(id, 'build_reel.py', [projDir(id)], await renderEnv(id, st));
   emit(id, 'built', {});
@@ -2472,13 +2548,18 @@ export const applyReview = async (id: string) => {
       const a = done.get(n.id);
       if (n.status === 'open' && a) Object.assign(n, { status: a.done ? 'done' : 'skipped', reply: a.reply, round: r.round });
     }
-    writeJSON(reviewFile(id), r);
+    writeReview(id, r);
   };
   // an agent-composed reel is changed by its composer, which takes the notes as one adjustment and renders out.mp4 itself
   if (composedByAgent(st0)) {
     const note = open.map(n => `[${fmtT(n.t)}${n.end !== undefined ? `–${fmtT(n.end)}` : ''}${n.x !== undefined ? ` · ponto x=${n.x.toFixed(0)}% y=${n.y!.toFixed(0)}% do quadro` : ''}] ${n.text}`).join('\n');
     const r = await compose(id, `Anotações da revisão (tempo no vídeo · ponto marcado no quadro · pedido):\n${note}`);
-    reply(readReview(id), new Map(open.map(n => [n.id, { done: true, reply: 'Aplicada pelo compositor junto com as outras anotações da rodada.' }])));
+    // an interrupted composer (summary starts with ⚠) may not have read the notes: they stay open for the next round
+    if (r.summary.startsWith('⚠')) emit(id, 'log', `As ${open.length} anotação(ões) continuam abertas: ${r.summary}`);
+    else {
+      const last = r.summary.trim().split('\n').filter(Boolean).pop()?.slice(0, 300) || 'Aplicada pelo compositor.';
+      reply(readReview(id), new Map(open.map(n => [n.id, { done: true, reply: last }])));
+    }
     return { ...getReview(id), summary: r.summary };
   }
   return locked(id, 'review', async st => {
@@ -2560,6 +2641,7 @@ export const final = (id: string, formats?: unknown) => locked(id, 'final', asyn
   const P = projDir(id);
   const open = readReview(id).notes.filter(n => n.status === 'open').length;
   if (open) fail(`há ${open} anotação(ões) aberta(s) na revisão: aplique ou remova antes de renderizar o final`);
+  if (!st.approvedAt) fail('o vídeo ainda não foi aprovado: assista na Revisão e clique em Aprovar antes de renderizar');
   const long = await overLength(id, P, writeBrand(st));
   if (long) fail(`${long}: corte o vídeo ou suba o limite antes de renderizar`);
   // an agent reel has one composition per aspect: compose/ (the format's own) and compose-<aspect>/ for the others
@@ -2623,6 +2705,10 @@ export const exportAfterEffects = (id: string) => locked(id, "ae", async st => {
   const aepPath = join(aeDir, `${id}.aep`);
   // no catch: when make_jsx.mjs fails (missing puppeteer-core, Chrome or ffmpeg) the user must see it, not an "ok" with no .aep
   await run(id, "node", [scriptPath, "--html", htmlFile, "--out", aeDir, "--aep", aepPath, "--name", id]);
+  // an export whose text all went into ProRes clips is a regression of make_jsx (new wrapper or text path in the kit), not a result
+  const rel = readJSON(join(aeDir, "ae_report.json")).camadas ?? {};
+  if (rel.textos === 0 && rel.textos_na_composicao > 0)
+    fail(`Export do After sem nenhum texto editável (a composição tem ${rel.textos_na_composicao} textos): o exportador não reconheceu a estrutura do HTML. Veja server/test/ae_export.test.ts.`);
   
   const runJsxPath = join(aeDir, "run.jsx");
   let aepGenerated = existsSync(aepPath);
@@ -2873,8 +2959,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   for (const f of readdirSync(join(K, 'sfx'))) copyFileSync(join(K, 'sfx', f), join(A, 'sfx', f));
   for (const [from, to] of [['cutout.webm', 'cut.webm'], ['plate.mp4', 'plate.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json']].filter(([f]) => !motion || f === 'voice.m4a' || f === 'transcript.json')) copyFileSync(join(P, from), join(A, to));
   const brand = existsSync(join(P, 'brand.json')) ? readJSON(join(P, 'brand.json')) : getBrand(st.brand);
-  const fontDir = join(brandDir(st.brand), 'fonts'), fontFile = brand.fonts?.head?.file && existsSync(brand.fonts.head.file) ? brand.fonts.head.file
-    : existsSync(fontDir) ? (readdirSync(fontDir).filter(f => !f.startsWith('.') && /\.(otf|ttf|woff2?)$/i.test(f)).map(f => join(fontDir, f))[0] ?? '') : '';
+  const fontFile = brandFontFile(st, brand);
   if (fontFile) copyFileSync(fontFile, join(A, 'fonts/font.otf'));
   const { duration, width, height } = await probeMedia(join(P, 'master.mp4'));
   const c = brand.colors ?? {}, faceX = faceXOf(P, width, height);
@@ -2933,7 +3018,12 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     right: Math.round(targetW * 0.065),
   };
 
+  // join times of the cut on the master clock: kit.py snaps the cutout to an alternating zoom there, so a jump cut reads as a change of shot
+  const edl = existsSync(join(P, 'edl.json')) ? readJSON(join(P, 'edl.json')) : null, speed = edl?.speed ?? (edl ? (await pacing(id)).speed : 1);
+  const cuts: number[] = []; let acc = 0;
+  for (const [a, b] of (edl?.keep ?? []).slice(0, -1)) { acc += (b - a) / speed; cuts.push(Math.round(acc * 1000) / 1000); }
   writeJSON(join(C, 'compose.json'), {
+    cuts,
     W: targetW,
     H: targetH,
     aspectRatio: targetAspect,
@@ -2991,6 +3081,10 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
 // The review player plays that index.html live; only final() renders it. The motion-only test (mode "motion") still renders preview-motion.mp4.
 // shortcut: no partial re-render; an adjustment ("ajuste") reruns the agent on the same compose/ folder
 export const compose = (id: string, note?: string, mode?: string, aspect?: string) => locked(id, 'motion', async st => {
+  writeFileSync(composeMarker(id), '');   // a server that dies mid-compose leaves it: getProject reports the interruption
+  try { return await composeRun(id, st, note, mode, aspect); } finally { rmSync(composeMarker(id), { force: true }); }
+});
+async function composeRun(id: string, st: State, note?: string, mode?: string, aspect?: string) {
   const motion = mode === 'motion';
   const P = projDir(id);
   if (!usesAgent(st)) fail('Este formato não usa o compositor agent');
@@ -3020,6 +3114,7 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
   // Direction first, in its own call (DIRETOR.md §6): benchmark, structure, shot list with the world camera, signature shot, sound map.
   // A note or another aspect keeps the treatment the primary composition was built on.
   if (!note && !other) {
+    setPhase(id, 'tratamento');
     emit(id, 'log', '🎬 Claude está escrevendo o tratamento (DIRETOR.md): benchmark, estrutura, shot list e câmera...');
     const t = await agent('compose:treatment', { system: system + ' In this call you are the director only: write treatment.md and nothing else (no scenes.py, no render).',
       prompt: 'Comece pelo estilo de ilustração (DIRETOR.md §6, item 0): ESTILO.md se existir; senão escolha em estilos/README.md e leia o pacote escolhido inteiro. Depois leia brief.md, DIRETOR.md, ILUSTRACAO.md, GUIDE.md e assets/transcript.json; abra as imagens de assets/img/ e os quadros de referência com Read. Escreva treatment.md com as seis seções do DIRETOR.md §6 (benchmark, três estruturas, logline e arco, shot list cena a cena com enquadramento, world= e motivo, mapa de som, o que difere do clichê). Na shot list, diga o que cada cena desenha (canvas, scene3d ou imagem do site) e com qual motivo do ILUSTRACAO.md. Marque o plano-assinatura. Não escreva scenes.py.',
@@ -3028,6 +3123,7 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
     if (!existsSync(tf) || statSync(tf).mtimeMs < started) fail(`O diretor não escreveu treatment.md: ${t.slice(0, 300)}`);
     // Illustrations in their own call: the composer, given the whole reel in one call, reduces the treatment's objects to bands
     // and rectangles (novo-motor, 30/10: 27 drawn objects planned, 37 SK.rect delivered). Here each object becomes a tested function.
+    setPhase(id, 'ilustrações');
     emit(id, 'log', '🎨 Tratamento pronto. Claude está desenhando os objetos da shot list (engines/marca.js)...');
     await agent('compose:ilustracoes', { system: system + ' In this call you are the illustrator only: write engines/marca.js and engines/demos/marca.py, run the demo and look at its sheet; no scenes.py, no render.',
       prompt: 'Leia treatment.md (cada "Desenha" da shot list), ILUSTRACAO.md, o pacote do estilo escolhido e o motor dele (engines/<slug>.js; a demo em engines/demos/<slug>.py mostra a API). Escreva engines/marca.js: um objeto global IL com uma função por objeto concreto da shot list (ex.: IL.funil(ctx,t,x,y,s,o)), cada um desenhado em massa com o motor do estilo (sombra dura, luz, grão do ILUSTRACAO.md), nunca linha fina, pictograma ou retângulo genérico; t anima a entrada do objeto (t=0 começa). Escreva engines/demos/marca.py (como as demos: from kit import *, uma cena por 4 objetos com canvas(..., engine="<slug>,marca"), render()) e rode-o com PYTHONPATH=. python3 engines/demos/marca.py; tire snapshots, olhe a folha com Read e corrija até cada objeto ser reconhecível de longe e seguir o ILUSTRACAO.md. Não escreva scenes.py.',
@@ -3041,6 +3137,7 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
   const html = join(C, 'index.html'), ai = aiCopy(html), hadHtml = existsSync(html);
   const fresh = () => existsSync(html) && statSync(html).mtimeMs >= buildFrom && !isMarked(readFileSync(html, 'utf8')) || existsSync(ai) && statSync(ai).mtimeMs >= buildFrom;
   let summary: string;
+  setPhase(id, note ? 'ajustes' : 'composição');
   try {
     summary = await agent('compose', { system, prompt: existsSync(join(C, 'treatment.md')) ? `Siga treatment.md (shot list, world= de cada cena, plano-assinatura e mapa de som); se mudar algo, atualize o treatment antes.${existsSync(join(C, 'engines', 'marca.js')) ? ' Os objetos da shot list já estão desenhados em engines/marca.js (IL.*, demo em engines/demos/marca.py): use-os com canvas(..., engine="<slug>,marca") em vez de redesenhar ou trocar por faixas e retângulos.' : ''} ${prompt}` : prompt, cwd: C, noRender: !motion }, logCost(st));
   } catch (e) {
@@ -3062,10 +3159,11 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
   }
   if (!motion && stepRank(st.step) < stepRank('motion')) st.step = 'motion';
   if (other && !st.formats.includes(other)) st.formats.push(other);
+  if (!motion) delete st.approvedAt;   // a new composition is not the approved one
   save(st);
   await commit(id, motion ? 'compose: versão só motion' : `compose: reel composto pelo agent${other ? ` (${other})` : ''}`);
   return { ok: true, summary };
-});
+}
 
 export const cutoutPerson = (id: string, options?: { force?: boolean }) => locked(id, 'cutout', async () => {
   const r = await ensureCutout(id, !!options?.force);

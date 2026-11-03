@@ -169,7 +169,7 @@ const INPAGE = () => {
   // ---- Texto desenhado em canvas (ilustrações do compose): cada fillText de um canvas do documento é candidato a texto nativo ----
   // Elegível: alfa ≥ .5, sem clip, sem filtro, cor sólida, sem emoji. Suprimido (não desenhado) quando a chave já virou camada de texto
   // no After: o clipe leva só a decoração. Rastros de alfa baixo (smear, fades) ficam no clipe, por isso o limiar de .5 vale nos dois lados.
-  const draws = [], SUP = new Set();
+  const draws = [], SUP = new Set(), VISTOS = new Set();   // VISTOS: toda chave de texto de canvas já desenhada, para o relatório
   const CT = CanvasRenderingContext2D.prototype, ft0 = CT.fillText, clip0 = CT.clip, save0 = CT.save, restore0 = CT.restore;
   CT.clip = function () { this.__clip = (this.__clip || 0) + 1; return clip0.apply(this, arguments); };
   CT.save = function () { (this.__pilha = this.__pilha || []).push(this.__clip || 0); return save0.apply(this, arguments); };
@@ -179,6 +179,7 @@ const INPAGE = () => {
     if (cv && cv.isConnected && cv.id && this.globalAlpha > 0) {
       const text = String(s), fill = typeof this.fillStyle === 'string' ? this.fillStyle : null;
       const key = [cv.id, text, this.font, this.textAlign, this.textBaseline, fill, this.letterSpacing].join('\u0001');
+      if (text.trim()) VISTOS.add(key);
       const ok = this.globalAlpha >= 0.5 && !this.__clip && this.filter === 'none' && this.globalCompositeOperation === 'source-over' && !!fill && !/\p{Extended_Pictographic}/u.test(text);
       if (ok && SUP.has(key)) return;
       const m = this.getTransform(), sc = col(this.shadowColor);
@@ -417,7 +418,9 @@ const INPAGE = () => {
   };
 
   return { grupos, midias, midiaPose, sondar, extrair: (g, i) => { const p = pecas(g)[i]; return p ? extrair(p) : null; }, isolar, ocultarTexto, restaurarTexto,
-    mundo, pose, repouso, antes: () => { draws.length = 0; }, suprimir: (keys) => { SUP.clear(); for (const k of keys) SUP.add(k); } };
+    mundo, pose, repouso, antes: () => { draws.length = 0; }, suprimir: (keys) => { SUP.clear(); for (const k of keys) SUP.add(k); },
+    // quanto texto a composição tem (nós de texto do DOM + frases de canvas vistas): zero nativo com isso > 0 é regressão, não reel sem texto
+    textoNaComposicao: () => textNodes(root).filter((n) => n.textContent.trim() && !SKIP.test(n.parentElement.tagName)).length + VISTOS.size };
 };
 
 await page.evaluate(`window.__AE = (${INPAGE.toString()})();`);
@@ -533,6 +536,8 @@ for (const g of grupos) {
 }
 console.log('');
 
+const textosNaComposicao = await page.evaluate(() => window.__AE.textoNaComposicao());
+
 // ---- Vídeos e áudios: o arquivo original, com a câmera em keyframes ----
 const probe = (f) => {
   const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,codec_name:stream_tags=alpha_mode', '-of', 'json', f], { encoding: 'utf8' });
@@ -642,7 +647,7 @@ const report = {
     videos: media.filter((m) => m.tag === 'video').length, audios: media.filter((m) => m.tag === 'audio').length,
     grupos: grupos.length, pecas_nativas: nat.length + ctexts.length,
     textos: nat.reduce((n, p) => n + p.texts.length, 0) + ctexts.length, textos_canvas: ctexts.length, formas: nat.reduce((n, p) => n + p.shapes.length, 0),
-    clipes_prores: clips.length, camera_mundo: mundo ? mundo.keys.length : 0
+    clipes_prores: clips.length, camera_mundo: mundo ? mundo.keys.length : 0, textos_na_composicao: textosNaComposicao
   },
   midias: media.map((m) => `${m.id} (${m.tag}, ${m.a.toFixed(2)}–${m.b.toFixed(2)} s): ${m.file.startsWith(OUT) ? path.relative(OUT, m.file) : m.file}`),
   nativas: nat.map((p) => `${p.scene} peça ${p.i} (${p.a.toFixed(2)}–${p.b.toFixed(2)} s): ${p.texts.map((x) => x.text.replace(/\n/g, ' ')).join(' / ') || p.shapes.length + ' forma(s)'}`)

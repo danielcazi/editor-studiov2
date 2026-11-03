@@ -73,7 +73,13 @@ out = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(voice), "-af", f"silen
                      capture_output=True, text=True).stderr
 starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", out)]
 ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", out)]
-pauses = [(a + PAD, b - PAD) for a, b in zip(starts, ends) if b - a > MIN_PAUSE]
+def valley(want):
+    """Time of the quietest 10 ms frame within 30 ms of `want` (nearest to it on a tie): a join there lands between sounds, not on a breath."""
+    h, lo = sr // 100, max(0, int((want - 0.03) * sr))
+    e = [sum(x * x for x in pcm[lo + k * h:lo + (k + 1) * h:4]) for k in range(6)]
+    return (lo + (min(range(6), key=lambda k: (e[k], abs(lo / sr + (k + .5) * h / sr - want))) + .5) * h) / sr
+# shortcut: the join moves at most 30 ms off the preset's air, always inside the detected silence; PAD >= 50 ms keeps it clear of the words
+pauses = [(valley(a + PAD), valley(b - PAD)) for a, b in zip(starts, ends) if b - a > MIN_PAUSE]
 cuts += pauses
 cuts.sort()
 

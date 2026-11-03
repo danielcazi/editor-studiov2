@@ -13,6 +13,7 @@ export type LayerEdit = {
   cuts?: number[]; gaps?: [number, number][];                  // razor points (UI only) and the stretches cut out of the layer
   texts?: Text[];
   font?: { size?: number; weight?: number; italic?: boolean; family?: string };   // the AI's text, restyled
+  still?: boolean;   // the AI's moves (timed tweens) on this layer and on the wrappers that hold only it (the speaker's #ccam, not the scene's #world) are killed; zero-duration sets (show/hide) stay
 };
 export const ADDED_KINDS = ['text', 'title', 'captions', 'image', 'video', 'audio', 'model'] as const;
 export type Added = {
@@ -70,6 +71,7 @@ export function checkLayers(doc: any): Layers {
       gaps: e.gaps === undefined ? undefined : Array.isArray(e.gaps) ? e.gaps.slice(0, 500).map(pair) : bad(`${id}: gaps must be an array`),
       texts,
       font: e.font === undefined ? undefined : fontOf(e.font, id),
+      still: e.still === undefined ? undefined : !!e.still,
     }).filter(([, v]) => v !== undefined));
   }
   const ids = new Set<string>();
@@ -241,9 +243,13 @@ function editScript(d: Layers, visual: (id: string) => boolean) {
     .map(a => [a.id, a.start, a.anim ?? 'pop']);
   const caps = d.added.filter(a => a.kind === 'captions').map(a => [a.id, a.start, (a.lines ?? []).map(l => [l.t, l.end])]);
   const models = d.added.filter(a => a.kind === 'model').map(a => [a.id, a.start, a.duration]);
-  if (!gaps.length && !anims.length && !caps.length && !models.length) return '';
-  const data = JSON.stringify({ gaps, anims, caps, models }).replace(/</g, '\\u003c');
+  const stills = Object.entries(d.layers).filter(([id, e]) => e.still && visual(id)).map(([id]) => id);
+  if (!gaps.length && !anims.length && !caps.length && !models.length && !stills.length) return '';
+  const data = JSON.stringify({ gaps, anims, caps, models, stills }).replace(/</g, '\\u003c');
   return `<script>(function(){var tl=window.__timelines&&window.__timelines.main;if(!tl||!window.gsap)return;var D=${data};
+D.stills.forEach(function(id){var el=document.getElementById(id);if(!el)return;var t=[el].concat(Array.prototype.slice.call(el.querySelectorAll('*')));
+for(var p=el.parentElement;p&&p!==document.body&&p.children.length===1;p=p.parentElement)t.push(p);
+tl.getTweensOf(t).forEach(function(w){if(w.duration()>0){w.progress(0);w.kill();}});});
 D.gaps.forEach(function(g){var el=document.getElementById(g[0]);if(!el)return;tl.set(el,{'--hfv':1},0);g[1].forEach(function(p){tl.set(el,{'--hfv':0},p[0]);tl.set(el,{'--hfv':1},p[1]);});});
 D.anims.forEach(function(a){var el=document.querySelector('#'+a[0]+' .in');if(!el)return;var t=a[1]+0.001;
 if(a[2]==='pop')tl.fromTo(el,{scale:.4,y:40,opacity:0},{scale:1,y:0,opacity:1,duration:.45,ease:'back.out(1.8)'},t);

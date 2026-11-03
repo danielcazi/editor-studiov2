@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- Composição mínima para o teste do exportador do After (server/test/ae_export.test.ts): reproduz o que o compose/kit.py
+     escreve e que já quebrou o export: câmera de mundo (#world preserve-3d + profundidade com translateZ), texto em DOM e
+     texto desenhado em canvas (fillText a cada seek). Toda estrutura nova do kit entra aqui também. -->
+<html lang="pt-BR" data-resolution="portrait">
+<head>
+<meta charset="UTF-8">
+<script src="gsap.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:540px; height:960px; overflow:hidden; background:#000; }
+  #root { position:relative; width:100%; height:100%; background:#000; perspective:1800px; }
+  #world { position:absolute; inset:0; transform-style:preserve-3d; }
+  #cena { position:absolute; inset:0; }
+  #cena .fundo { position:absolute; inset:-12%; background:#ECEBFA; }
+  #cena .titulo { position:absolute; left:40px; top:120px; font:700 48px Arial, sans-serif; color:#111; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="2" data-width="540" data-height="960">
+  <div id="world">
+    <div id="mid" style="position:absolute;inset:0;transform:translateZ(-110px) scale(1.0611)">
+      <div id="cena" data-start="0" data-duration="2">
+        <div class="fundo"></div>
+        <div class="titulo">Texto em DOM</div>
+        <canvas id="cena-cv" width="540" height="400" style="position:absolute;left:0;top:300px;width:540px;height:400px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  tl.set("#world", { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotation: 0 }, 0);
+  tl.to("#world", { y: -40, rotationX: 3, duration: 1, ease: "sine.inOut" }, 0.5);
+  const cv = document.getElementById('cena-cv'), ctx = cv.getContext('2d');
+  const R = () => {
+    const t = Math.max(0, Math.min(tl.time(), 2));
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, 540, 400);
+    ctx.fillStyle = '#5B4BFF'; ctx.beginPath(); ctx.roundRect(40, 40, 460, 200, 24); ctx.fill();
+    ctx.font = '700 44px Arial'; ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Texto em canvas', 270, 140 + 10 * t);
+  };
+  tl.to({}, { duration: 2, onUpdate: R }, 0); R();
+  window.__timelines = window.__timelines || {}; window.__timelines["main"] = tl;
+</script>
+</body>
+</html>

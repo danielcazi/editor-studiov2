@@ -47,6 +47,13 @@ test('edits: clip timing, volume, transforms, switched off, added layers and gap
   assert.equal(warns.length, 1);   // "gone"
 });
 
+test('still: the layer is listed for the script that kills its timed tweens', () => {
+  const out = applyEdits(HTML, checkLayers({ layers: { b01: { still: true } } }));
+  assert.match(out, /"stills":\["b01"\]/);
+  assert.match(out, /w\.duration\(\)>0/);
+  assert.ok(!applyEdits(HTML, checkLayers({ layers: { b01: { still: false } } })).includes('"stills":["b01"]'));
+});
+
 test('stacking: z goes to the ancestor right under the root, original swaps the background source', () => {
   const out = applyEdits(HTML, checkLayers({ layers: { plate: { z: 30, original: true }, b01: { z: 5 } }, order: ['t0', 't2'] }));
   assert.match(out, /#pcam\{z-index:30!important\}/);
