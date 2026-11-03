@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bridge between a reel folder and the Reel Review page.
   export <reel> <proposal.json> <out-dir>   build reel.json (the page's data) + assets to upload
-  import <reel> <review.json>               turn the person's decisions into edl.json + edit.json for cut.py/render.sh
+  import <reel> <review.json>               turn the person's decisions into edl.json + edit.json for cut.py/render.py
 The cut timeline is computed by review/core.js (run with node), the same file the page uses, so review and render agree.
 
 proposal.json (Claude writes this per reel):

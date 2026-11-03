@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, writeFileSync, copyFileSync, readdirSync, rmSync
 import { join, basename, extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ask, type Cost } from './models.ts';
+import { findChrome } from './host.ts';
 
 export function isVideoReference(url: string): boolean {
   try {
@@ -23,8 +24,8 @@ export function isVideoReference(url: string): boolean {
 }
 
 async function captureScreenshot(url: string, outPath: string, width = 1280, height = 900, isMobile = false): Promise<boolean> {
-  const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-  if (!existsSync(chromePath)) return false;
+  const chromePath = findChrome();
+  if (!chromePath) return false;
   const tempProfile = join(tmpdir(), `chrome_shot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
   try {
     mkdirSync(tempProfile, { recursive: true });

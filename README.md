@@ -82,7 +82,7 @@ Editor 7.0/
 
 ## O Workflow de Produção (Passos 1 a 5)
 
-1. **Ingestão e Decupagem:** Escolha de arquivo nativo (`POST /pick-file`), normalização de áudio em -14 LUFS (`clean_audio.sh`), transcrição Whisper e tracking facial (`nose.swift`).
+1. **Ingestão e Decupagem:** Escolha de arquivo nativo (`POST /pick-file`), normalização de áudio em -14 LUFS (`clean_audio.py`), transcrição Whisper e tracking facial (`nose.swift`).
 2. **Roteiro e Sugestões:** O Claude Opus identifica picos de interesse e sugere cards animados com liberdade criativa.
    - *Sub-passo 2.1:* O texto que não vira card vira legenda contínua; quando o card entra, a legenda simples silencia automaticamente.
 3. **Timeline e Ajustes em Lote:** Playhead com agulha arrastável, cards com alças para estender duração (2.5s a 4.5s), duplo clique para destacar palavras e botão "Enviar N alterações" sem bloquear o servidor.

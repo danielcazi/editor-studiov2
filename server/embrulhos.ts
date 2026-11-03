@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { findChrome } from './host.ts';
 
 export const EMB = join(dirname(fileURLToPath(import.meta.url)), 'embrulhos', 'modelos');
 export const QUADRO = { w: 1080, h: 1920 };
@@ -98,7 +99,7 @@ export function sugerirQuadros(video: string, n = 3) {
 }
 
 /* ---------- camadas e composição ---------- */
-const CHROME = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(p => p && existsSync(p));
+const CHROME = findChrome();
 
 export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, { quadroImg = null as string | null, avatarImg = null as string | null, destino = '' }) {
   if (!CHROME) throw new Error('Chrome não encontrado. Instale o Google Chrome ou defina CHROME_PATH.');

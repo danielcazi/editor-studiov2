@@ -20,10 +20,10 @@ A private page on the person's claude.ai account where they approve the edit bef
 
 1. `ArtifactData get review/current` (save to a file). Missing is fine: it means "use the proposal".
 2. `python3 scripts/review_sync.py import <reel> <review.json>` → `edl.json` + `edit.json`. Act on every `CHANGE REQUESTED`, `NOTE` and `REVISION` line it prints before rendering; `BRAND CHANGE REQUESTED` only touches brand.json after they confirm.
-3. `REEL_PREVIEW=1 python3 scripts/cut.py <reel>` then `REEL_PREVIEW=1 bash scripts/render.sh <reel>` (1080p, 2 workers, low priority).
+3. `REEL_PREVIEW=1 python3 scripts/cut.py <reel>` then `REEL_PREVIEW=1 python3 scripts/render.py <reel>` (1080p, 2 workers, low priority).
 4. Grab frames at every graphic and the longest caption words; fix anything out of frame before sending.
 5. 540p proxy of `final.mp4` → upload → `ArtifactData set builds/latest` {url, hash (from edit.json), at, cutDur}. The page compares that hash with the live decisions and marks the preview outdated when they change.
 
 ## Final
 
-After they approve the draft: `bash scripts/render.sh <reel> --final` (the brand resolution; it re-cuts the 1080p preview master first), QA, deliver, and on the CapCut route `--capcut` plus `capcut_draft.py`.
+After they approve the draft: `python3 scripts/render.py <reel> --final` (the brand resolution; it re-cuts the 1080p preview master first), QA, deliver, and on the CapCut route `--capcut` plus `capcut_draft.py`.

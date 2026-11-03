@@ -38,7 +38,7 @@ npx skills add nicolapocock/claude-reel-editor
 then check everything's there (ffmpeg, node, the hyperframes skills):
 
 ```bash
-bash ~/.claude/skills/reel-editor/scripts/doctor.sh
+python3 ~/.claude/skills/reel-editor/scripts/doctor.py
 ```
 
 ## use it

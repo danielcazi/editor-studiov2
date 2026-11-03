@@ -41,7 +41,7 @@ def main():
     win = float(sys.argv[sys.argv.index("--window") + 1]) if "--window" in sys.argv else 2.0
     edl = json.load(open(reel / "edl.json"))
     keep, voice = edl["keep"], reel / edl.get("audio", "voice.wav")
-    cli = shutil.which("whisper-cli") or next((str(p) for p in Path("~/.cache/hyperframes/whisper").expanduser().rglob("whisper-cli")), None)
+    cli = shutil.which("whisper-cli") or next((str(p) for p in Path("~/.cache/hyperframes/whisper").expanduser().rglob("whisper-cli.exe" if sys.platform == "win32" else "whisper-cli")), None)
     model = next(iter(sorted(Path("~/.cache/hyperframes/whisper/models").expanduser().glob("ggml-small.bin"))), None)
     if not (cli and model):
         print("JOINS NOT CHECKED: local Whisper is not installed (tighten.py installs it)"); sys.exit(3)

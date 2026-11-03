@@ -88,7 +88,7 @@ export async function agent(stage: string, opts: { system: string; prompt: strin
   const model = MODEL_BY_STEP.compose;
   const args = ['-p', '--model', model, '--effort', EFFORT.compose, '--output-format', 'json', '--system-prompt', opts.system,
     '--no-session-persistence', '--setting-sources', 'user', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    '--tools', 'Read,Write,Edit,Bash', '--allowedTools', 'Read', 'Write', 'Edit', 'Bash(python3:*)','Bash(npx --yes hyperframes@0.8.217:*)',
+    '--tools', 'Read,Write,Edit,Bash', '--allowedTools', 'Read', 'Write', 'Edit', 'Bash(python3:*)', 'Bash(python:*)', 'Bash(npx --yes hyperframes@0.8.217:*)',
     'Bash(ffmpeg:*)', 'Bash(ffprobe:*)', 'Bash(ls:*)', 'Bash(cat:*)',
     ...opts.noRender ? ['--disallowedTools', 'Bash(npx --yes hyperframes@0.8.217 render:*)'] : []];
   const r = JSON.parse(await claude(args, opts.prompt, opts.cwd, COMPOSE_TIMEOUT_MS)) as ClaudeResult;

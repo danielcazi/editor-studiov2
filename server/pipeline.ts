@@ -14,6 +14,7 @@ import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, read
 import { synthesize, synthesizeLong } from './voice.ts';
 import { carregarEmbrulho, compor, conferirCampos, extrairQuadro, listarEmbrulhos, precosDoSrt, renderCamadas, sugerirQuadros } from './embrulhos.ts';
 import { band, download as brollDownload, extOf, pick as brollPick, rightsOf, search as brollSearch } from './broll.ts';
+import { afterEffectsCmd, NPM, NPX, PYTHON, WIN } from './host.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const SKILL = join(ROOT, 'claude-reel-editor/skills/reel-editor');
@@ -160,10 +161,10 @@ export function run(id: string, cmd: string, args: string[], env: Record<string,
     const take = (b: Buffer) => { const s = b.toString(); out += s; s.split('\n').filter(Boolean).forEach(l => emit(id, 'log', l)); };
     p.stdout.on('data', take); p.stderr.on('data', take);
     p.on('error', ko);
-    p.on('close', code => code === 0 || allowFail ? ok({ code: code ?? 1, out }) : ko(new Error(`${basename(['python3', 'bash', 'node'].includes(cmd) ? args[0] ?? cmd : cmd)} failed (${code}): ${out.trim().slice(-600)}`)));
+    p.on('close', code => code === 0 || allowFail ? ok({ code: code ?? 1, out }) : ko(new Error(`${basename([PYTHON, 'node', process.execPath].includes(cmd) ? args.find(a => /\.(py|m?js|ts)$/.test(a)) ?? cmd : cmd)} failed (${code}): ${out.trim().slice(-600)}`)));
   });
 }
-export const py = (id: string, script: string, args: string[], env?: Record<string, string>) => run(id, 'python3', [join(S, script), ...args], env);
+export const py = (id: string, script: string, args: string[], env?: Record<string, string>) => run(id, PYTHON, [join(S, script), ...args], env);
 
 export async function duration(id: string, file: string) {
   const { out } = await run(id, 'ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]);
@@ -171,7 +172,7 @@ export async function duration(id: string, file: string) {
 }
 async function pacing(id: string): Promise<{ speed: number; pause_min: number; air: number }> {
   const code = `import json,sys;sys.path.insert(0,${JSON.stringify(S)});from pacing import pacing;print(json.dumps(pacing(json.load(open(sys.argv[1])))))`;
-  return JSON.parse((await run(id, 'python3', ['-c', code, join(projDir(id), 'brand.json')])).out);
+  return JSON.parse((await run(id, PYTHON, ['-c', code, join(projDir(id), 'brand.json')])).out);
 }
 const rawClip = (P: string) => join(P, readdirSync(P).find(f => f.startsWith('raw.')) ?? fail('raw clip missing'));
 
@@ -604,8 +605,8 @@ export async function applyUpdate() {
   // --autostash keeps brands/formats edited locally; --ff-only never creates merge commits on the user's machine.
   if (isClone()) out = await git('pull', '-q', '--ff-only', '--autostash', 'origin', branch);
   else await overlayTarball(latest!);
-  await execP('npm', ['install', '--prefix', join(ROOT, 'server'), '--no-audit', '--no-fund']);
-  // Restart without start.sh (no bash/lsof on Windows): a detached copy of this process starts while we exit; the client polls until it answers.
+  await execP(NPM[0], [...NPM.slice(1), 'install', '--prefix', join(ROOT, 'server'), '--no-audit', '--no-fund']);
+  // Restart without start.sh/start.cmd: a detached copy of this process starts while we exit; the client polls until it answers.
   setTimeout(() => { spawn(process.execPath, [...process.execArgv, 'server.ts'], { detached: true, stdio: 'ignore', cwd: join(ROOT, 'server'), env: process.env }).unref(); process.exit(0); }, 300);
   return { ok: true, updated: true, message: /conflict/i.test(out) ? 'Atualizado, mas houve conflito ao reaplicar edições locais (veja git stash list).' : 'Atualizado. Reiniciando o servidor...' };
 }
@@ -987,7 +988,7 @@ export async function testClip(brand: any, project?: string) {
       words: c.words.map((w: any) => ({ ...w, t: Math.max(0, +(w.t - t0).toFixed(2)) })).filter((w: any) => w.t < len) }));
     writeJSON(join(T, 'edit.json'), { captions: clip, punch: [], cards: [] });
     writeJSON(join(T, 'brand.json'), brand);
-    await run(id, 'bash', [join(S, 'render.sh'), T], { REELS_HOME: T });
+    await py(id, 'render.py', [T], { REELS_HOME: T });
     return { file: `/tests/${id}/final.mp4`, project: id, from: t0 };
   } finally { testing = false; }
 }
@@ -1650,6 +1651,7 @@ export async function createProject(o: {
     const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], composerMode, ...(style ? { style } : {}), ...(o.character ? { character: o.character } : {}), ...(o.brollFill === true ? { brollFill: true } : {}) };
     save(st);
     await run(id, 'git', ['init', '-q', P]);
+    await run(id, 'git', ['-C', P, 'config', 'core.autocrlf', 'false']);
     await commit(id, 'project created');
     appendProjectLog(id, '✓ Projeto inicializado e pronto para ingestão.');
     return st;
@@ -1910,7 +1912,7 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
     return st;
   }
 
-  await run(id, 'bash', [join(S, 'clean_audio.sh'), raw, join(P, 'voice.wav')]);
+  await py(id, 'clean_audio.py', [raw, join(P, 'voice.wav')]);
   await py(id, 'transcribe.py', [plan.transcribe === 'srt' ? join(P, st.subtitle!) : raw, join(P, 'transcript.json')]);
   const words: Word[] = readJSON(join(P, 'transcript.json')).filter((w: Word) => w.text.trim());
   if (!words.length) fail('no speech found in the transcript');
@@ -1920,7 +1922,7 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
   if (plan.cut === 'tighten') await py(id, 'tighten.py', [P]);
   await py(id, 'cut.py', [P], { REEL_PREVIEW: '1' });
   // every join transcribed on its own: a retake left in or a word clipped by the cut shows up here, not in the final (exit 3 = no local Whisper)
-  if (plan.cut === 'tighten' && (await run(id, 'python3', [join(S, 'check_joins.py'), P], {}, true)).code === 1) emit(id, 'log', '⚠ emendas com problema (ver FLAG acima e joins.txt): confira o corte antes de seguir');
+  if (plan.cut === 'tighten' && (await run(id, PYTHON, [join(S, 'check_joins.py'), P], {}, true)).code === 1) emit(id, 'log', '⚠ emendas com problema (ver FLAG acima e joins.txt): confira o corte antes de seguir');
   const long = await overLength(id, P, brand);
   if (long) emit(id, 'log', `⚠ ${long}: corte antes da entrega ou suba o limite`);
   // Whisper glues words across pauses, so after tighten its times can sit inside a cut: re-transcribe the master
@@ -2062,7 +2064,7 @@ async function retheme(id: string, st: State) {
   if (!composedByAgent(st)) return buildLive(id, st);
   const C = join(projDir(id), 'compose'), font = brandFontFile(st, writeBrand(st));
   if (font) copyFileSync(font, join(C, 'assets', 'fonts', 'font.otf'));
-  await run(id, 'python3', ['-B', 'scenes.py'], {}, false, C);
+  await run(id, PYTHON, ['-B', 'scenes.py'], {}, false, C);
   delete st.approvedAt; save(st);
   emit(id, 'built', {});
 }
@@ -2232,7 +2234,7 @@ const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,
 async function preview(id: string, st: State) {
   const P = projDir(id);
   writeBrand(st);
-  await run(id, 'bash', [join(S, 'render.sh'), P], { REEL_PREVIEW: '1', ...await renderEnv(id, st) });
+  await py(id, 'render.py', [P], { REEL_PREVIEW: '1', ...await renderEnv(id, st) });
   renameSync(join(P, 'final.mp4'), join(P, 'preview.mp4'));
   emit(id, 'preview', { file: 'preview.mp4' });
 }
@@ -2454,7 +2456,7 @@ const writeReview = (id: string, r: Review) => writeJSON(reviewFile(id), { ...r,
 async function buildLive(id: string, st: State) {
   writeBrand(st);
   if (st.approvedAt) { delete st.approvedAt; save(st); }   // a new composition is not the approved one
-  if (!existsSync(join(SKILL, 'engine/hf/hyperframes-player.global.js'))) await run(id, 'bash', [join(S, 'setup_engine.sh')]);
+  if (!existsSync(join(SKILL, 'engine/hf/hyperframes-player.global.js'))) await py(id, 'setup_engine.py', []);
   await py(id, 'build_reel.py', [projDir(id)], await renderEnv(id, st));
   emit(id, 'built', {});
 }
@@ -2661,7 +2663,7 @@ export const final = (id: string, formats?: unknown) => locked(id, 'final', asyn
       rmSync(join(dir, 'out.mp4'), { force: true });
       if (format === primary) for (const w of syncEdits(dir, P).warnings) emit(id, 'log', `edição: ${w}`);
       emit(id, 'log', `🎬 Renderizando a composição ${format}...`);
-      await run(id, 'npx', ['--yes', 'hyperframes@0.8.217', 'render', '-o', 'out.mp4', '--fps', '30', '--quality', 'delivery'], {}, false, dir);
+      await run(id, NPX[0], [...NPX.slice(1), '--yes', 'hyperframes@0.8.217', 'render', '-o', 'out.mp4', '--fps', '30', '--quality', 'delivery'], {}, false, dir);
       // the composer mixes voice + sfx without a master loudness pass: bring it to the -14 LUFS that qa.py expects.
       // Two passes, like render.sh: a single loudnorm undershoots on speech (measured -15.8 LUFS, outside qa.py's -15..-12.5)
       const ln = join(P, 'final_ln.mp4');
@@ -2670,10 +2672,10 @@ export const final = (id: string, formats?: unknown) => locked(id, 'final', asyn
       await run(id, 'ffmpeg', ['-y', '-v', 'error', '-i', ln, '-c:v', 'copy',
         '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', join(P, 'final.mp4')]);
       rmSync(ln, { force: true });
-    } else await run(id, 'bash', [join(S, 'render.sh'), P, '--final'], { REEL_FORMAT: format, REEL_AFTER_BUILD: EDITS_CLI, ...await renderEnv(id, st) });
-    const qa = await run(id, 'python3', [join(S, 'qa.py'), P], { REEL_FORMAT: format }, true);
+    } else await py(id, 'render.py', [P, '--final'], { REEL_FORMAT: format, REEL_AFTER_BUILD: EDITS_CLI, ...await renderEnv(id, st) });
+    const qa = await run(id, PYTHON, [join(S, 'qa.py'), P], { REEL_FORMAT: format }, true);
     runs.push({ format, pass: qa.code === 0, out: qa.out.trim() });
-    renameSync(join(P, 'final.mp4'), join(P, finalName(format)));   // render.sh always writes final.mp4
+    renameSync(join(P, 'final.mp4'), join(P, finalName(format)));   // render.py always writes final.mp4
   }
   st.qa = { pass: runs.every(r => r.pass), report: runs.map(r => `== ${r.format} ==\n${r.out}`).join('\n\n') };
   if (!st.qa.pass) {
@@ -2712,15 +2714,10 @@ export const exportAfterEffects = (id: string) => locked(id, "ae", async st => {
   
   const runJsxPath = join(aeDir, "run.jsx");
   let aepGenerated = existsSync(aepPath);
-  if (!aepGenerated && existsSync(runJsxPath) && process.platform === "darwin") {
-    try {
-      const aeApp = existsSync("/Applications/Adobe After Effects 2026") ? "Adobe After Effects 2026"
-        : existsSync("/Applications/Adobe After Effects 2025") ? "Adobe After Effects 2025"
-        : existsSync("/Applications/Adobe After Effects 2024") ? "Adobe After Effects 2024"
-        : "Adobe After Effects";
-      await run(id, "osascript", ["-e", `tell application "${aeApp}" to DoScriptFile "${runJsxPath}"`]).catch(() => null);
-      aepGenerated = existsSync(aepPath);
-    } catch {}
+  const ae = afterEffectsCmd(runJsxPath);
+  if (!aepGenerated && existsSync(runJsxPath) && ae) {
+    await run(id, ae[0], ae.slice(1)).catch(() => null);
+    aepGenerated = existsSync(aepPath);
   }
   
   await commit(id, "export: After Effects (.jsx e projeto)");
@@ -2846,7 +2843,7 @@ async function cutoutNow(id: string, force: boolean): Promise<CutoutResult> {
     return { cached: false };
   }
 
-  const rvmPy = join(homedir(), '.cache/rvm-venv/bin/python'), rvmModel = join(homedir(), '.cache/rvm-model/rvm_mobilenetv3_fp32.onnx');
+  const rvmPy = join(homedir(), '.cache/rvm-venv', WIN ? 'Scripts/python.exe' : 'bin/python'), rvmModel = join(homedir(), '.cache/rvm-model/rvm_mobilenetv3_fp32.onnx');
   if (existsSync(rvmPy) && existsSync(rvmModel)) {
     emit(id, 'log', '✂ Recortando o locutor com RVM (≈5 min por minuto de vídeo)...');
     await run(id, rvmPy, [join(S, 'rvm.py'), rvmModel, videoInput, out, '0.4']);
@@ -2854,6 +2851,7 @@ async function cutoutNow(id: string, force: boolean): Promise<CutoutResult> {
     return { cached: false };
   }
   // fallback: Apple Vision when the RVM venv/model are missing. The guide requires RVM (Vision cut the arms in some scenes), so say so.
+  if (process.platform !== 'darwin') fail('Recorte do locutor fora do macOS precisa do RVM (~/.cache/rvm-venv e ~/.cache/rvm-model): não há Apple Vision aqui.');
   emit(id, 'log', '⚠ RVM não instalado (~/.cache/rvm-venv e rvm-model): recortando com Apple Vision, que pode cortar os braços. Instale o RVM para o recorte de referência.');
   const framesDir = join(P, 'frames'), cutoutDir = join(P, 'cutout');
   for (const d of [framesDir, cutoutDir]) { rmSync(d, { recursive: true, force: true }); mkdirSync(d, { recursive: true }); }
@@ -3103,7 +3101,7 @@ async function composeRun(id: string, st: State, note?: string, mode?: string, a
     (motion ? ', then render out.mp4. ' : '. Do NOT render a video: the reviewer plays index.html live, and the final render happens later. ') +
     'Review rule: score the contact sheet 1-10 on hook (first 2 s), legibility at phone size, motion quality, variety, brand fidelity; fix the 3 worst and repeat until all are 8+. Every timed object must be hidden at the start of each seek so none lingers as a ghost. ' +
     'Never touch assets/ except to add files. Finish with one short paragraph: what you built and any known issue.';
-  const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nEdite scenes.py e rode \`python3 -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
+  const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nEdite scenes.py e rode \`${PYTHON} -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
     : motion ? 'Componha o reel completo agora. Termine com out.mp4 renderizado (npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery).'
     : other ? `Adapte a composição original (já pré-carregada em scenes.py a partir do formato primário) para o novo formato ${targetAspect} (${targetW}x${targetH}). Ajuste layouts, zonas de segurança, enquadramentos de câmera (FR) e posições/tamanhos de texto para esta proporção. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.`
     : 'Componha o reel completo agora. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.';
@@ -3126,7 +3124,7 @@ async function composeRun(id: string, st: State, note?: string, mode?: string, a
     setPhase(id, 'ilustrações');
     emit(id, 'log', '🎨 Tratamento pronto. Claude está desenhando os objetos da shot list (engines/marca.js)...');
     await agent('compose:ilustracoes', { system: system + ' In this call you are the illustrator only: write engines/marca.js and engines/demos/marca.py, run the demo and look at its sheet; no scenes.py, no render.',
-      prompt: 'Leia treatment.md (cada "Desenha" da shot list), ILUSTRACAO.md, o pacote do estilo escolhido e o motor dele (engines/<slug>.js; a demo em engines/demos/<slug>.py mostra a API). Escreva engines/marca.js: um objeto global IL com uma função por objeto concreto da shot list (ex.: IL.funil(ctx,t,x,y,s,o)), cada um desenhado em massa com o motor do estilo (sombra dura, luz, grão do ILUSTRACAO.md), nunca linha fina, pictograma ou retângulo genérico; t anima a entrada do objeto (t=0 começa). Escreva engines/demos/marca.py (como as demos: from kit import *, uma cena por 4 objetos com canvas(..., engine="<slug>,marca"), render()) e rode-o com PYTHONPATH=. python3 engines/demos/marca.py; tire snapshots, olhe a folha com Read e corrija até cada objeto ser reconhecível de longe e seguir o ILUSTRACAO.md. Não escreva scenes.py.',
+      prompt: 'Leia treatment.md (cada "Desenha" da shot list), ILUSTRACAO.md, o pacote do estilo escolhido e o motor dele (engines/<slug>.js; a demo em engines/demos/<slug>.py mostra a API). Escreva engines/marca.js: um objeto global IL com uma função por objeto concreto da shot list (ex.: IL.funil(ctx,t,x,y,s,o)), cada um desenhado em massa com o motor do estilo (sombra dura, luz, grão do ILUSTRACAO.md), nunca linha fina, pictograma ou retângulo genérico; t anima a entrada do objeto (t=0 começa). Escreva engines/demos/marca.py (como as demos: from kit import *, uma cena por 4 objetos com canvas(..., engine="<slug>,marca"), render()) e rode-o com PYTHONPATH=. ${PYTHON} engines/demos/marca.py; tire snapshots, olhe a folha com Read e corrija até cada objeto ser reconhecível de longe e seguir o ILUSTRACAO.md. Não escreva scenes.py.',
       cwd: C, noRender: true }, logCost(st));
     if (!existsSync(join(C, 'engines', 'marca.js'))) emit(id, 'log', '⚠ O ilustrador não escreveu engines/marca.js; o compositor desenha os objetos ele mesmo.');
     buildFrom = Date.now();

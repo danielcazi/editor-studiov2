@@ -24,14 +24,14 @@ LANG = os.environ.get("REEL_LANG", "pt")
 # 1. fillers, via Whisper with a filler-heavy prompt
 cuts = []
 def find_whisper():
-    cli = shutil.which("whisper-cli") or next((str(p) for p in Path("~/.cache/hyperframes/whisper").expanduser().rglob("whisper-cli")), None)
+    cli = shutil.which("whisper-cli") or next((str(p) for p in Path("~/.cache/hyperframes/whisper").expanduser().rglob("whisper-cli.exe" if sys.platform == "win32" else "whisper-cli")), None)
     model = next(iter(sorted(Path("~/.cache/hyperframes/whisper/models").expanduser().glob("ggml-small.bin"))), None)
     return cli, model
 cli, model = find_whisper()
 if not (cli and model):   # fresh install (or the ElevenLabs route): HyperFrames' transcriber downloads whisper-cli + the model
     print("local Whisper not installed yet: installing it (one time, a few minutes)")
     try:
-        subprocess.run(["npx", "-y", "hyperframes@0.8.217", "transcribe", str(voice), "-d", str(reel / "_whisper_setup"), "--json", "--model", "small", "--language", LANG],
+        subprocess.run([shutil.which("npx") or "npx", "-y", "hyperframes@0.8.217", "transcribe", str(voice), "-d", str(reel / "_whisper_setup"), "--json", "--model", "small", "--language", LANG],
                        capture_output=True, cwd=str(reel))
     except OSError as e:
         print("couldn't install Whisper:", e)

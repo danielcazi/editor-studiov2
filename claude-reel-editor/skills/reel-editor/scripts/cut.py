@@ -45,11 +45,11 @@ print(f"{n} spans, {kept:.1f}s kept -> {kept / speed:.1f}s at {speed}x")
 if kept / speed > brand.get("max_seconds", 60):
     print(f"warning: longer than {brand.get('max_seconds', 60)}s - suggest more cuts")
 
-subprocess.run(["nice", "-n", "15", "ffmpeg", "-y", "-v", "error", "-stats", "-i", str(src), "-i", str(audio),
+subprocess.run([*([] if sys.platform == "win32" else ["nice", "-n", "15"]), "ffmpeg", "-y", "-v", "error", "-stats", "-i", str(src), "-i", str(audio),
                 "-/filter_complex", str(script),   # ffmpeg >= 7 (9 dropped -filter_complex_script)
                 "-map", "[vout]", "-map", "[aout]",
                 *((["-c:v", "h264_videotoolbox", "-b:v", "12M"] if sys.platform == "darwin" else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]) if os.environ.get("REEL_PREVIEW") else ["-c:v", "libx264", "-preset", "medium", "-crf", "16"]), "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", str(reel / "master.mp4")], check=True)
-marker = reel / "master.preview"                   # render.sh --final re-cuts a fast preview encode at full quality
+marker = reel / "master.preview"                   # render.py --final re-cuts a fast preview encode at full quality
 marker.touch() if os.environ.get("REEL_PREVIEW") else marker.unlink(missing_ok=True)
 print(reel / "master.mp4")

@@ -7,21 +7,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The server lives in `server/` (Node ≥ 23.6, TypeScript run directly, no build step).
 
 ```bash
-./start.sh                      # from repo root: frees port 4400 and starts the server (http://127.0.0.1:4400)
+./start.sh                      # from repo root: frees port 4400 and starts the server (http://127.0.0.1:4400); start.cmd on Windows
 cd server && npm install        # first time only
 cd server && npm start          # same server without the port-cleanup step
 cd server && npm run check      # tsc --noEmit (type check only)
-cd server && npm test           # node --test test/ (with WORKSPACE set to a temp dir) + python3 test/test_transcribe.py + python3 test/test_anim.py
+cd server && npm test           # test/run.mjs: node --test test/ (with WORKSPACE set to a temp dir) + the python tests in test/
 cd server && node --test test/lib.test.ts          # single TS test file
 cd server && node --test --test-name-pattern="spansFromWords" test/lib.test.ts   # single test by name
 cd server && python3 test/test_anim.py             # single Python test
 ```
 
-Environment variables read by the server and pipeline: `PORT` (default 4400), `WORKSPACE` (default `workspace/`), `CLAUDE_BIN` (path to the `claude` CLI used for model calls), `REEL_LANG` (default `pt`, passed to Whisper), `YT_DLP` (default `yt-dlp` from PATH), `CLAUDE_TIMEOUT_MS` (default 20 min per model call). `../.env` is loaded if present.
+Environment variables read by the server and pipeline: `PORT` (default 4400), `WORKSPACE` (default `workspace/`), `CLAUDE_BIN` (path to the `claude` CLI used for model calls), `REEL_LANG` (default `pt`, passed to Whisper), `YT_DLP` (default `yt-dlp` from PATH), `CLAUDE_TIMEOUT_MS` (default 20 min per model call), `PYTHON` (interpreter name, default `python3`, `python` on Windows), `CHROME_PATH`. `../.env` is loaded if present.
 
 ## Architecture
 
-**Two halves, one pipeline.** `server/` is an HTTP + SSE orchestrator with a single-file UI (`server/ui.html`, no build). The heavy media work is done by scripts in `claude-reel-editor/skills/reel-editor/scripts/` (Python, shell, one Swift file for Vision face/nose tracking), which the server spawns. The `claude-reel-editor/skills/reel-editor/SKILL.md` describes the same workflow for use as a Claude Code skill; the server does not read it beyond locating the scripts.
+**Two halves, one pipeline.** `server/` is an HTTP + SSE orchestrator with a single-file UI (`server/ui.html`, no build). The heavy media work is done by scripts in `claude-reel-editor/skills/reel-editor/scripts/` (Python, one Swift file for Vision face/nose tracking), which the server spawns. The `claude-reel-editor/skills/reel-editor/SKILL.md` describes the same workflow for use as a Claude Code skill; the server does not read it beyond locating the scripts.
 
 **Request flow.** `server/server.ts` has a flat route table (`[method, regex, handler]`) that maps each endpoint to a function in `server/pipeline.ts`. `GET /projects/:id/events` is an SSE stream of step progress; the UI subscribes to it.
 
@@ -31,7 +31,7 @@ Environment variables read by the server and pipeline: `PORT` (default 4400), `W
 
 **UI flow: Vídeo → 1 Ingestão → 2 Roteiro → 3 Revisão → 4 Entrega.** There is no storyboard step. Approving the script calls `POST /motion`, which for card formats makes the cards straight from the script in one Opus call (`motionCards`) and rebuilds `proj/` without rendering. Agent formats go from the script and brief straight to `compose()`. Internal step names are unchanged (`motion` = Revisão, `final` = Entrega). A project whose state still says `storyboard` (removed step) is moved back to `script` on load. Entrega groups the final render (formats + QA), the After Effects export and the hook copy (embrulhos).
 
-**Revisão (review).** The UI's review step plays `proj/index.html` (what `build_reel.py` writes) live in the browser through `<hyperframes-player>` (`engine/hf/`, same HyperFrames 0.8.217 as `render.sh`; served at `/hf/*` and `/projects/:id/live/*`), so nothing renders while reviewing. Notes pinned to a time and an optional x/y spot live in `<project>/review.json`; `POST /review/apply` sends every open note to the motion model in one call, rewrites `edit.json` and rebuilds `proj/` only (about 1 s). `final()` refuses while any note is open or until the reviewer clicks Aprovar (`POST /review/approve` sets `approvedAt`; any new AI pass clears it, manual edits in Edição keep it), and the step 4 screen no longer starts a final render. Saving notes sends the `version` read with them: a stale one is refused (two tabs). Agent-composed reels play `compose/index.html` live the same way (`liveDir`), and their notes go to `compose()`, which fails if the agent did not rerun `scenes.py`.
+**Revisão (review).** The UI's review step plays `proj/index.html` (what `build_reel.py` writes) live in the browser through `<hyperframes-player>` (`engine/hf/`, same HyperFrames 0.8.217 as `render.py`; served at `/hf/*` and `/projects/:id/live/*`), so nothing renders while reviewing. Notes pinned to a time and an optional x/y spot live in `<project>/review.json`; `POST /review/apply` sends every open note to the motion model in one call, rewrites `edit.json` and rebuilds `proj/` only (about 1 s). `final()` refuses while any note is open or until the reviewer clicks Aprovar (`POST /review/approve` sets `approvedAt`; any new AI pass clears it, manual edits in Edição keep it), and the step 4 screen no longer starts a final render. Saving notes sends the `version` read with them: a stale one is refused (two tabs). Agent-composed reels play `compose/index.html` live the same way (`liveDir`), and their notes go to `compose()`, which fails if the agent did not rerun `scenes.py`.
 
 **Projects are git repos.** Each project is `workspace/projects/<id>/` with its own `.git`; every step and every manual edit commits there. The root repo is not under git. `REELS_HOME` is set to the project folder when spawning scripts, so the scripts read and write inside it.
 

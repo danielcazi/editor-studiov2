@@ -10,7 +10,7 @@ Contexto para uma sessão nova. Leia também `CLAUDE.md` na raiz.
 
 ## 2. Fatos do render (confirmados lendo `build_reel.py`, 522 linhas)
 
-Arquivo: `claude-reel-editor/skills/reel-editor/scripts/build_reel.py`. Gera um projeto HyperFrames; `render.sh` o renderiza (`npx hyperframes@0.8.217 render`).
+Arquivo: `claude-reel-editor/skills/reel-editor/scripts/build_reel.py`. Gera um projeto HyperFrames; `render.py` o renderiza (`npx hyperframes@0.8.217 render`).
 
 ```
 #cam (zoom/punch)
@@ -24,8 +24,8 @@ Arquivo: `claude-reel-editor/skills/reel-editor/scripts/build_reel.py`. Gera um 
 - O vídeo só aparece em tela cheia ou dentro de card (`block`, `page`), com `object-position` pelo nariz.
 - Referências (linhas aproximadas): `_merge` 49, `ANIM` 52, `fit` 65, `nose_track()` 77, `centre(nx,ny,bw,bh)` 95, `objpos` 99, `mount(src)` 119, `font()` 152, `show(sel,a,b,fade)` 177, câmera/nariz 181–187, `edit.punch` ~190, `phrase_end` 200, dispatch `kind = c["type"]` 213, legendas 355–443, `package.json` 521.
 - Tipos de card: `title, block, card, tag, cta, shot, image, sticker, page, motion, follow, custom`.
-- `render.sh`: `REEL_FORMAT` → `--resolution portrait|landscape` (4:3 sem preset); `REEL_WORKERS` padrão 2; `--quality delivery`; mix final com `loudnorm` -14 LUFS.
-- Ponto onde `REEL_FORMAT` é passado ao `render.sh` em `pipeline.ts`: ~linha 1662.
+- `render.py`: `REEL_FORMAT` → `--resolution portrait|landscape` (4:3 sem preset); `REEL_WORKERS` padrão 2; `--quality delivery`; mix final com `loudnorm` -14 LUFS.
+- Ponto onde `REEL_FORMAT` é passado ao `render.py` em `pipeline.ts`: ~linha 1662.
 - `cutoutPerson(id, options?)` em `pipeline.ts` ~1899: extrai JPGs com ffmpeg, roda `swift tools/vision_cutout.swift framesDir cutoutDir first last`, grava PNG RGBA em `cutout/`, faz commit. Rota `POST /projects/:id/cutout` (`server.ts` linha 49). **Nunca é chamado automaticamente.** Em `pipeline.ts` ~880, `cutout` só aparece como texto no prompt do script.
 
 **Não verificado (verificar primeiro):** se `auto_edit.py` já preenche `edit.punch`; se existe fluxo de ingest com dois vídeos (necessário ao Cut-out Backdrop); implementação de cada tipo de card além do dispatch.
@@ -40,11 +40,11 @@ Arquivo: `claude-reel-editor/skills/reel-editor/scripts/build_reel.py`. Gera um 
 
 ### Passo 0: plumbing (≈10 linhas, `pipeline.ts`)
 
-1. No ponto ~1662, ler `format.json` do projeto (mesma lógica de fallback de `formatGuide`: `st.formatId`, senão `business-reels`) e passar ao `render.sh` as env vars:
+1. No ponto ~1662, ler `format.json` do projeto (mesma lógica de fallback de `formatGuide`: `st.formatId`, senão `business-reels`) e passar ao `render.py` as env vars:
    - `REEL_LAYOUT` = `format.layout` (string, pode ser vazia)
    - `REEL_CUTOUT=1` se `format.cutout` for verdadeiro
    - `REEL_CAP_Y` derivado de `safeZones` (ver abaixo)
-2. `render.sh` repassa as variáveis ao `build_reel.py` (verificar se o env é herdado; senão exportar).
+2. `render.py` repassa as variáveis ao `build_reel.py` (verificar se o env é herdado; senão exportar).
 3. Punch-ins: gerar `edit.punch` a partir de `editingStyle.punchIns` (`intervalSeconds`, `zoomScale`). Só depois de confirmar se `auto_edit.py` já faz isso; se faz, apenas alimentar os parâmetros do formato.
 4. Câmera: ler `headroomPercent` e `zoomFactor` em `build_reel.py` nas linhas 181–187 (hoje ignorados).
 5. Safe zones: ligar `CAP_Y` (posição vertical da legenda) ao `safeZones` do formato.

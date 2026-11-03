@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
+import { findChrome } from '../host.ts';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -45,12 +46,7 @@ const AEP = path.resolve(opt('aep', path.join(OUT, slug(NAME) + '.aep')));
 const STEP = Math.max(1, +opt('step', 1));
 const FPS = +opt('fps', 30);
 
-const CHROME = [
-  process.env.CHROME_PATH,
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/Applications/Chromium.app/Contents/MacOS/Chromium',
-  '/usr/bin/google-chrome', '/usr/bin/chromium'
-].find((p) => p && fs.existsSync(p));
+const CHROME = findChrome();
 if (!CHROME) { console.error('ERRO: Chrome não encontrado. Instale o Google Chrome ou defina CHROME_PATH.'); process.exit(1); }
 
 for (const d of ['V/clips', 'V/media']) fs.rmSync(path.join(OUT, d), { recursive: true, force: true });

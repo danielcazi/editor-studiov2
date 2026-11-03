@@ -6,10 +6,11 @@ import { copyFileSync, existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { findChrome } from '../host.ts';
 
 const HERE = resolve(import.meta.dirname);
 const ROOT = resolve(HERE, '../..');
-const CHROME = [process.env.CHROME_PATH, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(p => p && existsSync(p));
+const CHROME = findChrome();
 
 test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip: CHROME ? false : 'Chrome não encontrado' }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'ae-fixture-'));

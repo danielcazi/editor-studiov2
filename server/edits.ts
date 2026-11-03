@@ -369,7 +369,7 @@ export function syncEdits(dir: string, proj: string) {
   return { warnings };
 }
 
-// render.sh calls this after build_reel.py: node edits.ts <proj dir>
+// render.py calls this after build_reel.py: node edits.ts <proj dir>
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dir = process.argv[2] ?? bad('usage: node edits.ts <composition dir>');
   for (const w of syncEdits(dir, dirname(dir)).warnings) console.log(`edição: ${w}`);

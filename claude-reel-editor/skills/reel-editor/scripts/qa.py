@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """QA gate for a finished reel. Checks size, length, loudness, and (if expected.txt exists) that no words were lost.
 Usage: python3 qa.py <reel-folder> [video]     default video: final.mp4. Exit code 1 if anything fails."""
-import difflib, json, os, re, subprocess, sys
+import difflib, json, os, re, shutil, subprocess, sys
 from pathlib import Path
 
 reel = Path(sys.argv[1]).expanduser()
@@ -47,7 +47,7 @@ if subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "pace.p
 exp = reel / "expected.txt"
 if exp.exists():
     tok = lambda s: re.sub(r"[^\w' ]", " ", s.lower()).split()
-    subprocess.run(["npx", "-y", "hyperframes@0.8.217", "transcribe", str(video), "-d", str(reel / "qa_transcript"),
+    subprocess.run([shutil.which("npx") or "npx", "-y", "hyperframes@0.8.217", "transcribe", str(video), "-d", str(reel / "qa_transcript"),
                     "--json", "--model", "small", "--language", os.environ.get("REEL_LANG", "pt")], capture_output=True, cwd=str(reel))
     heard = [t for wd in json.load(open(reel / "qa_transcript/transcript.json")) for t in tok(wd["text"])]
     expected = tok(exp.read_text())

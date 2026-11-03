@@ -10222,7 +10222,7 @@ async function configUpdate() {
     const r = await api("POST", "/update/apply");
     out.textContent = r.message;
     if (!r.updated) return;
-    // o servidor morre e volta pelo start.sh; recarrega quando responder de novo
+    // o servidor morre e volta sozinho; recarrega quando responder de novo
     await new Promise(ok => setTimeout(ok, 3000));
     const t = setInterval(() => fetch("/formats").then(x => { if (x.ok) { clearInterval(t); location.reload(); } }).catch(() => {}), 1500);
   });

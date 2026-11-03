@@ -2,7 +2,7 @@
 """Word-timed transcript for a clip via the local Whisper in HyperFrames (multilingual model, Portuguese by default),
 or straight from a .srt/.vtt (no Whisper). Writes a flat word list: [{"text","start","end"}, ...].
 Usage: python3 transcribe.py <video|audio|.srt|.vtt> <out.json>     REEL_LANG=pt (default) picks the Whisper language."""
-import json, os, subprocess, sys, unicodedata
+import json, os, shutil, subprocess, sys, unicodedata
 from pathlib import Path
 
 HF = "hyperframes@0.8.217"
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     subs = src.suffix.lower() in (".srt", ".vtt")
     d = out.parent / (out.stem + "_whisper")
     d.mkdir(parents=True, exist_ok=True)   # importing a .srt fails if the folder is missing
-    cmd = ["npx", "-y", HF, "transcribe", str(src), "-d", str(d), "--json"]
+    cmd = [shutil.which("npx") or "npx", "-y", HF, "transcribe", str(src), "-d", str(d), "--json"]
     if not subs: cmd += ["--model", "small", "--language", os.environ.get("REEL_LANG", "pt")]
     # cwd is this scripts folder, never the fresh output dir: on macOS exFAT drives node's getcwd() fails with ENOENT
     # (uv_cwd) for a directory created moments ago, and npx dies before hyperframes even starts; every path above is absolute

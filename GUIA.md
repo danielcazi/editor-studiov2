@@ -85,7 +85,7 @@ Tudo o que sai do projeto fica nesta tela:
 | Quero | Faço |
 |---|---|
 | Subir o editor | `./start.sh` → http://127.0.0.1:4400 |
-| Checar o ambiente | `bash claude-reel-editor/skills/reel-editor/scripts/doctor.sh` |
+| Checar o ambiente | `python3 claude-reel-editor/skills/reel-editor/scripts/doctor.py` |
 | Rodar os testes | `cd server && npm test` |
 | Ver o que mudou num projeto | `cd workspace/projects/<id> && git log --oneline` |
 | Entender a arquitetura | [CLAUDE.md](CLAUDE.md) |
