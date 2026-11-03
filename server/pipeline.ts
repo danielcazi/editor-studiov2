@@ -961,6 +961,8 @@ return p`;
   return new Promise(ok => execFile('osascript', ['-e', script], (err, out) => {
     if (err || !out.trim()) return ok({ path: null, paths: [] });
     const paths = out.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  // osascript só existe no macOS: fora dele devolve 400 e a UI abre o <input type="file"> do navegador
+  if (process.platform !== 'darwin') fail('native file picker only on macOS');
     ok({ path: paths[0] || null, paths });
   }));
 }
