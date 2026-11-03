@@ -11011,14 +11011,14 @@ async function cortes(sel) {
         ${st.cortes.map(c => `<div class="ct-seg" data-n="${c.n}" data-t="${c.start}" title="${c.n}. ${esc(c.title)} (${mmss(c.start)}–${mmss(c.end)})" style="position:absolute;top:4px;bottom:4px;left:${100 * c.start / st.duration}%;width:${100 * (c.end - c.start) / st.duration}%;background:var(--yellow);opacity:.45;border-radius:3px;font:700 11px var(--mono);color:var(--ink);text-align:center;line-height:22px;user-select:none">${c.n}<span class="ct-h" data-edge="start" style="position:absolute;left:0;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(0,0,0,.35)"></span><span class="ct-h" data-edge="end" style="position:absolute;right:0;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(0,0,0,.35)"></span></div>`).join('')}
         <div id="ct-head" style="position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--red,#e55);pointer-events:none"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin:12px 0"><button id="ct-export" class="primary" ${busy ? 'disabled' : ''}>Exportar selecionados (MP4 + SRT)</button><span class="muted" id="ct-sel">0 selecionados</span></div>
+      <div style="display:flex;gap:8px;align-items:center;margin:12px 0"><button id="ct-export" class="primary" ${busy ? 'disabled' : ''}>Exportar selecionados (MP4 + SRT)</button><span class="muted" id="ct-sel">0 selecionados</span>${Object.keys(st.exported).length ? `<a href="/cortes/${esc(st.id)}/files/all.zip" download style="margin-left:auto">⬇ Salvar todos os exportados (.zip)</a>` : ''}</div>
       <div style="display:grid;gap:10px">${st.cortes.map(c => `<label style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer">
         <input type="checkbox" class="ct-pick" value="${c.n}">
         <div><b>${c.n}. ${esc(c.title)}</b> <span class="muted">· ${mmss(c.start)}–${mmss(c.end)} (${Math.round(c.end - c.start)} s) · ${esc(c.tipo)} · nota ${c.score}${c.enfase != null ? ` · ⚡ ênfase ${c.enfase}%` : ''}</span>
           <div style="font-size:13px;margin-top:4px"><span class="muted">Gancho:</span> ${esc(c.hook)}</div>
           <blockquote style="margin:6px 0;padding:6px 10px;border-left:3px solid var(--yellow)">“${esc(c.quote)}”</blockquote>
           <div class="muted" style="font-size:13px">${esc(c.why)}</div>
-          ${st.exported[c.n] ? `<div style="margin-top:6px"><a href="/cortes/${esc(st.id)}/files/${c.n}.mp4" download>⬇ ${c.n}.mp4</a> · <a href="/cortes/${esc(st.id)}/files/${c.n}.srt" download>⬇ ${c.n}.srt</a></div>` : ''}
+          ${st.exported[c.n] ? `<div style="margin-top:6px"><a href="/cortes/${esc(st.id)}/files/${c.n}.mp4" download>⬇ ${c.n}.mp4</a> · <a href="/cortes/${esc(st.id)}/files/${c.n}.srt" download>⬇ ${c.n}.srt</a> · <a href="/cortes/${esc(st.id)}/files/${c.n}.zip" download>⬇ os dois (.zip)</a></div>` : ''}
         </div>
         <button type="button" class="ct-play" data-t="${c.start}">▶ ver</button>
       </label>`).join('')}</div>` : ''}

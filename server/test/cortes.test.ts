@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { enfase, lines, loudLine, pick, snap, srt } from '../cortes.ts';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { enfase, file, lines, loudLine, pick, snap, srt } from '../cortes.ts';
+import { WS } from '../pipeline.ts';
 
 // 200 words, one every 0.5 s (100 s of speech), with a 1 s breath after every 20th word: phrases start at 0, 11, 22, ... s
 const words = Array.from({ length: 200 }, (_, k) => { const t = k * 0.5 + Math.floor(k / 20); return { text: `w${k}`, start: t, end: t + 0.4 }; });
@@ -37,4 +41,14 @@ test('emphasis: loud line is relative to the speaker and silence is left out', (
   const w = Array.from({ length: 50 }, (_, k) => ({ text: `w${k}`, start: k, end: k + 0.9 }));
   assert.ok(lines(w, 25, db)[1].startsWith('[25 ⚡] '));   // the loud seconds 42-43 fall in the second line
   assert.ok(!lines(w, 25, db)[0].includes('⚡'));
+});
+
+test('file() zips every exported clip (all.zip) or one clip pair (N.zip), and refuses what is not exported', () => {
+  const d = join(WS, 'cortes', 'zz'); mkdirSync(join(d, 'out'), { recursive: true });
+  for (const f of ['1.mp4', '1.srt', '2.mp4', '2.srt']) writeFileSync(join(d, 'out', f), f);
+  writeFileSync(join(d, 'state.json'), JSON.stringify({ id: 'zz', name: 'zz', source: 'x', status: 'ready', cortes: [], exported: { 1: { mp4: '1.mp4', srt: '1.srt' }, 2: { mp4: '2.mp4', srt: '2.srt' } }, cost: [] }));
+  const ls = (z: string) => execFileSync('tar', ['-tf', z]).toString().trim().split('\n').sort();
+  assert.deepEqual(ls(file('zz', 'all.zip')), ['1.mp4', '1.srt', '2.mp4', '2.srt']);
+  assert.deepEqual(ls(file('zz', '2.zip')), ['2.mp4', '2.srt']);
+  assert.throws(() => file('zz', '3.zip'), /nada exportado/);
 });

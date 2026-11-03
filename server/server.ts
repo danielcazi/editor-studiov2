@@ -106,7 +106,7 @@ function events(id: string, res: ServerResponse) {
 
 const TYPES: Record<string, string> = { mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', json: 'application/json', jpg: 'image/jpeg', jpeg: 'image/jpeg',
   png: 'image/png', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', glb: 'model/gltf-binary', aac: 'audio/aac', html: 'text/html; charset=utf-8', js: 'text/javascript', css: 'text/css',
-  wav: 'audio/wav', mp3: 'audio/mpeg', m4a: 'audio/mp4' };
+  wav: 'audio/wav', mp3: 'audio/mpeg', m4a: 'audio/mp4', zip: 'application/zip', srt: 'text/plain; charset=utf-8' };
 // mp4 with Range so the <video> can seek; also brand fonts, project JSON and the live composition's files
 function file(path: string, req: IncomingMessage, res: ServerResponse) {
   const size = statSync(path).size, ext = path.split('.').pop()!.toLowerCase();

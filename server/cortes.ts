@@ -1,6 +1,6 @@
 // Cortes: a long talk (about 1 h) in, up to 10 candidate 1-2 min passages out, then an mp4 + srt per chosen passage.
 // Lives beside the reel projects in workspace/cortes/<id>/ (source path, transcript.json, state.json, out/). No SSE: the UI polls GET /cortes/:id.
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { ask, type Cost } from './models.ts';
@@ -29,6 +29,14 @@ export function file(id: string, name: string) {
   const st = load(id);
   if (name === 'source') return st.source;
   const f = join(dirOf(id), 'out', basename(name));
+  // all.zip = every exported clip, N.zip = that clip's mp4 + srt; bsdtar (macOS and Windows) writes zip by the extension, stored (mp4 does not compress)
+  const z = /^(all|\d+)\.zip$/.exec(name);
+  if (z) {
+    const files = z[1] === 'all' ? Object.values(st.exported).flatMap(e => [e.mp4, e.srt]) : [`${z[1]}.mp4`, `${z[1]}.srt`];
+    if (!files.length || !files.every(x => existsSync(join(dirOf(id), 'out', x)))) fail(`nada exportado para ${name}`);
+    execFileSync('tar', ['-a', '--options', 'zip:compression=store', '-cf', f, '-C', join(dirOf(id), 'out'), ...files]);
+    return f;
+  }
   return /^\d+\.(mp4|srt)$/.test(name) && existsSync(f) ? f : fail(`sem ${name}`);
 }
 
