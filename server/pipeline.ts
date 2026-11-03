@@ -4,8 +4,8 @@ import { execFile, execFileSync, spawn, execSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { pipeline as pipe } from 'node:stream/promises';
 import { homedir } from 'node:os';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs';
-import { basename, extname, join, resolve } from 'node:path';
+import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs';
+import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { agent, ask, type Cost } from './models.ts';
 import { applyDirectEdits, deleteCards, deepMerge, FORMATS, pickFormats, remapWords, safeId, shortcutPlan, spansFromWords, type Plan, type Word } from './lib.ts';
 import { CAPTION_PRESETS, CARD_TYPES, formatCardTypes, validateCaptionStyle, validateCard, validateFont, validateIcon } from './validate.ts';
@@ -542,25 +542,61 @@ const runQuiet = (cmd: string, args: string[], ms = 60_000) => new Promise<void>
   p.on('error', () => { clearTimeout(timer); resolve(); });
 });
 
-// ---- self-update (git pull from origin, then restart through start.sh) ---------------------------------------------------
+// ---- self-update: git pull when the folder is a clone, GitHub tarball when it came as a ZIP; then restart ----------------
 const git = (...args: string[]) => execP('git', ['-C', ROOT, ...args]);
+const REPO = 'danielcazi/editor-studiov2', VERSION_FILE = join(ROOT, 'VERSION');   // VERSION holds the sha of the last tarball installed
+const isClone = () => existsSync(join(ROOT, '.git'));
+
+async function githubCommits(): Promise<{ sha: string; message: string }[]> {
+  const res = await fetch(`https://api.github.com/repos/${REPO}/commits?sha=main&per_page=30`, { headers: { 'user-agent': 'editor-7' } });
+  if (!res.ok) fail(`GitHub respondeu ${res.status} ao consultar atualizações`);
+  return ((await res.json()) as { sha: string; commit: { message: string } }[]).map(c => ({ sha: c.sha, message: c.commit.message.split('\n')[0] }));
+}
 
 export async function checkUpdate() {
-  await git('fetch', '-q', 'origin');
-  const branch = (await git('rev-parse', '--abbrev-ref', 'HEAD')).trim();
-  const log = (await git('log', '--format=%s', `HEAD..origin/${branch}`)).trim();
-  const commits = log ? log.split('\n') : [];
-  return { branch, behind: commits.length, commits, dirty: (await git('status', '--porcelain', '--untracked-files=no')).trim() !== '' };
+  if (isClone()) {
+    await git('fetch', '-q', 'origin');
+    const branch = (await git('rev-parse', '--abbrev-ref', 'HEAD')).trim();
+    const log = (await git('log', '--format=%s', `HEAD..origin/${branch}`)).trim();
+    const commits = log ? log.split('\n') : [];
+    return { branch, behind: commits.length, commits, dirty: (await git('status', '--porcelain', '--untracked-files=no')).trim() !== '' };
+  }
+  const all = await githubCommits();
+  const installed = existsSync(VERSION_FILE) ? readFileSync(VERSION_FILE, 'utf8').trim() : '';
+  const i = all.findIndex(c => c.sha === installed);
+  // a ZIP download has no VERSION: everything listed counts as new until the first update writes it
+  const commits = (i < 0 ? all : all.slice(0, i)).map(c => c.message);
+  return { branch: 'main', behind: commits.length, commits, dirty: false, latest: all[0]?.sha };
+}
+
+// Overlays the tarball on ROOT. User data is never touched: workspace/projects|uploads|scratch, .env, node_modules;
+// files already present under workspace/ (brands, formats the person edited) are kept, new ones are added.
+async function overlayTarball(sha: string) {
+  const tmp = join(ROOT, 'workspace', 'scratch', 'update'); rmSync(tmp, { recursive: true, force: true }); mkdirSync(tmp, { recursive: true });
+  const res = await fetch(`https://codeload.github.com/${REPO}/tar.gz/${sha}`);
+  if (!res.ok) fail(`download falhou (${res.status})`);
+  writeFileSync(join(tmp, 'src.tgz'), Buffer.from(await res.arrayBuffer()));
+  await execP('tar', ['-xzf', join(tmp, 'src.tgz'), '-C', tmp]);
+  const src = join(tmp, readdirSync(tmp).find(n => n !== 'src.tgz')!);
+  const skip = /^(workspace\/(projects|uploads|scratch)|\.env|node_modules)(\/|$)/;
+  cpSync(src, ROOT, { recursive: true, force: true, filter: s => {
+    const rel = relative(src, s).split(sep).join('/');
+    return !skip.test(rel) && !(rel.startsWith('workspace/') && existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isFile());
+  } });
+  writeFileSync(VERSION_FILE, sha + '\n');
+  rmSync(tmp, { recursive: true, force: true });
 }
 
 export async function applyUpdate() {
-  const { branch, behind } = await checkUpdate();
+  const { branch, behind, latest } = await checkUpdate();
   if (!behind) return { ok: true, updated: false, message: 'Já está na versão mais recente.' };
+  let out = '';
   // --autostash keeps brands/formats edited locally; --ff-only never creates merge commits on the user's machine.
-  const out = await git('pull', '-q', '--ff-only', '--autostash', 'origin', branch);
+  if (isClone()) out = await git('pull', '-q', '--ff-only', '--autostash', 'origin', branch);
+  else await overlayTarball(latest!);
   await execP('npm', ['install', '--prefix', join(ROOT, 'server'), '--no-audit', '--no-fund']);
-  // start.sh kills whoever listens on PORT (this process) and starts the new code; the client polls until it is back.
-  spawn('bash', [join(ROOT, 'start.sh')], { detached: true, stdio: 'ignore', cwd: ROOT }).unref();
+  // Restart without start.sh (no bash/lsof on Windows): a detached copy of this process starts while we exit; the client polls until it answers.
+  setTimeout(() => { spawn(process.execPath, [...process.execArgv, 'server.ts'], { detached: true, stdio: 'ignore', cwd: join(ROOT, 'server'), env: process.env }).unref(); process.exit(0); }, 300);
   return { ok: true, updated: true, message: /conflict/i.test(out) ? 'Atualizado, mas houve conflito ao reaplicar edições locais (veja git stash list).' : 'Atualizado. Reiniciando o servidor...' };
 }
 
@@ -2976,10 +3012,6 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
   const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nEdite scenes.py e rode \`python3 -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
     : motion ? 'Componha o reel completo agora. Termine com out.mp4 renderizado (npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery).'
     : other ? `Adapte a composição original (já pré-carregada em scenes.py a partir do formato primário) para o novo formato ${targetAspect} (${targetW}x${targetH}). Ajuste layouts, zonas de segurança, enquadramentos de câmera (FR) e posições/tamanhos de texto para esta proporção. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.`
-  // join times of the cut on the master clock: kit.py snaps the cutout to an alternating zoom there, so a jump cut reads as a change of shot
-  const edl = existsSync(join(P, 'edl.json')) ? readJSON(join(P, 'edl.json')) : null, speed = edl?.speed ?? (edl ? (await pacing(id)).speed : 1);
-  const cuts: number[] = []; let acc = 0;
-  for (const [a, b] of (edl?.keep ?? []).slice(0, -1)) { acc += (b - a) / speed; cuts.push(Math.round(acc * 1000) / 1000); }
     : 'Componha o reel completo agora. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.';
   const started = Date.now();
   rmSync(join(C, 'out.mp4'), { force: true });   // a stale out.mp4 from the last run must not pass as this run's result
