@@ -3244,6 +3244,8 @@ async function api(method, path, body) {
   if (!r.ok) throw new Error(j.error);
   return j;
 }
+// o servidor só tem seletor nativo (osascript) no macOS; fora dele o <input type="file"> abre direto no clique
+const NATIVE_PICKER = /Mac/i.test(navigator.platform);
 // tema escuro por padrão; a escolha fica só neste navegador
 const isDark = () => document.documentElement.dataset.theme !== 'light';
 const paintTheme = () => { $('#theme').textContent = isDark() ? 'Tema claro' : 'Tema escuro'; };
@@ -5715,7 +5717,7 @@ function pickField(box) {
     }
     listEl.innerHTML = box._paths.map((p, idx) => `
       <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.06);padding:4px 10px;border-radius:6px;font-size:12px;font-family:var(--mono)">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:85%">${idx + 1}. 🎬 ${esc(p.split('/').pop())}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:85%">${idx + 1}. 🎬 ${esc(p.split(/[\\/]/).pop())}</span>
         <button type="button" data-del="${idx}" style="background:none;border:none;color:var(--mute);cursor:pointer;padding:2px 6px;font-size:14px" title="Remover">&times;</button>
       </div>
     `).join('');
@@ -6559,7 +6561,7 @@ async function projects() {
     const autoFillProjectName = () => {
       if (!nameInput.value.trim() && videoPaths.length > 0) {
         const first = videoPaths[0];
-        const rawName = first.split('/').pop().replace(/\.[^/.]+$/, '');
+        const rawName = first.split(/[\\/]/).pop().replace(/\.[^/.]+$/, '');
         // Clean up common prefixes/suffixes
         const cleanName = rawName.replace(/[^a-zA-Z0-9_\-]/g, '-').replace(/-+/g, '-').toLowerCase();
         nameInput.value = cleanName || 'meu-video';
@@ -6573,7 +6575,7 @@ async function projects() {
       // Videos
       videoPaths.forEach((p, idx) => {
         const ext = p.split('.').pop().toUpperCase() || 'MP4';
-        const fileName = p.split('/').pop();
+        const fileName = p.split(/[\\/]/).pop();
         const probe = videoProbes._combined;
         let metaHtml = '';
         if (probe && videoPaths.length === 1) {
@@ -6607,7 +6609,7 @@ async function projects() {
 
       // Subtitle card (if selected)
       if (subtitlePath) {
-        const subName = subtitlePath.split('/').pop();
+        const subName = subtitlePath.split(/[\\/]/).pop();
         const subExt = subtitlePath.split('.').pop().toUpperCase() || 'SRT';
         const subCard = document.createElement('div');
         subCard.className = 'np-file-card';
@@ -6643,7 +6645,7 @@ async function projects() {
             <div class="np-file-info">
               <div class="np-file-name" title="${esc(imagePaths.join('\n'))}">${imagePaths.length} ${imagePaths.length > 1 ? 'imagens' : 'imagem'}</div>
               <div class="np-file-meta">
-                <span>${esc(imagePaths.map(p => p.split('/').pop()).join(', '))}</span>
+                <span>${esc(imagePaths.map(p => p.split(/[\\/]/).pop()).join(', '))}</span>
               </div>
             </div>
           </div>
@@ -6795,6 +6797,7 @@ async function projects() {
 
     // Pick Video Handler (Try server native picker first, then fallback to input)
     const handlePickVideo = async () => {
+      if (!NATIVE_PICKER) return fileInput.click();
       try {
         const r = await api('POST', '/pick-file', { kind: 'video' });
         const newPaths = r.paths && r.paths.length ? r.paths : (r.path ? [r.path] : []);
@@ -6845,6 +6848,7 @@ async function projects() {
 
     // Subtitle Picker Handler
     const handlePickSubtitle = async () => {
+      if (!NATIVE_PICKER) return subFileInput.click();
       try {
         const r = await api('POST', '/pick-file', { kind: 'subtitle' });
         const newPaths = r.paths && r.paths.length ? r.paths : (r.path ? [r.path] : []);
@@ -6934,7 +6938,7 @@ async function projects() {
         btnCreate.innerHTML = `<span>Criando ${videoPaths.length} projetos...</span> <span class="step-spinner"></span>`;
         for (let i = 0; i < videoPaths.length; i++) {
           const vid = videoPaths[i];
-          const clipName = vid.split('/').pop().replace(/\.[^/.]+$/, '');
+          const clipName = vid.split(/[\\/]/).pop().replace(/\.[^/.]+$/, '');
           const projName = `${baseName}-${clipName || (i + 1)}`;
           const st = await api('POST', '/projects', {
             name: projName,
@@ -11021,9 +11025,9 @@ async function cortes(sel) {
       <p style="margin-top:20px"><button id="ct-del" class="muted">Apagar este corte</button></p>`}
     </section></div>`;
   const upload = (f, kind = 'video') => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=${kind}&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
-  $('#ct-pick').onclick = async () => { try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#ct-video').value = r.path; } catch { $('#ct-file').click(); } };
+  $('#ct-pick').onclick = async () => { if (!NATIVE_PICKER) return $('#ct-file').click(); try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#ct-video').value = r.path; } catch { $('#ct-file').click(); } };
   $('#ct-file').onchange = async e => { if (e.target.files[0]) { $('#ct-video').value = 'enviando…'; $('#ct-video').value = await upload(e.target.files[0]); } };
-  $('#ct-pick-srt').onclick = async () => { try { const r = await api('POST', '/pick-file', { kind: 'subtitle' }); if (r.path) $('#ct-srt').value = r.path; } catch { $('#ct-file-srt').click(); } };
+  $('#ct-pick-srt').onclick = async () => { if (!NATIVE_PICKER) return $('#ct-file-srt').click(); try { const r = await api('POST', '/pick-file', { kind: 'subtitle' }); if (r.path) $('#ct-srt').value = r.path; } catch { $('#ct-file-srt').click(); } };
   $('#ct-file-srt').onchange = async e => { if (e.target.files[0]) $('#ct-srt').value = await upload(e.target.files[0], 'subtitle'); };
   $('#ct-go').onclick = e => act(e.target, async () => { const r = await api('POST', '/cortes', { name: $('#ct-name').value, video: $('#ct-video').value, subtitle: $('#ct-srt').value || undefined }); location.hash = `#/cortes/${r.id}`; });
   if (!st) return;

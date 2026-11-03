@@ -149,7 +149,7 @@ const brandFiles = (brand: any, to: (f: string) => string) => {
   return out;
 };
 const saveBrand = (b: string, brand: any) => writeJSON(join(brandDir(b), 'brand.json'),
-  brandFiles(brand, f => f.startsWith(brandDir(b) + '/') ? f.slice(brandDir(b).length + 1) : f));
+  brandFiles(brand, f => f.startsWith(brandDir(b) + sep) ? f.slice(brandDir(b).length + 1) : f));
 
 export function run(id: string, cmd: string, args: string[], env: Record<string, string> = {}, allowFail = false, cwd?: string): Promise<{ code: number; out: string }> {
   return new Promise((ok, ko) => {
@@ -1049,7 +1049,7 @@ export async function upload(kind: string, name: string, stream: NodeJS.Readable
   await pipe(stream, createWriteStream(path));
   return { path };
 }
-export const intake = (from: string, to: string) => from.startsWith(UPLOADS + '/') ? renameSync(from, to) : copyFileSync(from, to);   // uploads move, picked paths copy
+export const intake = (from: string, to: string) => from.startsWith(UPLOADS + sep) ? renameSync(from, to) : copyFileSync(from, to);   // uploads move, picked paths copy
 
 
 // ---- formats (Editor 7.0) --------------------------------------------------------------------------------------------
@@ -1599,7 +1599,7 @@ export async function createProject(o: {
   appendProjectLog(id, `🚀 Projeto criado: ${o.name} (marca: ${o.brand})`);
   // a step that fails must not leave a folder with no state.json: it would hide the project and block its name
   const moved: [string, string][] = [];   // uploads are moved, not copied: put them back if the project falls through
-  const take = (from: string, to: string) => { intake(from, to); if (from.startsWith(UPLOADS + '/')) moved.push([from, to]); };
+  const take = (from: string, to: string) => { intake(from, to); if (from.startsWith(UPLOADS + sep)) moved.push([from, to]); };
   try {
 
     if (textMode) {
@@ -2467,7 +2467,7 @@ export const buildReview = (id: string) => locked(id, 'build', async st => {
 export function liveFile(id: string, rel: string) {
   const base = liveDir(load(id)), p = resolve(base, rel);
   if (rel === 'index.html' && existsSync(p)) syncEdits(base, projDir(id));   // a new AI pass gets the manual edits again
-  if (!p.startsWith(base + '/') || !existsSync(p) || !statSync(p).isFile()) fail(`no ${rel} in the live composition`);
+  if (!p.startsWith(base + sep) || !existsSync(p) || !statSync(p).isFile()) fail(`no ${rel} in the live composition`);
   return p;
 }
 export const hfFile = (name: string) => ['hyperframes-player.global.js', 'hyperframe.runtime.iife.js'].includes(name) ? join(SKILL, 'engine/hf', name) : fail(`no ${name}`);
@@ -2490,7 +2490,7 @@ export function getLayers(id: string) {
   const layers = listLayers(html, extra);
   for (const l of layers.filter(l => l.comp)) {   // a scene's texts live in its own file (the AI's copy, as edits index into it)
     const f = resolve(D, l.comp!), ai = aiCopy(f);
-    if (f.startsWith(D + '/') && existsSync(f)) {
+    if (f.startsWith(D + sep) && existsSync(f)) {
       const src = readFileSync(existsSync(ai) ? ai : f, 'utf8');
       l.texts = textRuns(src).map(({ i, text }) => ({ i, text }));
       l.colors = colorsOf(src);
@@ -2511,7 +2511,7 @@ export async function putLayers(id: string, doc: unknown) {
 export async function addMedia(id: string, from: string) {
   load(id);
   const p = expandHome(from);
-  if (!p?.startsWith(UPLOADS + '/') || !existsSync(p)) fail('envie o arquivo pelo upload primeiro');
+  if (!p?.startsWith(UPLOADS + sep) || !existsSync(p)) fail('envie o arquivo pelo upload primeiro');
   const ext = extname(p).toLowerCase();
   if (!MEDIA_EXT.includes(ext)) fail(`arquivo deve ser ${MEDIA_EXT.join(' ')}`);
   const dir = join(projDir(id), 'media'), name = basename(p).replace(/^\d+-/, '').replace(/[^\w.-]+/g, '_');

@@ -2,7 +2,7 @@
 // The AI's index.html is kept as index.ai.html and index.html is rewritten from it with the edits. A fresh AI pass writes
 // an index.html without the marker, which becomes the new index.ai.html: the edits then apply to it again, by layer id.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type Text = { i: number; from: string; to: string };
@@ -359,7 +359,7 @@ export function syncEdits(dir: string, proj: string) {
   // sub-compositions: their texts are edited in their own files
   for (const m of base.matchAll(/<[a-z][\w-]*\b[^>]*\sid="([^"]+)"[^>]*\sdata-composition-src="([^"]+)"[^>]*>/gi)) {
     const file = join(dir, m[2]);
-    if (!existsSync(file) || !file.startsWith(dir + '/')) continue;
+    if (!existsSync(file) || !file.startsWith(dir + sep)) continue;
     const texts = d.layers[m[1]]?.texts ?? [], colors = d.layers[m[1]]?.colors ?? [], marked = isMarked(readFileSync(file, 'utf8'));
     if (!texts.length && !colors.length && !marked) continue;
     const src = pristine(file);
