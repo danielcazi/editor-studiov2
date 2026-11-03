@@ -31,6 +31,13 @@ lufs = float(re.findall(r"I:\s+(-?[\d.]+) LUFS", ebu)[-1])
 print(f"loudness  {lufs:.1f} LUFS  (want -15 to -12.5)")
 if not -15 <= lufs <= -12.5: fails.append("loudness")
 
+layout = reel / "proj" / "captions_layout.json"
+if layout.exists():
+    if subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "caption_overlap.py"), str(video), str(layout)]).returncode:
+        fails.append("overlap")
+else:
+    print("overlap   skipped (no proj/captions_layout.json: build the reel first)")
+
 exp = reel / "expected.txt"
 if exp.exists():
     tok = lambda s: re.sub(r"[^\w' ]", " ", s.lower()).split()

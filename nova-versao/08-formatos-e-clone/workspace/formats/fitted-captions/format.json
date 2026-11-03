@@ -1,0 +1,67 @@
+{
+  "id": "fitted-captions",
+  "name": "Fitted Captions",
+  "order": 4,
+  "styleNumber": 8,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": true,
+  "description": "Uma palavra de destaque gigante, com o resto do texto encaixado em volta.",
+  "promptGuide": "Tipografia cinética estilo revista, só texto (sem imagens ou ícones extras). A cada frase, escolha UMA palavra-chave gigante: a que carrega a ideia da frase, preferindo verbo de ação ou número; sempre escolha uma. As demais palavras ficam menores e encaixadas em volta, no máximo 6 palavras por tela, sem poluir e coerentes com a frase. Só a palavra gigante usa a cor de destaque da marca. Alterne o posicionamento do texto entre: atrás do locutor recortado, por cima de tudo, e contornando o rosto. Varie o estilo tipográfico entre os do catálogo (styleCatalog), mantendo a legibilidade e as fontes da marca. Algo muda na tela a cada ~2 segundos; texto que precisa ser lido fica até a fala terminar. Gancho nos 3 primeiros segundos; cada card dura 2 a 4 segundos.",
+  "comments": "",
+  "layout": "full-editorial",
+  "captionsStyle": "fitted-accent",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 18,
+    "zoomFactor": 1.15,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 200,
+      "bottom": 380,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "blur-extend"
+  },
+  "editingStyle": {
+    "pacing": "dynamic",
+    "screenPacingSeconds": 1.5,
+    "cardMinDuration": 2,
+    "cardMaxDuration": 4,
+    "punchIns": {
+      "enabled": true,
+      "intervalSeconds": [
+        3.5,
+        6
+      ],
+      "zoomScale": 1.2
+    },
+    "transitions": "cut"
+  },
+  "styleCatalog": [
+    "Hierarquia de cor: palavra-chave na cor de destaque, resto branco, 2-3 linhas centralizadas",
+    "Palavra única grande, sans-serif branca, isolada no centro",
+    "Etiquetas manuscritas em fita/papel rasgado claro, uma frase por etiqueta",
+    "Duas linhas: sans bold branca + linha menor em cor quente",
+    "Palavra gigante condensada em caixa alta, com linha pequena serifada acima",
+    "Condensada pesada em caixa alta, empilhada, mistura de duas cores",
+    "Mistura sans + itálico serifado em cor para a palavra-chave",
+    "Linha única discreta em caixa alta pequena (frases de apoio sem palavra forte)",
+    "Palavra em cor com caixa de seleção (handles) ao redor",
+    "Escala mista: linha pequena, palavra grande condensada, linha pequena",
+    "Highlight em tarja: palavra-chave sobre faixa de cor",
+    "Glow suave na palavra de destaque + legenda pequena",
+    "Palavra com gradiente, volume ou neon (números e termos técnicos)",
+    "Texto em arco ou curvado (usar raramente, uma vez por vídeo)",
+    "Palavras dispersas nos cantos em tamanhos diferentes ao redor do locutor",
+    "Script cursivo/manuscrito + sans bold (frase em duas vozes)",
+    "Referência real: 3 linhas sans bold branca à esquerda no terço inferior, palavra-chave em serifa itálica vermelha, palavra final deslocada à direita",
+    "Referência real: topo, sans bold caixa alta branca + palavra-chave serifa itálica vermelha, sobreposta de leve à cabeça (atrás do recorte)",
+    "Referência real: pergunta com script branco + sans, palavra final GIGANTE amarela na frente do corpo, palavra intermediária passando atrás da cabeça"
+  ]
+}

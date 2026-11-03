@@ -1,0 +1,175 @@
+{
+  "name": "DarkRD · colagem editorial de neurociência",
+  "order": 116,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Clonado",
+  "cutout": false,
+  "description": "Reel 1080×1920 com a fala original da aula, sem narração nova, e toda a fala virando tipografia sobre uma mesa de papel pontilhado. Gravuras P&B coladas com fita crepe, brilho vermelho no cérebro, grifo amarelo de pincel e títulos Anton. A câmera é contínua e só anda no respiro da fala. Existem duas versões: A, com o rosto no gancho (metade de cima), e B, só motion.",
+  "promptGuide": "LOOK: fundo de papel #E8E7E3 com pontos #C6C4BE a cada 34 px, sem corte entre cenas. Há grão de textura pronta e uma franja RGB leve no texto. Tinta #161616. Vermelho #E2261B só para o brilho no cérebro, o itálico e o X. Amarelo #F3CB1A para o grifo de pincel, as etiquetas e o fundo de título. Fita crepe bege translúcida. O resto é preto, branco e cinza de gravura.\n\nTIPOGRAFIA: (1) Títulos em Anton, maiúsculas, alinhados à esquerda, 2 a 3 linhas empilhadas. A última linha é bem maior (~2x). Cada linha sobe de uma máscara com folga de .3em em cima e .16em embaixo, partindo de 160% (o acento nunca aparece antes da palavra nem fica cortado). (2) Legenda em Inter Tight, caixa baixa, centrada, ~44 px na tela no mínimo (~50 a 60 px em 1080), peso 300 a 400 para o texto normal e 800/900 para a palavra-chave. Fica em 1 a 3 linhas, num bloco abaixo da imagem. A fala inteira aparece palavra por palavra, cada uma entrando (blur para nítido e leve subida) no instante em que é dita. Ao trocar de frase, a anterior some. Palavra de ênfase em itálico vermelho ou com grifo amarelo de pincel atrás (preto 900 sobre amarelo). Números viram contador (×10). (3) Etiquetas em Special Elite, máquina de escrever, preto sobre retângulo amarelo ou círculo amarelo (ex.: citação de estudo no topo, \"autor e ano\" em cinza abaixo).\n\nCARTÕES/GRAFISMOS: Foto = gravura P&B num cartão branco com moldura fina e sombra, levemente girada (-2° a 2°), com fita em cima e embaixo ou nos cantos. Gravura = recorte impresso no papel (multiply), revelada de baixo, da esquerda ou por escala. Recorte = PNG com alfa e sombra suave (cérebro, cabeça em corte). Brilho vermelho = mancha pulsante sobre a região do cérebro. Conector = linha fina preta em cotovelo ou reta com bolinha na ponta, ligando o texto ou a lupa à imagem. Lupa = círculo escuro com anel claro mostrando um detalhe. Objetos 3D simples (botão vermelho, frasco) e título numerado (\"2 · BOTÃO\") em Anton menor. Gráficos tracejados desenhados no tempo da fala. Uma ideia por enquadramento.\n\nLAYOUT: a zona segura do Reels é topo 230, base 440, esquerda 80 e direita 150 px. O mundo é desenhado a escala 0,78, centrado nessa zona. Título no terço superior, imagem no meio e legenda abaixo da imagem (y ~ 55 a 65% da altura). Nada importante fora da zona. Versão A: metade de cima (~860 px) mostra o rosto do apresentador, com a borda inferior de papel rasgado e duas fitas. Embaixo ficam o motion e a legenda, e o painel sobe junto com a 1ª passagem de câmera. A cena 0 fica compacta, abaixo do painel. Versão B: no lugar do rosto, um título em Anton em cima.\n\nCÂMERA: câmera contínua num mundo grande, com as cenas a ~1300 px na horizontal e ~2100 px na vertical umas das outras. A passagem (pan com desfoque por velocidade) dura o respiro inteiro, com mínimo de 0,8 s. Ela segura a conclusão por até 0,4 s, anda no silêncio e chega logo depois da 1ª palavra da frase nova. Dentro da cena há um push-in lento (zoom 1.03 a 1.1 em 2 a 3 s) e um balanço leve de câmera na mão. Sem ida e volta e sem passagem brusca. Em visão geral com zoom baixo, afaste as vizinhas para não aparecerem na borda.\n\nRITMO: tudo é amarrado ao instante da palavra. A animação nunca corre na frente da fala. Pausas de 0,7 a 1,2 s onde a cena troca e ~0,35 s dentro da cena. Uma cena dura ~4 a 7 s. O vídeo tem 0 cortes secos, só câmera.\n\nSOM: voz original em primeiro plano. Música 17 dB abaixo da voz, final em −14 LUFS, fade-in de 0,4 s e saída de 1,6 s depois da última fala. SFX discretos, com ganho geral −15 dB, que compõem sem aparecer. Sem datilografia e sem riser. Muitos hits medidos no vídeo são fala, então não coloque um SFX por palavra: só passagens de câmera, fotos coladas, o painel do rosto, clique em apertos, ping em \"acende\" e a palavra final.",
+  "comments": "",
+  "captionsStyle": "phrase",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 18,
+    "zoomFactor": 1.15,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 230,
+      "bottom": 440,
+      "left": 80,
+      "right": 150
+    },
+    "backgroundStyle": "blur-extend"
+  },
+  "editingStyle": {
+    "pacing": "dynamic",
+    "screenPacingSeconds": 5,
+    "cardMinDuration": 2.5,
+    "cardMaxDuration": 7,
+    "punchIns": {
+      "enabled": true,
+      "intervalSeconds": [
+        3,
+        6
+      ],
+      "zoomScale": 1.25
+    },
+    "transitions": "Sem cortes: a câmera passeia por um mundo de papel pontilhado. A passagem entre cenas dura o respiro da fala (mínimo 0,8 s), com desfoque de movimento por velocidade, e chega logo depois da 1ª palavra da frase nova. Dentro da cena, push-in lento de 1.03 a 1.1. Na versão A, o painel do rosto sobe e sai junto com a 1ª passagem."
+  },
+  "sfxRules": [
+    {
+      "when": "Passagem de câmera entre cenas (no respiro da fala)",
+      "sfx": "whoosh-short",
+      "level": "subtle"
+    },
+    {
+      "when": "Zoom-out de visão geral / passagem longa",
+      "sfx": "whoosh",
+      "level": "subtle"
+    },
+    {
+      "when": "Foto ou gravura colada com fita, ou painel do rosto subindo",
+      "sfx": "click-soft",
+      "level": "subtle"
+    },
+    {
+      "when": "Lâmpada acende ou algo acende no cérebro (brilho vermelho)",
+      "sfx": "ping",
+      "level": "subtle"
+    },
+    {
+      "when": "Apertos repetidos do botão (um clique por aperto)",
+      "sfx": "click",
+      "level": "subtle"
+    },
+    {
+      "when": "Algo é negado (X vermelho)",
+      "sfx": "impact-bass-1",
+      "level": "subtle"
+    },
+    {
+      "when": "Palavra final / conclusão do corte",
+      "sfx": "impact-bass-2",
+      "level": "subtle"
+    }
+  ],
+  "sfxGainDb": -15,
+  "sfxForbidden": [
+    "typing",
+    "riser",
+    "key-press"
+  ],
+  "sfxPerMinute": 40,
+  "motionRecipes": [
+    {
+      "name": "titulo-linha-mascara",
+      "use": "Linha de título Anton subindo de dentro da máscara (folga .3em em cima e .16em embaixo), uma linha por vez, com o acento inteiro",
+      "gsap": "gsap.fromTo(SEL, {yPercent:160}, {yPercent:0, duration:0.45, ease:'power3.out', stagger:0.12})"
+    },
+    {
+      "name": "palavra-legenda",
+      "use": "Cada palavra da legenda entra no instante em que é dita (blur para nítido, com leve subida)",
+      "gsap": "gsap.fromTo(SEL, {opacity:0, y:14, filter:'blur(8px)'}, {opacity:1, y:0, filter:'blur(0px)', duration:0.22, ease:'power2.out'})"
+    },
+    {
+      "name": "foto-colada",
+      "use": "Cartão de foto P&B com fita cai no papel com leve rotação e sombra",
+      "gsap": "gsap.fromTo(SEL, {scale:1.12, rotation:-5, y:-40, opacity:0}, {scale:1, rotation:-1.5, y:0, opacity:1, duration:0.4, ease:'back.out(1.6)'})"
+    },
+    {
+      "name": "grifo-pincel",
+      "use": "Pincelada amarela revelada da esquerda para a direita atrás da palavra-chave",
+      "gsap": "gsap.fromTo(SEL, {clipPath:'inset(0 100% 0 0)'}, {clipPath:'inset(0 0% 0 0)', duration:0.35, ease:'power2.out'})"
+    },
+    {
+      "name": "passagem-camera",
+      "use": "Pan do mundo no respiro da fala, com desfoque por velocidade, dura ≥0,8 s",
+      "gsap": "gsap.timeline().to(SEL, {x:-1300, y:-2100, duration:1.0, ease:'power3.inOut'}, 0).fromTo(SEL, {filter:'blur(0px)'}, {filter:'blur(6px)', duration:0.5, yoyo:true, repeat:1, ease:'sine.inOut'}, 0)"
+    },
+    {
+      "name": "push-in-lento",
+      "use": "Aproximação lenta dentro da cena, sem parar a leitura",
+      "gsap": "gsap.fromTo(SEL, {scale:1}, {scale:1.07, duration:2.5, ease:'none'})"
+    }
+  ],
+  "clonedFrom": {
+    "urls": [],
+    "measured": [
+      {
+        "clip": "008 Conteudo RD.mp4",
+        "duration": 60,
+        "cuts": 0,
+        "secondsPerCut": 60,
+        "size": "480x848",
+        "sfxHits": [
+          0.28,
+          0.76,
+          2.22,
+          2.62,
+          2.92,
+          5,
+          5.94,
+          6.64,
+          7.92,
+          8.6,
+          9.04,
+          9.36,
+          9.68,
+          10.58,
+          12.02,
+          13.08,
+          14.24,
+          14.76,
+          15.36,
+          16.54,
+          17.18,
+          17.52,
+          18.98,
+          20.58,
+          21.32,
+          22.06,
+          22.52,
+          22.78,
+          23.56,
+          25.02,
+          25.74,
+          26.12,
+          27.12,
+          27.88,
+          28.44,
+          29,
+          30.94,
+          31.28,
+          33.1,
+          34.78
+        ]
+      }
+    ],
+    "note": "A skill é a fonte da verdade das regras; o vídeo é o resultado dela."
+  },
+  "id": "darkrd-clone"
+}

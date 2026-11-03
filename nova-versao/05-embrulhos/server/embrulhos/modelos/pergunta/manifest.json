@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "pergunta",
+  "nome": "Pergunta",
+  "origem": "(PDF embrulhos, enviado pelo editor)#p5",
+  "tipo": "sobreposicao",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "rotulo",
+      "papel": "rotulo",
+      "max": 24,
+      "padrao": "Faça uma pergunta",
+      "fixo": true
+    },
+    {
+      "id": "pergunta",
+      "papel": "pergunta",
+      "max": 90
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "pergunta",
+      "polemica"
+    ],
+    "serveA": [
+      "abertura",
+      "gancho"
+    ],
+    "exige": [],
+    "evita": []
+  }
+}

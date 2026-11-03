@@ -1,0 +1,46 @@
+{
+  "id": "explainer-panel",
+  "name": "Explainer Panel",
+  "order": 9,
+  "styleNumber": 3,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": true,
+  "description": "Você num painel embaixo, com explicações animadas em cima.",
+  "promptGuide": "Painel dividido: os 60% superiores são a área de explicação e os 40% inferiores são o locutor num painel de cantos arredondados, em vídeo normal e sem recorte. A área de cima mostra um visual limpo, escolhido pelo conteúdo: lista que se preenche item a item, comparação lado a lado, passo a passo numerado, gráfico simples, número grande ou calendário (só quando o tema tem prazo ou hábito). O visual cresce enquanto o locutor fala sobre a ideia e só troca quando a ideia muda, não a cada frase. Cores e fontes da marca. Gancho de 3s com o título do tema na área de cima. No CTA, a área de cima mostra a frase final. Legenda com divisor e destaque, na fronteira entre as duas áreas. Algo muda na tela a cada ~2s; texto que precisa ser lido fica até a fala terminar. Cards de 2,8 a 5s.",
+  "comments": "",
+  "layout": "bottom-panel-60-40",
+  "captionsStyle": "divider-accent",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 14,
+    "zoomFactor": 1.1,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 180,
+      "bottom": 340,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "clean-dark"
+  },
+  "editingStyle": {
+    "pacing": "educational",
+    "screenPacingSeconds": 2.2,
+    "cardMinDuration": 2.8,
+    "cardMaxDuration": 5,
+    "punchIns": {
+      "enabled": false,
+      "intervalSeconds": [
+        4,
+        8
+      ],
+      "zoomScale": 1.15
+    },
+    "transitions": "cut"
+  }
+}

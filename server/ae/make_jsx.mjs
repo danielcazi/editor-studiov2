@@ -82,21 +82,30 @@ const dims = await (async () => {
   return m ? [+m[1], +m[2]] : [1080, 1920];
 })();
 const [W_COMP, H_COMP] = dims;
-await page.setViewport({ width: W_COMP, height: H_COMP, deviceScaleFactor: 1 });
+// margem em volta do quadro: com câmera de mundo (pan, pull) o After mostra o que fica fora do quadro, então os clipes a levam junto
+const MARGEM = 160;
+await page.setViewport({ width: W_COMP + 2 * MARGEM, height: H_COMP + 2 * MARGEM, deviceScaleFactor: 1 });
 await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'load', timeout: 120000 });   // não networkidle: os vídeos continuam baixando
 await page.waitForFunction(() => window.__playerReady && window.__player, { timeout: 60000 });
 await page.evaluate(() => { window.__player.enableRenderMode && window.__player.enableRenderMode(); return document.fonts.ready.then(() => 0); });
 const DUR = +(+opt('dur', await page.evaluate(() => window.__player.getDuration()))).toFixed(3);
 const seek = (t) => page.evaluate(async (x) => {
+  if (window.__AE) window.__AE.antes();   // zera o registro de texto em canvas: os canvases desenham durante o seek
   await window.__player.renderSeek(x);
   if (window.__hfWaitForSeekCompletion) await window.__hfWaitForSeekCompletion();
   await document.fonts.ready;   // a fonte de uma cena só carrega quando ela aparece; medir antes dá a fonte reserva
+  if (window.__AE) window.__AE.repouso();   // câmera de mundo em repouso: medimos sem ela e o After a recria
 }, t);
 
 // ---- Funções injetadas na página ----
 const INPAGE = () => {
   const num = (v) => parseFloat(v) || 0;
-  const col = (s) => { const m = String(s).match(/[\d.]+/g) || []; return { c: [+m[0] || 0, +m[1] || 0, +m[2] || 0], a: m.length > 3 ? +m[3] : 1 }; };
+  // rgb()/rgba() do computed style, ou hex (#rgb, #rrggbb, #rrggbbaa: o canvas devolve fillStyle/shadowColor opacos em hex)
+  const col = (s) => {
+    const h = /^#([0-9a-f]{3,8})$/i.exec(String(s).trim());
+    if (h) { let x = h[1]; if (x.length < 6) x = [...x].map((c) => c + c).join(''); const n = (i) => parseInt(x.slice(i, i + 2), 16); return { c: [n(0), n(2), n(4)], a: x.length === 8 ? n(6) / 255 : 1 }; }
+    const m = String(s).match(/[\d.]+/g) || []; return { c: [+m[0] || 0, +m[1] || 0, +m[2] || 0], a: m.length > 3 ? +m[3] : 1 };
+  };
   const vis = (el, stop) => {
     let o = 1;
     for (let n = el; n && n !== stop && n !== document.body; n = n.parentElement) {
@@ -130,12 +139,74 @@ const INPAGE = () => {
 
   // caractere que a fonte principal não tem (emoji, ✦): o navegador desenha com outra fonte, o After não.
   // Se a largura muda conforme a fonte reserva, quem desenhou foi a reserva.
-  const semGlifo = (el, cs) => {
-    const fam = cs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), w = `${cs.fontWeight} 40px "${fam}"`;
-    const chars = new Set([...el.childNodes].filter((c) => c.nodeType === 3).map((c) => c.textContent).join('').replace(/\s/g, ''));
-    const largura = (ch, reserva) => { ctx.font = w + ', ' + reserva; return ctx.measureText(ch).width; };
+  const glifoFora = (chars, weight, fam) => {
+    const w = `${weight} 40px "${fam}"`;
+    const largura = (ch, reserva) => { ctx.font = w + ', ' + reserva; ctx.letterSpacing = '0px'; return ctx.measureText(ch).width; };
     // emoji sai da fonte de emoji do sistema com qualquer reserva, então é pego pela categoria
     return [...chars].some((ch) => /\p{Extended_Pictographic}/u.test(ch) || largura(ch, 'serif') !== largura(ch, 'monospace'));
+  };
+  const semGlifo = (el, cs) => glifoFora(new Set([...el.childNodes].filter((c) => c.nodeType === 3).map((c) => c.textContent).join('').replace(/\s/g, '')),
+    cs.fontWeight, cs.fontFamily.split(',')[0].replace(/["']/g, '').trim());
+
+  // ---- Câmera de mundo (compose): #world com preserve-3d sob a raiz e, dentro, camadas de profundidade com translateZ fixo ----
+  // Tudo é medido no repouso (transforms deles em 'none', ver repouso()) e o After recria a câmera: nulls 3D + câmera com zoom = perspective.
+  const world = [...root.children].find((e) => !SKIP.test(e.tagName) && getComputedStyle(e).transformStyle === 'preserve-3d') || null;
+  const zDe = (e) => { const m = /translateZ\((-?[\d.]+)px\)/.exec(e.getAttribute('style') || ''); return m ? +m[1] : null; };
+  const depths = world ? [...world.children].filter((e) => !SKIP.test(e.tagName) && zDe(e) !== null) : [];
+  depths.forEach((d, n) => d.setAttribute('data-ae-depth', d.id || 'prof' + n));
+  const repouso = () => { if (world) world.style.transform = 'none'; for (const d of depths) d.style.transform = 'none'; };
+  const depthOf = (e) => { const d = depths.find((x) => x.contains(e)); return d ? d.getAttribute('data-ae-depth') : world && world.contains(e) ? '@world' : null; };
+  const mundo = () => world && {
+    p: num(getComputedStyle(root).perspective) || 1800,
+    depths: depths.map((d) => ({ id: d.getAttribute('data-ae-depth'), z: zDe(d), s: +((/scale\(([\d.]+)\)/.exec(d.getAttribute('style')) || [])[1] || 1) }))
+  };
+  // pose do #world no quadro atual (GSAP guarda os valores; o style inline já está em repouso)
+  const pose = () => {
+    const g = (k) => window.gsap ? +(+window.gsap.getProperty(world, k)).toFixed(3) : 0;
+    return { x: g('x'), y: g('y'), s: window.gsap ? +(+window.gsap.getProperty(world, 'scale')).toFixed(4) : 1, rx: g('rotationX'), ry: g('rotationY'), rz: g('rotation') };
+  };
+
+  // ---- Texto desenhado em canvas (ilustrações do compose): cada fillText de um canvas do documento é candidato a texto nativo ----
+  // Elegível: alfa ≥ .5, sem clip, sem filtro, cor sólida, sem emoji. Suprimido (não desenhado) quando a chave já virou camada de texto
+  // no After: o clipe leva só a decoração. Rastros de alfa baixo (smear, fades) ficam no clipe, por isso o limiar de .5 vale nos dois lados.
+  const draws = [], SUP = new Set();
+  const CT = CanvasRenderingContext2D.prototype, ft0 = CT.fillText, clip0 = CT.clip, save0 = CT.save, restore0 = CT.restore;
+  CT.clip = function () { this.__clip = (this.__clip || 0) + 1; return clip0.apply(this, arguments); };
+  CT.save = function () { (this.__pilha = this.__pilha || []).push(this.__clip || 0); return save0.apply(this, arguments); };
+  CT.restore = function () { this.__clip = this.__pilha && this.__pilha.length ? this.__pilha.pop() : 0; return restore0.apply(this, arguments); };
+  CT.fillText = function (s, x, y) {
+    const cv = this.canvas;
+    if (cv && cv.isConnected && cv.id && this.globalAlpha > 0) {
+      const text = String(s), fill = typeof this.fillStyle === 'string' ? this.fillStyle : null;
+      const key = [cv.id, text, this.font, this.textAlign, this.textBaseline, fill, this.letterSpacing].join('\u0001');
+      const ok = this.globalAlpha >= 0.5 && !this.__clip && this.filter === 'none' && this.globalCompositeOperation === 'source-over' && !!fill && !/\p{Extended_Pictographic}/u.test(text);
+      if (ok && SUP.has(key)) return;
+      const m = this.getTransform(), sc = col(this.shadowColor);
+      draws.push({ cv, key, text, x, y, font: this.font, align: this.textAlign, base: this.textBaseline, fill, ls: this.letterSpacing, alpha: this.globalAlpha, ok,
+        m: [m.a, m.b, m.c, m.d, m.e, m.f], sh: sc.a > 0.02 && (this.shadowBlur || this.shadowOffsetX || this.shadowOffsetY) ? { c: sc.c, a: sc.a, dx: this.shadowOffsetX, dy: this.shadowOffsetY, blur: this.shadowBlur } : null });
+    }
+    return ft0.apply(this, arguments);
+  };
+  const fontDe = (s) => { const m = /(?:^|\s)(\d{3}|bold|normal)?\s*([\d.]+)px\s+(.+)$/.exec(s); return m && { fam: m[3].split(',')[0].replace(/["']/g, '').trim(), weight: m[1] === 'bold' ? 700 : +m[1] || 400, size: +m[2] }; };
+  // textos elegíveis desenhados neste quadro nos canvases da peça, já no espaço da página: ponto esquerda-base, matriz linear, cor, fonte
+  const ctexts = (p) => {
+    const out = [];
+    for (const d of draws) {
+      if (!d.ok || !p.contains(d.cv)) continue;
+      const r = d.cv.getBoundingClientRect(), kx = r.width / d.cv.width, ky = r.height / d.cv.height;   // shortcut: canvas girado por CSS mede o AABB
+      const f = fontDe(d.font);
+      if (!kx || !ky || !f) continue;
+      ctx.font = d.font; ctx.letterSpacing = d.ls; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      const mt = ctx.measureText(d.text), w = mt.width, asc = mt.fontBoundingBoxAscent || f.size * 0.95, desc = mt.fontBoundingBoxDescent || f.size * 0.25;
+      if (glifoFora(new Set(d.text.replace(/\s/g, '')), f.weight, f.fam)) continue;
+      const lx = d.x - (/center/.test(d.align) ? w / 2 : /right|end/.test(d.align) ? w : 0);
+      const by = d.y + (d.base === 'middle' ? (asc - desc) / 2 : /top|hanging/.test(d.base) ? asc : /bottom|ideographic/.test(d.base) ? -desc : 0);
+      const [a, b, c, dd, e, ff] = d.m;   // página = T(canvas) · S(css/pixel) · matriz do contexto
+      const M = [a * kx, b * ky, c * kx, dd * ky, r.left + e * kx, r.top + ff * ky], fc = col(d.fill);
+      out.push({ key: d.key, text: d.text, fam: f.fam, weight: f.weight, size: f.size, color: fc.c, alpha: fc.a, track: num(d.ls) / f.size * 1000, sh: d.sh, op: d.alpha,
+        p: [+(M[0] * lx + M[2] * by + M[4]).toFixed(2), +(M[1] * lx + M[3] * by + M[5]).toFixed(2)], m: [M[0], M[1], M[2], M[3]] });
+    }
+    return out;
   };
 
   // motivos para a peça virar clipe (lista vazia = pode ser nativa)
@@ -174,7 +245,9 @@ const INPAGE = () => {
 
   // Grupos de peças: cada filho direto da raiz que não é mídia. Sub-composição → os filhos da raiz interna; o resto → ele mesmo.
   const isMedia = (el) => el.matches('audio, video.clip') || (!el.hasAttribute('data-composition-src') && !!el.querySelector('video.clip') && !el.querySelector('[data-composition-src]'));
-  const tops = [...root.children].filter((e) => !SKIP.test(e.tagName));
+  // dentro do #world, os grupos são os filhos das camadas de profundidade (e os irmãos delas, como o invólucro do recorte)
+  const filhos = (e) => [...e.children].filter((c) => !SKIP.test(c.tagName));
+  const tops = filhos(root).flatMap((e) => e !== world ? [e] : filhos(world).flatMap((c) => depths.includes(c) ? filhos(c) : [c]));
   tops.forEach((e, n) => e.setAttribute('data-ae-group', e.id || 'camada' + n));
   // invólucro sem nada visível (só agrupa linhas que animam cada uma): os filhos viram peças, para o texto ficar nativo
   // overflow:hidden só corta se algum filho sai da caixa; o quadro do design (.design) contém as cartas e não corta nada
@@ -188,7 +261,7 @@ const INPAGE = () => {
   const achatar = (els) => els.flatMap((e) => plain(e) ? achatar([...e.children].filter((c) => !SKIP.test(c.tagName))) : [e]);
   const PECAS = {};
   const pecas = (g) => PECAS[g] || (PECAS[g] = (() => {
-    const e = root.querySelector(`:scope > [data-ae-group="${CSS.escape(g)}"]`);
+    const e = tops.find((t) => t.getAttribute('data-ae-group') === g);
     if (!e) return [];
     if (!e.hasAttribute('data-composition-src')) return achatar([e]);
     const inner = e.querySelector('[data-hf-inner-root]') || e.firstElementChild;
@@ -199,7 +272,7 @@ const INPAGE = () => {
   const grupos = () => tops.filter((e) => !isMedia(e)).map((e, n) => {
     const a = e.hasAttribute('data-start') ? startOf(e) : 0;
     const d = e.getAttribute('data-hf-authored-duration') || e.getAttribute('data-duration');
-    return { id: e.getAttribute('data-ae-group'), a, b: d ? a + num(d) : null, z: zOf(e), ord: tops.indexOf(e), comp: e.hasAttribute('data-composition-src') };
+    return { id: e.getAttribute('data-ae-group'), a, b: d ? a + num(d) : null, z: zOf(e), ord: tops.indexOf(e), comp: e.hasAttribute('data-composition-src'), depth: depthOf(e) };
   });
 
   // vídeos e áudios que entram como arquivo (vídeo dentro de cena é peça da cena e vira clipe)
@@ -210,7 +283,7 @@ const INPAGE = () => {
       a: startOf(m), d: num(m.getAttribute('data-duration')) || null,
       ms: num(m.getAttribute('data-media-start') || m.getAttribute('data-playback-start')),
       vol: m.hasAttribute('data-volume') ? num(m.getAttribute('data-volume')) : 1,
-      fit: getComputedStyle(m).objectFit, z: top ? zOf(top) : 0, ord: top ? tops.indexOf(top) : -1
+      fit: getComputedStyle(m).objectFit, z: top ? zOf(top) : 0, ord: top ? tops.indexOf(top) : -1, depth: depthOf(m)
     };
   });
   // caixa do vídeo na tela (já com a câmera dos wrappers aplicada) e opacidade
@@ -229,12 +302,12 @@ const INPAGE = () => {
       const r = d.getBoundingClientRect();
       if (r.width && r.height) { L = Math.min(L, r.left); T = Math.min(T, r.top); Rr = Math.max(Rr, r.right); B = Math.max(B, r.bottom); }
     }
-    const why = complexo(p);
+    const why = complexo(p), ct = ctexts(p);
     const salvo = p.style.transform;
     p.style.transform = 'none';
     const r0 = p.getBoundingClientRect(), org = cs.transformOrigin.split(' ').map(num), sig = assinatura(p);
     p.style.transform = salvo;
-    return { i, on: true, op: +op.toFixed(4), m, O: [r0.left + org[0], r0.top + org[1]], sig, why, box: [L, T, Rr, B] };
+    return { i, on: true, op: +op.toFixed(4), m, O: [r0.left + org[0], r0.top + org[1]], sig, why, box: [L, T, Rr, B], ct };
   });
 
   // textos e formas nativos na pose de repouso
@@ -343,14 +416,26 @@ const INPAGE = () => {
     window.__aeSalvos = [];
   };
 
-  return { grupos, midias, midiaPose, sondar, extrair: (g, i) => { const p = pecas(g)[i]; return p ? extrair(p) : null; }, isolar, ocultarTexto, restaurarTexto };
+  return { grupos, midias, midiaPose, sondar, extrair: (g, i) => { const p = pecas(g)[i]; return p ? extrair(p) : null; }, isolar, ocultarTexto, restaurarTexto,
+    mundo, pose, repouso, antes: () => { draws.length = 0; }, suprimir: (keys) => { SUP.clear(); for (const k of keys) SUP.add(k); } };
 };
 
 await page.evaluate(`window.__AE = (${INPAGE.toString()})();`);
-const STYLE_ONLY = 'html,body,[data-composition-id],[data-hf-inner-root]{background:transparent!important}body *{visibility:hidden!important}[data-ae-only],[data-ae-only] *{visibility:visible!important}';
+// só na hora dos clipes a página desliza pela margem, para a captura alcançar o que sai do quadro (as medições ficam em coordenadas do quadro)
+const STYLE_ONLY = `html,body,[data-composition-id],[data-hf-inner-root]{background:transparent!important}body *{visibility:hidden!important}[data-ae-only],[data-ae-only] *{visibility:visible!important}html{transform:translate(${MARGEM}px,${MARGEM}px)}html,body,[data-composition-id],[data-hf-inner-root]{overflow:visible!important}`;   // shortcut: o que a cena esconde fora do quadro aparece na margem do clipe
 const r3 = (x) => +x.toFixed(3);
 const grupos = await page.evaluate(() => window.__AE.grupos());
 const midias = await page.evaluate(() => window.__AE.midias());
+
+// ---- Câmera de mundo: pose do #world quadro a quadro (só as chaves onde algo muda) ----
+const mundo = await page.evaluate(() => window.__AE.mundo());
+if (mundo) {
+  const keys = [];
+  for (let f = 0; f < Math.round(DUR * FPS); f += STEP) { await seek(f / FPS); keys.push({ t: r3(f / FPS), ...(await page.evaluate(() => window.__AE.pose())) }); }
+  const same = (x, y) => x && y && ['x', 'y', 's', 'rx', 'ry', 'rz'].every((k) => x[k] === y[k]);
+  mundo.keys = keys.filter((k, j) => !(same(k, keys[j - 1]) && same(k, keys[j + 1])));
+  console.log(`mundo: ${mundo.depths.length} profundidade(s), ${mundo.keys.length} chave(s) de câmera`);
+}
 
 // ---- Peças de cada grupo, quadro a quadro ----
 const pieces = [];
@@ -404,11 +489,33 @@ for (const g of grupos) {
       const PAD = 70;
       let L = 1e9, T = 1e9, Rr = -1e9, B = -1e9;
       for (const x of on) { L = Math.min(L, x.box[0]); T = Math.min(T, x.box[1]); Rr = Math.max(Rr, x.box[2]); B = Math.max(B, x.box[3]); }
-      const x0 = Math.max(0, Math.floor(L - PAD)), y0 = Math.max(0, Math.floor(T - PAD));
-      let w = Math.min(W_COMP, Math.ceil(Rr + PAD)) - x0, h = Math.min(H_COMP, Math.ceil(B + PAD)) - y0;
+      const x0 = Math.max(-MARGEM, Math.floor(L - PAD)), y0 = Math.max(-MARGEM, Math.floor(T - PAD));
+      let w = Math.min(W_COMP + MARGEM, Math.ceil(Rr + PAD)) - x0, h = Math.min(H_COMP + MARGEM, Math.ceil(B + PAD)) - y0;
       w -= w % 2; h -= h % 2;
       if (w < 2 || h < 2) continue;
-      pieces.push({ kind: 'clip', ...base, x: x0, y: y0, w, h, file: `V/clips/${slug(g.id)}-${i}.mov`, ids: [i], why: [...why], semTexto: comTexto });
+      // texto desenhado em canvas: cada frase estável (mesma chave) vira camada de texto com keyframes e sai do clipe
+      const porChave = new Map();
+      for (const x of on) for (const d of x.ct || []) {
+        const l = porChave.get(d.key) || new Map(), h = l.get(x.t);
+        if (!h || d.op > h.d.op) l.set(x.t, { d, pop: x.op });
+        porChave.set(d.key, l);
+      }
+      const sup = [];
+      for (const [key, l] of porChave) {
+        if (l.size * STEP / FPS < 0.25) continue;   // shortcut: texto que fica menos de 0,25 s (digitação, contador) segue no clipe
+        const ts = [...l.keys()], d0 = l.get(ts[Math.floor(ts.length / 2)]).d;
+        const ca = ts[0], cb = r3(Math.min(b, ts[ts.length - 1] + STEP / FPS));
+        const keys = on.filter((x) => x.t >= ca && x.t < cb).map((x) => {
+          const h = l.get(x.t);
+          if (!h) return { t: x.t, op: 0 };
+          const [ma, mb, mc, md] = h.d.m, sx = Math.hypot(ma, mb), sy = sx ? (ma * md - mb * mc) / sx : 0;
+          return { t: x.t, p: h.d.p, r: +(Math.atan2(mb, ma) * 180 / Math.PI).toFixed(3), s: [+(sx * 100).toFixed(3), +(sy * 100).toFixed(3)], op: +(h.d.op * h.pop * 100).toFixed(2) };
+        });
+        fontsUsed.add(`${d0.fam} ${d0.weight}`);
+        pieces.push({ kind: 'ctext', ...base, a: ca, b: cb, sub: sup.length + 1, text: d0.text, fam: d0.fam, weight: d0.weight, size: d0.size, color: d0.color, alpha: d0.alpha, track: d0.track, sh: d0.sh, keys });
+        sup.push(key);
+      }
+      pieces.push({ kind: 'clip', ...base, x: x0, y: y0, w, h, file: `V/clips/${slug(g.id)}-${i}.mov`, ids: [i], why: [...why], semTexto: comTexto, sup });
     }
     n++;
   }
@@ -435,7 +542,7 @@ const media = [];
 for (const m of midias) {
   const src = path.resolve(FILM_DIR, m.src);
   if (!fs.existsSync(src)) { avisos.push(`mídia ${m.id}: arquivo não encontrado (${m.src})`); continue; }
-  const it = { id: m.id, tag: m.tag, file: src, a: r3(m.a), b: r3(Math.min(DUR, m.d ? m.a + m.d : DUR)), ms: m.ms, vol: m.vol, z: m.z, ord: m.ord };
+  const it = { id: m.id, tag: m.tag, file: src, a: r3(m.a), b: r3(Math.min(DUR, m.d ? m.a + m.d : DUR)), ms: m.ms, vol: m.vol, z: m.z, ord: m.ord, depth: m.depth };
   if (m.tag === 'video') {
     const v = probe(src);
     if (!v) { avisos.push(`mídia ${m.id}: ffprobe não leu ${m.src}`); continue; }
@@ -473,11 +580,12 @@ if (!flag('sem-clipes')) {
   for (const c of pieces.filter((p) => p.kind === 'clip')) {
     fs.readdirSync(tmp).forEach((f) => fs.unlinkSync(path.join(tmp, f)));
     let n = 0;
+    await page.evaluate((keys) => window.__AE.suprimir(keys), c.sup || []);   // antes do seek: o canvas desenha durante o seek
     for (let f = Math.round(c.a * FPS); f < Math.round(c.b * FPS); f++) {
       await seek(f / FPS);
       await page.evaluate((id, ids) => window.__AE.isolar(id, ids), c.scene, c.ids);
       if (c.semTexto) await page.evaluate((id, ids) => window.__AE.ocultarTexto(id, ids), c.scene, c.ids);
-      await page.screenshot({ path: path.join(tmp, String(n++).padStart(5, '0') + '.png'), clip: { x: c.x, y: c.y, width: c.w, height: c.h }, omitBackground: true });
+      await page.screenshot({ path: path.join(tmp, String(n++).padStart(5, '0') + '.png'), clip: { x: c.x + MARGEM, y: c.y + MARGEM, width: c.w, height: c.h }, omitBackground: true });
       if (c.semTexto) await page.evaluate(() => window.__AE.restaurarTexto());
     }
     const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'),
@@ -485,6 +593,7 @@ if (!flag('sem-clipes')) {
     if (r.status !== 0) { avisos.push(`clipe ${c.file}: ffmpeg falhou (${(r.stderr || '').slice(0, 160)})`); c.kind = 'erro'; }
     process.stdout.write(`\rclipe ${c.file} (${n} quadros)        `);
   }
+  await page.evaluate(() => window.__AE.suprimir([]));
   await h.evaluate((e) => e.remove());
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('');
@@ -508,7 +617,7 @@ const ok = pieces.filter((p) => p.kind !== 'erro');
 const data = {
   name: NAME, fps: FPS, dur: DUR, w: W_COMP, h: H_COMP, aep: AEP,
   markers: grupos.filter((g) => g.comp).map((g) => ({ t: r3(g.a), label: g.id })),
-  media, pieces: ok
+  media, pieces: ok.map((p) => ({ ...p, depth: grupos.find((g) => g.id === p.scene)?.depth || null })), world: mundo
 };
 const tpl = fs.readFileSync(path.join(HERE, 'build_comp.template.jsx'), 'utf8');
 fs.writeFileSync(path.join(OUT, 'build_comp.jsx'), tpl.replace('/*__DATA__*/', 'var DATA = ' + JSON.stringify(data) + ';'));
@@ -526,21 +635,22 @@ try {
 f.close();
 `);
 
-const nat = ok.filter((p) => p.kind === 'native'), clips = ok.filter((p) => p.kind === 'clip');
+const nat = ok.filter((p) => p.kind === 'native'), clips = ok.filter((p) => p.kind === 'clip'), ctexts = ok.filter((p) => p.kind === 'ctext');
 const report = {
   comp: NAME, aep: AEP, fps: FPS, dur: DUR, passo_amostragem: STEP,
   camadas: {
     videos: media.filter((m) => m.tag === 'video').length, audios: media.filter((m) => m.tag === 'audio').length,
-    grupos: grupos.length, pecas_nativas: nat.length,
-    textos: nat.reduce((n, p) => n + p.texts.length, 0), formas: nat.reduce((n, p) => n + p.shapes.length, 0),
-    clipes_prores: clips.length
+    grupos: grupos.length, pecas_nativas: nat.length + ctexts.length,
+    textos: nat.reduce((n, p) => n + p.texts.length, 0) + ctexts.length, textos_canvas: ctexts.length, formas: nat.reduce((n, p) => n + p.shapes.length, 0),
+    clipes_prores: clips.length, camera_mundo: mundo ? mundo.keys.length : 0
   },
   midias: media.map((m) => `${m.id} (${m.tag}, ${m.a.toFixed(2)}–${m.b.toFixed(2)} s): ${m.file.startsWith(OUT) ? path.relative(OUT, m.file) : m.file}`),
-  nativas: nat.map((p) => `${p.scene} peça ${p.i} (${p.a.toFixed(2)}–${p.b.toFixed(2)} s): ${p.texts.map((x) => x.text.replace(/\n/g, ' ')).join(' / ') || p.shapes.length + ' forma(s)'}`),
+  nativas: nat.map((p) => `${p.scene} peça ${p.i} (${p.a.toFixed(2)}–${p.b.toFixed(2)} s): ${p.texts.map((x) => x.text.replace(/\n/g, ' ')).join(' / ') || p.shapes.length + ' forma(s)'}`)
+    .concat(ctexts.map((p) => `${p.scene} peça ${p.i} canvas (${p.a.toFixed(2)}–${p.b.toFixed(2)} s): ${p.text}`)),
   clipes: clips.map((p) => `${p.file} (${p.a.toFixed(2)}–${p.b.toFixed(2)} s, ${p.w}×${p.h}): ${p.why.join(', ')}`),
   fontes_usadas: [...fontsUsed].sort(), fontes_faltando: fontesFaltando,
   avisos: [...new Set(avisos)]
 };
 fs.writeFileSync(path.join(OUT, 'ae_report.json'), JSON.stringify(report, null, 2));
-console.log(`✓ ${OUT}\n  ${report.camadas.videos} vídeo(s), ${report.camadas.audios} áudio(s), ${nat.length} peças nativas (${report.camadas.textos} textos, ${report.camadas.formas} formas), ${clips.length} clipes ProRes`);
+console.log(`✓ ${OUT}\n  ${report.camadas.videos} vídeo(s), ${report.camadas.audios} áudio(s), ${nat.length + ctexts.length} peças nativas (${report.camadas.textos} textos, ${ctexts.length} de canvas, ${report.camadas.formas} formas), ${clips.length} clipes ProRes`);
 if (fontesFaltando.length) console.log(`  ⚠️ fontes faltando: ${fontesFaltando.join(', ')}`);

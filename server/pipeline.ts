@@ -1,6 +1,6 @@
 // The 5 steps of SPEC §3. Every heavy lift is a fork script; this file only sequences them, keeps state.json,
 // and makes the model calls of models.ts. One project = one folder in workspace/projects/ with its own git history.
-import { execFile, spawn, execSync } from 'node:child_process';
+import { execFile, execFileSync, spawn, execSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { pipeline as pipe } from 'node:stream/promises';
 import { homedir } from 'node:os';
@@ -2755,10 +2755,30 @@ async function cutoutNow(id: string, force: boolean): Promise<CutoutResult> {
 // Any source fits (never stretches) into the 1920x1080 stage the compose kit expects; a vertical one becomes a centred strip.
 const FIT_STAGE = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2';
 // Face centre on the 1920 stage: the nose track's mean (a fraction of the source width) placed by FIT_STAGE; 980 of a 1920 source when there is no track.
+// Head centre as a fraction of the source width, measured on the cutout's alpha (the rows of the head, above the shoulders,
+// same rows as layout_check's centroDaCabeca) at three instants; null without a cutout or when ffmpeg fails.
+function headFracFromCutout(P: string): number | null {
+  const cut = join(P, 'cutout.webm');
+  if (!existsSync(cut)) return null;
+  try {
+    const [w, h, dur] = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'csv=p=0', cut]).toString().trim().split(/[\n,]/).map(Number);
+    const y0 = Math.round(180 * h / 1080), y1 = Math.round(280 * h / 1080), xs: number[] = [];
+    for (const t of [0.25, 0.5, 0.75].map(f => f * dur)) {
+      const m = execFileSync('ffmpeg', ['-v', 'error', '-c:v', 'libvpx-vp9', '-ss', String(t), '-i', cut, '-frames:v', '1', '-vf', 'alphaextract,format=gray', '-f', 'rawvideo', '-'], { maxBuffer: 1 << 26 });
+      if (m.length !== w * h) continue;
+      let sum = 0, n = 0;
+      for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) if (m[y * w + x] > 127) { sum += x; n++; }
+      if (n) xs.push(sum / n / w);
+    }
+    return xs.length ? xs.sort((a, b) => a - b)[xs.length >> 1] : null;
+  } catch { return null; }
+}
+
 function faceXOf(P: string, width: number, height: number) {
   const track: number[][] = existsSync(join(P, 'nose.json')) ? readJSON(join(P, 'nose.json')).track : [];
   const fw = Math.min(1920, width * 1080 / height);
-  return Math.round((1920 - fw) / 2 + (track.length ? track.reduce((s, t) => s + t[1], 0) / track.length : 980 / 1920) * fw);
+  const frac = track.length ? track.reduce((s, t) => s + t[1], 0) / track.length : headFracFromCutout(P) ?? 980 / 1920;
+  return Math.round((1920 - fw) / 2 + frac * fw);
 }
 const CUTOUT_SMOOTH = "format=rgba,split[c][b];[b]alphaextract,tmix=frames=3:weights='1 2 1',erosion,gblur=sigma=1.2[m];[c][m]alphamerge";
 
@@ -2957,6 +2977,8 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
     : 'Componha o reel completo agora. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.';
   const started = Date.now();
   rmSync(join(C, 'out.mp4'), { force: true });   // a stale out.mp4 from the last run must not pass as this run's result
+  rmSync(join(C, 'review'), { recursive: true, force: true });   // snapshots of the last composition would be read as this one's (the agent and the user look at them)
+  let buildFrom = started;   // index.html counts as this run's composition only after the illustration demo, which also writes one
   // Direction first, in its own call (DIRETOR.md §6): benchmark, structure, shot list with the world camera, signature shot, sound map.
   // A note or another aspect keeps the treatment the primary composition was built on.
   if (!note && !other) {
@@ -2966,15 +2988,23 @@ export const compose = (id: string, note?: string, mode?: string, aspect?: strin
       cwd: C, noRender: true }, logCost(st));
     const tf = join(C, 'treatment.md');
     if (!existsSync(tf) || statSync(tf).mtimeMs < started) fail(`O diretor não escreveu treatment.md: ${t.slice(0, 300)}`);
-    emit(id, 'log', '🎬 Tratamento pronto. Claude está compondo o reel a partir dele...');
+    // Illustrations in their own call: the composer, given the whole reel in one call, reduces the treatment's objects to bands
+    // and rectangles (novo-motor, 30/10: 27 drawn objects planned, 37 SK.rect delivered). Here each object becomes a tested function.
+    emit(id, 'log', '🎨 Tratamento pronto. Claude está desenhando os objetos da shot list (engines/marca.js)...');
+    await agent('compose:ilustracoes', { system: system + ' In this call you are the illustrator only: write engines/marca.js and engines/demos/marca.py, run the demo and look at its sheet; no scenes.py, no render.',
+      prompt: 'Leia treatment.md (cada "Desenha" da shot list), ILUSTRACAO.md, o pacote do estilo escolhido e o motor dele (engines/<slug>.js; a demo em engines/demos/<slug>.py mostra a API). Escreva engines/marca.js: um objeto global IL com uma função por objeto concreto da shot list (ex.: IL.funil(ctx,t,x,y,s,o)), cada um desenhado em massa com o motor do estilo (sombra dura, luz, grão do ILUSTRACAO.md), nunca linha fina, pictograma ou retângulo genérico; t anima a entrada do objeto (t=0 começa). Escreva engines/demos/marca.py (como as demos: from kit import *, uma cena por 4 objetos com canvas(..., engine="<slug>,marca"), render()) e rode-o com PYTHONPATH=. python3 engines/demos/marca.py; tire snapshots, olhe a folha com Read e corrija até cada objeto ser reconhecível de longe e seguir o ILUSTRACAO.md. Não escreva scenes.py.',
+      cwd: C, noRender: true }, logCost(st));
+    if (!existsSync(join(C, 'engines', 'marca.js'))) emit(id, 'log', '⚠ O ilustrador não escreveu engines/marca.js; o compositor desenha os objetos ele mesmo.');
+    buildFrom = Date.now();
+    emit(id, 'log', '🎬 Objetos prontos. Claude está compondo o reel a partir do tratamento...');
   }
   // scenes.py edited but never run would leave the player on the old composition while the notes read as applied
   // index.html is also rewritten by the Edição step (marked): then its pristine copy index.ai.html says whether scenes.py ran
   const html = join(C, 'index.html'), ai = aiCopy(html), hadHtml = existsSync(html);
-  const fresh = () => existsSync(html) && statSync(html).mtimeMs >= started && !isMarked(readFileSync(html, 'utf8')) || existsSync(ai) && statSync(ai).mtimeMs >= started;
+  const fresh = () => existsSync(html) && statSync(html).mtimeMs >= buildFrom && !isMarked(readFileSync(html, 'utf8')) || existsSync(ai) && statSync(ai).mtimeMs >= buildFrom;
   let summary: string;
   try {
-    summary = await agent('compose', { system, prompt: existsSync(join(C, 'treatment.md')) ? `Siga treatment.md (shot list, world= de cada cena, plano-assinatura e mapa de som); se mudar algo, atualize o treatment antes. ${prompt}` : prompt, cwd: C, noRender: !motion }, logCost(st));
+    summary = await agent('compose', { system, prompt: existsSync(join(C, 'treatment.md')) ? `Siga treatment.md (shot list, world= de cada cena, plano-assinatura e mapa de som); se mudar algo, atualize o treatment antes.${existsSync(join(C, 'engines', 'marca.js')) ? ' Os objetos da shot list já estão desenhados em engines/marca.js (IL.*, demo em engines/demos/marca.py): use-os com canvas(..., engine="<slug>,marca") em vez de redesenhar ou trocar por faixas e retângulos.' : ''} ${prompt}` : prompt, cwd: C, noRender: !motion }, logCost(st));
   } catch (e) {
     // A first adaptation runs the copied primary scenes.py before adapting it: that index.html is the wrong aspect, and left
     // behind it reads as a finished composition in the Entrega. The primary is the opposite: the agent usually has a playable

@@ -1,0 +1,46 @@
+{
+  "id": "personal-reels",
+  "name": "Personal Reels",
+  "order": 2,
+  "styleNumber": 2,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": true,
+  "description": "Cortes rápidos, o seu próprio B-roll e legendas de uma palavra.",
+  "promptGuide": "Tom pessoal e direto, em formato de diário ou opinião, como o criador falando consigo mesmo ou com um amigo. Cortes secos a cada final de frase, sem silêncio. Alterne o locutor recortado (fundo removido, em primeiro plano) com B-roll do cotidiano do criador; enquanto o B-roll roda, o locutor some e fica só a voz. Se o criador não enviou B-roll, gere ilustrações no lugar, nunca deixe a tela vazia. Legenda de uma palavra por vez, sempre em destaque. Use o widget de progresso (ex: 23/30 dias) apenas quando o tema for hábito, rotina ou contagem de dias. Algo deve mudar na tela a cada ~2 segundos; texto que precisa ser lido fica até a fala terminar. Os 3 primeiros segundos trazem o gancho. Máximo de um card por frase; cada card dura 1,8 a 3,5 segundos.",
+  "comments": "",
+  "layout": "cutout-widgets",
+  "captionsStyle": "one-word-pop",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 16,
+    "zoomFactor": 1.2,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 200,
+      "bottom": 380,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "blur-extend"
+  },
+  "editingStyle": {
+    "pacing": "dynamic",
+    "screenPacingSeconds": 2,
+    "cardMinDuration": 1.8,
+    "cardMaxDuration": 3.5,
+    "punchIns": {
+      "enabled": true,
+      "intervalSeconds": [
+        2.5,
+        5
+      ],
+      "zoomScale": 1.25
+    },
+    "transitions": "cut"
+  }
+}

@@ -1,0 +1,11 @@
+/* Base dos embrulhos (9:16, 1080×1920, texto estático). Camadas: fundo (tudo exceto o que fica acima do vídeo) e frente (.frente).
+   ?layer=fundo|frente isola uma camada com alfa; ?marca=1 pinta o slot de verde para conferir a posição. */
+* { margin: 0; box-sizing: border-box; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+.abs { position: absolute; }
+.slot { position: absolute; background: transparent; }
+body.marca .slot { background: #6ed934; }
+.t { position: absolute; display: flex; flex-direction: column; justify-content: center; white-space: pre-line; word-break: break-word; }
+body.layer-fundo .frente { display: none !important; }
+body.layer-frente > *:not(.frente) { display: none !important; }
+.avatar { position: absolute; border-radius: 50%; object-fit: cover; }

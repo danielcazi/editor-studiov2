@@ -32,6 +32,9 @@ function afont(fam, w, size) {
       for (var i = 0; i < cands.length; i++) { var a = app.fonts.getFontsByPostScriptName(cands[i]);
         for (var j = 0; j < a.length; j++) { var est = !/variable/i.test(String(a[j].location || '')); if (est) return cands[i]; if (!achou) achou = cands[i]; } }
       if (achou) { FONTE_VARIAVEL[achou] = 1; return achou; }
+      // o peso pedido não existe (o navegador engrossa a fonte por conta própria): o peso instalado mais próximo, em vez de outra família
+      var pesos = ['Black', '900', 'ExtraBold', '800', 'Bold', '700', 'SemiBold', '600', 'Medium', '500', 'Regular', '400', 'Light', '300'];
+      for (i = 0; i < pesos.length; i++) { var ps2 = f + '-' + pesos[i]; if (ps2 !== base && app.fonts.getFontsByPostScriptName(ps2).length) { FONTES_FALTANDO[base + ' (usado ' + ps2 + ')'] = 1; return ps2; } }
     }
   } catch (e) {}
   return base;
@@ -75,17 +78,45 @@ function dropShadow(L, sh) {
     fx.property('ADBE Drop Shadow-0005').setValue(sh.blur);
   } catch (e) { log('sombra: ' + e.toString()); }
 }
+// câmera de mundo (compose): null 3D "mundo" com a pose do #world, um null 3D por profundidade (translateZ + escala de compensação)
+// e uma câmera com zoom = perspective do CSS. As camadas dentro do mundo são filhas dessas nulls (e viram 3D no fim, ver abaixo).
+var WN = null, DN = {};
+function setKeys(prop, ts, vs) { if (ts.length > 1) prop.setValuesAtTimes(ts, vs); else if (ts.length) prop.setValue(vs[0]); }
+function mundo(comp, Wd) {
+  var cam = comp.layers.addCamera('câmera de mundo', [W / 2, H / 2]);
+  cam.autoOrient = AutoOrientType.NO_AUTO_ORIENT;
+  cam.property('ADBE Camera Options Group').property('ADBE Camera Zoom').setValue(Wd.p);
+  cam.property('ADBE Transform Group').property('ADBE Position').setValue([W / 2, H / 2, -Wd.p]);
+  WN = comp.layers.addNull(); WN.name = 'mundo (câmera)'; WN.threeDLayer = true;
+  var tr = WN.property('ADBE Transform Group'); tr.property('ADBE Anchor Point').setValue([W / 2, H / 2, 0]);
+  var ts = [], ps = [], ss = [], rx = [], ry = [], rz = [];
+  // CSS gira com z para o espectador, o After com z para o fundo: X e Y trocam de sinal
+  for (var k = 0; k < Wd.keys.length; k++) { var K = Wd.keys[k]; ts.push(K.t); ps.push([W / 2 + K.x, H / 2 + K.y, 0]); ss.push([K.s * 100, K.s * 100, K.s * 100]); rx.push(-K.rx); ry.push(-K.ry); rz.push(K.rz); }
+  setKeys(tr.property('ADBE Position'), ts, ps); setKeys(tr.property('ADBE Scale'), ts, ss);
+  setKeys(tr.property('ADBE Rotate X'), ts, rx); setKeys(tr.property('ADBE Rotate Y'), ts, ry); setKeys(tr.property('ADBE Rotate Z'), ts, rz);
+  DN['@world'] = WN;
+  for (k = 0; k < Wd.depths.length; k++) {
+    var D = Wd.depths[k], N = comp.layers.addNull(); N.name = 'profundidade ' + D.id; N.threeDLayer = true;
+    var t2 = N.property('ADBE Transform Group'); t2.property('ADBE Anchor Point').setValue([W / 2, H / 2, 0]);
+    t2.property('ADBE Position').setValue([W / 2, H / 2, -D.z]); t2.property('ADBE Scale').setValue([D.s * 100, D.s * 100, D.s * 100]);
+    N.parent = WN; DN[D.id] = N;
+  }
+}
+// sem "jump": as posições já estão no espaço de repouso do mundo, que coincide com a comp
+function pai(L, depth) { if (L && depth && DN[depth]) L.parent = DN[depth]; }
 // null de uma peça: anchor [0,0] no ponto de origem da transformação CSS; keyframes quadro a quadro
+function poseKeys(tr, keys, O) {
+  var ts = [], ps = [], rs = [], ss = [];
+  for (var k = 0; k < keys.length; k++) { var K = keys[k]; if (!K.p) continue; ts.push(K.t); ps.push(K.p); rs.push(K.r); ss.push(K.s); }
+  if (!ts.length) { if (O) tr.property('ADBE Position').setValue(O); return; }
+  setKeys(tr.property('ADBE Position'), ts, ps); setKeys(tr.property('ADBE Rotate Z'), ts, rs); setKeys(tr.property('ADBE Scale'), ts, ss);
+}
 function pieceNull(comp, P) {
   var N = comp.layers.addNull(); N.name = P.scene + ' · peça ' + P.i + ' (controle)';
   var tr = N.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
-  var ts = [], ps = [], rs = [], ss = [], last = null;
-  for (var k = 0; k < P.keys.length; k++) { var K = P.keys[k]; if (!K.p) continue; ts.push(K.t); ps.push(K.p); rs.push(K.r); ss.push(K.s); last = K; }
-  if (!ts.length) { tr.property('ADBE Position').setValue(P.O); return N; }
-  if (ts.length === 1) { tr.property('ADBE Position').setValue(ps[0]); tr.property('ADBE Rotate Z').setValue(rs[0]); tr.property('ADBE Scale').setValue(ss[0]); }
-  else { tr.property('ADBE Position').setValuesAtTimes(ts, ps); tr.property('ADBE Rotate Z').setValuesAtTimes(ts, rs); tr.property('ADBE Scale').setValuesAtTimes(ts, ss); }
-  span(N, P.a, P.b);
+  poseKeys(tr, P.keys, P.O);
+  span(N, P.a, P.b); pai(N, P.depth);
   return N;
 }
 function opacityKeys(L, P, own) {
@@ -149,6 +180,22 @@ function nativePiece(comp, P) {
   for (k = 0; k < all.length; k++) { if (all[k].s) shapeLayer(comp, all[k].s, P, N); else textLayer(comp, all[k].t, P, N); }
   N.moveToBeginning();
 }
+// texto desenhado em canvas (ilustração do compose): camada de texto com a pose da frase quadro a quadro; o clipe leva só a decoração
+function ctextLayer(comp, P) {
+  var L = comp.layers.addText(P.text);
+  L.name = P.scene + ' · texto · ' + P.text.substr(0, 40);
+  var st = L.property('ADBE Text Properties').property('ADBE Text Document'), td = st.value;
+  td.resetCharStyle(); td.resetParagraphStyle();
+  var ps = afont(P.fam, P.weight, P.size); if (!fonteExiste(ps)) FONTES_FALTANDO[ps] = 1;
+  td.font = ps; td.fontSize = P.size; td.applyFill = true; td.fillColor = c01(P.color); td.applyStroke = false;
+  td.tracking = Math.round(P.track); td.justification = ParagraphJustification.LEFT_JUSTIFY;
+  st.setValue(td);
+  var tr = L.property('ADBE Transform Group');
+  tr.property('ADBE Anchor Point').setValue([0, 0]);
+  poseKeys(tr, P.keys, null);
+  span(L, P.a, P.b); opacityKeys(L, P, P.alpha); dropShadow(L, P.sh); pai(L, P.depth);
+  return L;
+}
 // peça em clipe ProRes 4444 com alfa, idêntico ao HTML
 function clipPiece(comp, P, folder) {
   var f = ROOT + '/' + P.file;
@@ -159,10 +206,10 @@ function clipPiece(comp, P, folder) {
   var tr = L.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
   tr.property('ADBE Position').setValue([P.x, P.y]);
-  L.startTime = P.a; span(L, P.a, P.b);
+  L.startTime = P.a; span(L, P.a, P.b); pai(L, P.depth);
   return L;
 }
-function piece(comp, P, folder) { if (P.kind === 'native') nativePiece(comp, P); else clipPiece(comp, P, folder); }
+function piece(comp, P, folder) { if (P.kind === 'native') nativePiece(comp, P); else if (P.kind === 'ctext') ctextLayer(comp, P); else clipPiece(comp, P, folder); }
 // vídeo/áudio da composição: o arquivo original no trecho em que toca; vídeo com a câmera (posição/escala/opacidade) em keyframes
 var CACHE = {};
 function mediaLayer(comp, M, folder) {
@@ -182,6 +229,7 @@ function mediaLayer(comp, M, folder) {
   for (var k = 0; k < M.keys.length; k++) { ts.push(M.keys[k].t); ps.push(M.keys[k].p); ss.push(M.keys[k].s); os.push(clamp(M.keys[k].op, 0, 100)); }
   if (ts.length > 1) { tr.property('ADBE Position').setValuesAtTimes(ts, ps); tr.property('ADBE Scale').setValuesAtTimes(ts, ss); tr.property('ADBE Opacity').setValuesAtTimes(ts, os); }
   else if (ts.length) { tr.property('ADBE Position').setValue(ps[0]); tr.property('ADBE Scale').setValue(ss[0]); tr.property('ADBE Opacity').setValue(os[0]); }
+  pai(L, M.depth);
   return L;
 }
 
@@ -195,14 +243,26 @@ comp.parentFolder = root; comp.bgColor = [0, 0, 0];
 var k, it;
 for (k = 0; k < DATA.media.length; k++) if (DATA.media[k].tag === 'audio') mediaLayer(comp, DATA.media[k], folder);
 log('audio ok');
+if (DATA.world) { mundo(comp, DATA.world); log('mundo ok'); }
 
-// de baixo para cima: z-index do HTML, depois a ordem no documento; dentro da cena, a ordem das peças
+// de baixo para cima: z-index do HTML, depois a ordem no documento; dentro da cena, a ordem das peças (texto de canvas logo acima do seu clipe)
 var stack = [];
-for (k = 0; k < DATA.media.length; k++) if (DATA.media[k].tag === 'video') stack.push({ z: DATA.media[k].z, ord: DATA.media[k].ord, i: -1, m: DATA.media[k] });
-for (k = 0; k < DATA.pieces.length; k++) stack.push({ z: DATA.pieces[k].z, ord: DATA.pieces[k].ord, i: DATA.pieces[k].i, p: DATA.pieces[k] });
-stack.sort(function (x, y) { if (x.z !== y.z) return x.z - y.z; if (x.ord !== y.ord) return x.ord - y.ord; return x.i - y.i; });
+for (k = 0; k < DATA.media.length; k++) if (DATA.media[k].tag === 'video') stack.push({ z: DATA.media[k].z, ord: DATA.media[k].ord, i: -1, sub: 0, m: DATA.media[k] });
+for (k = 0; k < DATA.pieces.length; k++) stack.push({ z: DATA.pieces[k].z, ord: DATA.pieces[k].ord, i: DATA.pieces[k].i, sub: DATA.pieces[k].sub || 0, p: DATA.pieces[k] });
+stack.sort(function (x, y) { if (x.z !== y.z) return x.z - y.z; if (x.ord !== y.ord) return x.ord - y.ord; if (x.i !== y.i) return x.i - y.i; return x.sub - y.sub; });
 for (k = 0; k < stack.length; k++) { it = stack[k]; if (it.m) mediaLayer(comp, it.m, folder); else piece(comp, it.p, folder); }
 log('camadas ok: ' + stack.length);
+// tudo que pende do mundo vira 3D (um filho 2D de null 3D não é projetado pela câmera); as nulls do mundo ficam no topo da pilha
+if (WN) {
+  for (k = 1; k <= comp.numLayers; k++) {
+    var L = comp.layer(k), p = L;
+    if (!L.hasVideo || L instanceof CameraLayer) continue;
+    while (p.parent) p = p.parent;
+    if (p.index === WN.index) L.threeDLayer = true;
+  }
+  for (var dk in DN) DN[dk].moveToBeginning();
+  WN.moveToBeginning();
+}
 var falta = []; for (var fk in FONTES_FALTANDO) falta.push(fk);
 if (falta.length) log('FONTES FALTANDO (o After trocou por outra; instale e reabra): ' + falta.join(', '));
 var vari = []; for (var vk in FONTE_VARIAVEL) vari.push(vk);

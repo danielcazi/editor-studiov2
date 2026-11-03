@@ -286,7 +286,7 @@ def render():
                 body, js = s['front'](cid, d)
             if 'text-stroke' in body: erro(f'cena {n}: -webkit-text-stroke para forçar texto na frente do corpo; use back')
             if kind == 's' and 'class="giant"' in body: erro(f'cena {n}: tipografia gigante em front; use back, atrás do locutor')
-            open(f'compositions/{cid}.html', 'w').write(comp(cid, body, js, ''.join(ENGINES[e] for e in sorted(_ENG_USED))))
+            open(f'compositions/{cid}.html', 'w').write(comp(cid, body, js, ''.join(ENGINES[e] for e in _ENG_USED)))
             all_html.append(body); all_js.append(js)
             z, track = (2, 1 + n % 2) if kind == 'b' else (4, 4 + n % 2)
             hosts.append(f'<div id="{cid}" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" data-start="{a}" data-duration="{d + ext}" data-track-index="{track}" data-track-kind="graphics" data-width="{W}" data-height="{H}" style="z-index:{z}"></div>')
@@ -819,15 +819,18 @@ tl.to({},{duration:Math.max(D-.8,.01),onUpdate:U},AT+.5);
 # Motores por estilo (engines/<nome>.js, copiados de compose/engines/): funções de desenho testadas de um estilo, expostas ao draw
 # como um objeto (SK silkscreen, BB briefing, SW swiss, AD deco). O código entra uma vez por composição de cena, antes do script.
 ENGINES = {}
-_ENG_USED = set()
+_ENG_USED = {}   # ordem de chamada = ordem de injeção (um motor pode depender do anterior)
 
 def engine(name):
-    """Marca o motor `name` para a cena atual (canvas(..., engine=) e scene3d(..., engine=) chamam por você). Lê engines/<name>.js uma vez."""
-    if name not in ENGINES:
-        f = os.path.join('engines', f'{name}.js')
-        assert os.path.exists(f), f'motor {name!r} não existe: ver engines/'
-        ENGINES[name] = open(f, encoding='utf8').read()
-    _ENG_USED.add(name)
+    """Marca o(s) motor(es) `name` para a cena atual (canvas(..., engine=) e scene3d(..., engine=) chamam por você). Lê engines/<name>.js uma vez.
+    Vários separados por vírgula entram na ordem dada: engine='silkscreen,marca' carrega SK antes do IL de marca.js, que o usa."""
+    for n in name.split(','):
+        n = n.strip()
+        if n not in ENGINES:
+            f = os.path.join('engines', f'{n}.js')
+            assert os.path.exists(f), f'motor {n!r} não existe: ver engines/'
+            ENGINES[n] = open(f, encoding='utf8').read()
+        _ENG_USED[n] = 1
     return ''
 
 _CANVAS = r"""(function(){const cv=document.getElementById('@ID@'),ctx=cv.getContext('2d'),AT=@AT@,D=@D@,CW=@W@,CH=@H@,OVER=@OVER@,BG=@BG@;

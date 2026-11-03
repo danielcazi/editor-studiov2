@@ -1,0 +1,46 @@
+{
+  "id": "image-cluster",
+  "name": "Image Cluster",
+  "order": 5,
+  "styleNumber": 9,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": false,
+  "description": "Grupos de imagens acima da sua cabeça e legendas pequenas e discretas.",
+  "promptGuide": "Locutor recortado na parte inferior da tela. Acima da cabeça, um cluster de 3 a 5 imagens geradas pela IA, com leve rotação e sombra suave, que ilustram o conceito da fala completa daquela ideia (não palavras soltas, nem decoração). O cluster inteiro troca a cada nova ideia. No gancho (3 primeiros segundos) e no CTA o locutor fica sozinho, sem cluster. Legenda pequena e discreta na parte inferior, com sombra para garantir contraste sobre o fundo. Algo deve mudar na tela a cada ~2 segundos; texto que precisa ser lido fica até a fala terminar. Cada card dura 2,5 a 4,5 segundos.",
+  "comments": "",
+  "layout": "cluster-floating",
+  "captionsStyle": "quiet-lower",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 26,
+    "zoomFactor": 1.05,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 200,
+      "bottom": 380,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "blur-extend"
+  },
+  "editingStyle": {
+    "pacing": "natural",
+    "screenPacingSeconds": 2,
+    "cardMinDuration": 2.5,
+    "cardMaxDuration": 4.5,
+    "punchIns": {
+      "enabled": false,
+      "intervalSeconds": [
+        4,
+        7
+      ],
+      "zoomScale": 1.15
+    },
+    "transitions": "cut"
+  }
+}

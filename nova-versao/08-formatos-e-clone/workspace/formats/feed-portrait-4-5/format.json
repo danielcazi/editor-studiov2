@@ -1,0 +1,42 @@
+{
+  "id": "feed-portrait-4-5",
+  "name": "Feed Retrato (4:5)",
+  "aspectRatio": "4:5",
+  "width": 1080,
+  "height": 1350,
+  "category": "Feed",
+  "cutout": false,
+  "description": "Vídeo vertical para feed (4:5). Textos animados e imagens reposicionados nas laterais para nunca cobrir o rosto do locutor.",
+  "promptGuide": "Em formato 4:5 (Feed Retrato), o locutor fica centralizado. REGRA OBRIGATÓRIA DE PROTEÇÃO DO LOCUTOR: Textos animados, cards, títulos, adesivos e imagens NUNCA devem cobrir ou ficar sobre o rosto ou o corpo do locutor. Reposicione todos os elementos visuais nas laterais do quadro (lado esquerdo ou direito) ou na faixa inferior segura, aproveitando as margens para manter o locutor totalmente desobstruído.",
+  "comments": "Textos animados e imagens devem ficar sempre nas laterais para não encobrir o rosto do locutor.",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 16,
+    "zoomFactor": 1.1,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 120,
+      "bottom": 160,
+      "left": 60,
+      "right": 60
+    },
+    "backgroundStyle": "blur-extend"
+  },
+  "editingStyle": {
+    "pacing": "dynamic",
+    "screenPacingSeconds": 1.5,
+    "cardMinDuration": 2.5,
+    "cardMaxDuration": 4.5,
+    "punchIns": {
+      "enabled": true,
+      "intervalSeconds": [
+        4.0,
+        7.0
+      ],
+      "zoomScale": 1.2
+    },
+    "transitions": "cut"
+  }
+}

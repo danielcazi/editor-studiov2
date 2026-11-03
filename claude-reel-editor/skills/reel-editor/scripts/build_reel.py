@@ -444,9 +444,11 @@ def anim_caption(i, c, ws):
 CAPTIONS = edit.get("captions", [])
 if ANIM:
     CAPTIONS = regroup(CAPTIONS, int(CS.get("maxWords") or ANIM.get("maxWords") or 4))
+drawn = []                                       # caption lines that actually show; qa's caption_overlap.py reads them back
 for i, c in enumerate(CAPTIONS):
     if any(a - 0.05 <= c["start"] < b for a, b in quiet) or any(c["start"] < b and c["end"] > a for a, b in covered): continue
     ws = c["words"]
+    drawn.append({"start": c["start"], "end": c["end"], "text": " ".join(w["text"] for w in ws)})
     plain = c.get("plain")                                             # "before" captions: basic white sans, no brand styling
     if plain:
         front.append(f'<div id="c{i}" class="cap" style="top:{CAP_Y}px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-weight:500;font-size:46px;letter-spacing:0;color:#fff">{esc(" ".join(w["text"] for w in ws))}</div>')
@@ -539,5 +541,7 @@ html, body {{ margin: 0; background: #000; overflow: hidden; }}
     window.__timelines["main"] = tl; }})();</script>
 </div></body></html>"""
 (proj / "index.html").write_text(doc)
+# where the caption line sits, as fractions of the frame height (overlays are authored at 1080x1920), for qa's overlap check
+(proj / "captions_layout.json").write_text(json.dumps({"top": CAP_Y / H, "size": CAP_PX / H, "lines": drawn}))
 (proj / "package.json").write_text('{"name":"reel","private":true,"type":"module"}')
 print(f"built {proj/'index.html'}: {OW}x{OH}, {DUR}s, {len(edit.get('cards', []))} cards, {len(CAPTIONS)} captions{f" ({PRESET})" if PRESET else ""}, {n_sfx} sounds")

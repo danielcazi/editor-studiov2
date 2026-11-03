@@ -35,10 +35,12 @@ import shutil, subprocess
 shutil.copytree(KIT / "engines", Path(d) / "engines")
 for name, obj in (("silkscreen", "SK"), ("briefing", "BB"), ("swiss", "SW"), ("deco", "AD"), ("sketch", "SB"), ("launch", "LA"), ("cinetic", "CN"), ("diorama", "DI")):
     kit._ENG_USED.clear(); h, j = kit.canvas("b01", "ctx.fillRect(0,0,w,h)", 2, engine=name)
-    assert name in kit.ENGINES and kit._ENG_USED == {name} and f"const {obj} = " in kit.ENGINES[name], name
+    assert name in kit.ENGINES and list(kit._ENG_USED) == [name] and f"const {obj} = " in kit.ENGINES[name], name
     assert subprocess.run(["node", "--check", str(KIT / "engines" / f"{name}.js")]).returncode == 0, name
 h, j = kit.canvas("b02", "ctx.fillRect(0,0,w,h)", 2, over=80, bg="#FFF8EA")
 assert 'width="1240" height="2080"' in h and "left:-80px;top:-80px" in h and 'OVER=80,BG="#FFF8EA"' in j, (h, j[:160])
+# lista: os motores entram na ordem dada (marca.js pode usar o SK do silkscreen)
+kit._ENG_USED.clear(); kit.engine("swiss, silkscreen"); assert list(kit._ENG_USED) == ["swiss", "silkscreen"]
 try: kit.engine("nope"); assert False
 except AssertionError as e: assert "não existe" in str(e)
 # ilustração em código: canvas e scene3d devolvem (html, js) com o desenho do agente dentro, ligados ao tempo da cena

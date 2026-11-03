@@ -1,0 +1,34 @@
+{
+  "id": "feed-1-1",
+  "name": "Feed Quadrado (1:1)",
+  "aspectRatio": "1:1",
+  "width": 1080,
+  "height": 1080,
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 15,
+    "zoomFactor": 1.05,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 100,
+      "bottom": 120,
+      "left": 60,
+      "right": 60
+    },
+    "backgroundStyle": "blur-extend"
+  },
+  "editingStyle": {
+    "pacing": "dynamic",
+    "screenPacingSeconds": 1.5,
+    "cardMinDuration": 2.5,
+    "cardMaxDuration": 4.5,
+    "punchIns": {
+      "enabled": true,
+      "intervalSeconds": [4.0, 7.0],
+      "zoomScale": 1.2
+    },
+    "transitions": "cut"
+  }
+}

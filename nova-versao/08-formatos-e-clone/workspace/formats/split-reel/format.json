@@ -1,0 +1,46 @@
+{
+  "id": "split-reel",
+  "name": "Split Reel",
+  "order": 3,
+  "styleNumber": 6,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": false,
+  "description": "Locutor fixo em cima e diagrama animado estilo onetake embaixo, com movimentos fluidos de pan, tilt e rotação sem cortes.",
+  "promptGuide": "A tela fica sempre dividida 50/50 na horizontal: REGRA OBRIGATÓRIA: o locutor ocupa estritamente a metade de cima (área superior estável, Y 0-960), nunca coberto por cards. A metade de baixo (área inferior Y 1040-1580) é um canvas escuro com brilho suave na cor da marca dedicado ao diagrama animado no ESTILO ONETAKE. O diagrama deve funcionar como um plano-sequência infinito: a câmera virtual nunca corta de forma seca entre as informações reveladas; ela realiza movimentos contínuos de pan (deslocamento lateral), tilt (vertical/angulado) e rotation (rotações suaves em perspectiva) navegando de nó em nó, criando a sensação de corte invisível. Conforme cada ideia ou etapa é falada, a câmera viaja fluidamente até a nova informação que se desdobra. A legenda fica na faixa do meio (costura central Y ~900-1000) com forte contraste. Algo novo se revela ou se move a cada ~2 segundos. Gancho nos 3 primeiros segundos. Cards duram 2,5 a 5 segundos.",
+  "comments": "Estilo onetake: câmera virtual contínua no diagrama inferior (pan, tilt, rotação e cortes invisíveis). O locutor deve ficar sempre na metade superior.",
+  "layout": "split-horizontal",
+  "captionsStyle": "split-lower",
+  "camera": {
+    "mode": "face-center",
+    "headroomPercent": 12,
+    "zoomFactor": 1.1,
+    "smoothSamples": 5
+  },
+  "visualAssets": {
+    "safeZones": {
+      "top": 160,
+      "bottom": 340,
+      "left": 70,
+      "right": 70
+    },
+    "backgroundStyle": "gradient-dark"
+  },
+  "editingStyle": {
+    "pacing": "continuous-onetake",
+    "screenPacingSeconds": 2,
+    "cardMinDuration": 2.5,
+    "cardMaxDuration": 5,
+    "punchIns": {
+      "enabled": false,
+      "intervalSeconds": [
+        4,
+        8
+      ],
+      "zoomScale": 1.15
+    },
+    "transitions": "onetake-invisible-cut"
+  }
+}
