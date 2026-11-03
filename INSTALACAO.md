@@ -13,7 +13,7 @@ Do zero ao editor aberto no navegador em ~10 minutos. Testado em macOS (Apple Si
 | yt-dlp | qualquer | `brew install yt-dlp` | `winget install yt-dlp.yt-dlp` (para baixar referências por link) |
 | Google Chrome | qualquer | https://google.com/chrome (usado no export para After Effects) | idem |
 | Claude Code (CLI) | logado em um plano pago | https://claude.com/claude-code, depois `claude` e faça login | idem (no Windows prefira o instalador nativo: o `claude` via npm é um `.cmd`, que o servidor não consegue abrir; se for o caso, aponte `CLAUDE_BIN` para o `.exe`) |
-| Skills do HyperFrames | — | `npx skills add heygen-com/hyperframes` | idem |
+| Skills do HyperFrames | — | `npx skills add heygen-com/hyperframes` | `npx.cmd skills add heygen-com/hyperframes` (veja "Problemas comuns" se o PowerShell bloquear o `npx`) |
 | 10 GB livres | 35 GB+ para exports 4K | — | — |
 
 Opcionais:
@@ -78,6 +78,7 @@ cd server && npm run check && npm test
 | `puppeteer-core não encontrado` | Rode `npm install` dentro de `server/`. |
 | Chamadas de modelo falham | Rode `claude` no terminal e confirme que está logado; ou defina `CLAUDE_BIN`. |
 | Porta ocupada | `PORT=4401 ./start.sh` ou deixe o `start.sh` / `start.cmd` liberar a 4400. |
+| Windows: `npx` dá "execução de scripts foi desabilitada neste sistema" (PSSecurityException) | É a política do PowerShell bloqueando o `npx.ps1`, não o editor. Use `npx.cmd ...` no lugar de `npx ...`, ou libere uma vez: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. O servidor não passa por isso: ele chama o `npx-cli.js` direto pelo Node. |
 | Windows: `python3` abre a Microsoft Store | O servidor usa `python`; se o seu está com outro nome, defina `PYTHON=caminho\python.exe` no `.env`. |
 | Fonte da marca não aparece | O arquivo da fonte não está em `workspace/brands/<marca>/fonts/`. |
 
