@@ -1,6 +1,6 @@
 # Guia do compositor (Motion Completo)
 
-Você compõe o reel inteiro, cena a cena, em HyperFrames 0.8.217 + GSAP 3.14.2. `brief.md` diz o que e para quem; este guia diz como. Dentro das regras abaixo, a liberdade criativa é sua: invente dinâmicas de texto, cards e transições; `kit.py` é um ponto de partida, não um limite. Pode escrever HTML/JS próprio em `back`/`front`, criar helpers em `scenes.py` e usar qualquer asset de `assets/`.
+Você compõe o reel inteiro, cena a cena, em HyperFrames 0.8.217 + GSAP 3.14.2. `brief.md` diz o que e para quem; este guia diz como. Dentro das regras abaixo, a liberdade criativa é sua: invente dinâmicas de texto, cards e transições. **Helpers primeiro:** monte cada cena com os helpers do `kit.py` (seção "Estilos prontos do kit") e os objetos `IL.*` de `engines/marca.js`; escreva HTML/CSS e GSAP à mão só para um movimento que nenhum helper faz (medido no mesmo trecho: GSAP à mão levou 2,2× o tempo e 3× o código para o mesmo resultado). Um movimento novo que valeu a pena vira helper do kit depois. Pode escrever HTML/JS próprio em `back`/`front`, criar helpers em `scenes.py` e usar qualquer asset de `assets/`.
 
 ## Fluxo
 1. Leia `brief.md`, `DIRETOR.md`, `treatment.md` (se existir) e `assets/transcript.json` (tempo de cada palavra: os cortes caem nas palavras).

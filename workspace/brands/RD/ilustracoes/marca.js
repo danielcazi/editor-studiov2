@@ -476,5 +476,139 @@ const IL = (() => {
     if (o.txt) { let fs = o.fs || 64; ctx.letterSpacing = '0px'; ctx.font = `600 ${fs}px Aspekta`; const mw = ctx.measureText(o.txt).width; if (mw > w - 60) { fs *= (w - 60) / mw; ctx.font = `600 ${fs}px Aspekta`; } ctx.fillStyle = o.tc || C.OR; ctx.fillText(o.txt, x0 + 30, y0 + h - 40); }
   });
 
-  return { C, ink, speck, box, pilha, flecha, grafico, degrau, risco, busto, multidao, medidor, bateria, fita, card, folha, bandeira, lupa, cartao, alvo, check, seta, xis, lista, calendario, relogio, pedra, tunel, mochileiro, escada, balao, selo, pilula, botao, sunburst };
+  // contorno de espinhos em elipse (cx, cy, rx, ry) de a0 a a1 graus; k 0..1 recolhe as pontas (0 = liso)
+  const spikes = (cx, cy, rx, ry, len, n, a0, a1, k, seed) => { const pts = []; for (let i = 0; i <= n * 2; i++) { const a = (a0 + (a1 - a0) * i / (n * 2)) * R, l = i % 2 ? len * k * (.8 + .4 * hash(seed + i)) : 0; pts.push([cx + Math.cos(a) * (rx + l), cy + Math.sin(a) * (ry + l)]); } return pts; };
+  // triângulo de espinho com base em (bx, by), apontando para ang graus
+  const thorn = (p, bx, by, ang, w, l) => { const c = Math.cos(ang * R), s = Math.sin(ang * R); p.moveTo(bx - s * w, by + c * w); p.lineTo(bx + c * l, by + s * l); p.lineTo(bx + s * w, by - c * w); p.closePath(); };
+
+  // ouriço de perfil (olha para a direita): 3 fileiras de espinhos (sombra, laranja, luz), focinho cinza, olho e nariz pretos.
+  // espinhos crescem com overshoot ao entrar; o.smooth (s) recolhe tudo e o bicho fica liso; o.c/o.c1 tintas dos espinhos
+  const ourico = (ctx, t, x, y, s, o = {}) => box(ctx, t, x, y, s, o, () => {
+    let k = bk(seg(t, .12, .5), 2.2); if (o.smooth != null) k *= 1 - eo(seg(t, o.smooth, o.smooth + .5));
+    const back = c => [...c, [300, 300], [80, 310]];
+    ink(ctx, t, 0, poly(back(spikes(185, 250, 128, 98, 78, 13, 160, 345, k, 1))), o.shc2 || C.SH, { seed: 200, dir: 'y', shc: o.shc });
+    ink(ctx, t, .05, poly(back(spikes(188, 252, 116, 88, 58, 12, 165, 340, k, 5))), o.c || C.OR, { seed: 201, shadow: false });
+    ink(ctx, t, .1, poly(back(spikes(178, 246, 84, 62, 36, 9, 185, 320, k, 9))), o.c1 || C.OR1, { seed: 202, shadow: false });
+    ink(ctx, t, .15, P(p => { p.ellipse(190, 300, 140, 46, 0, 0, Math.PI * 2); }), C.G2, { seed: 203, shadow: false });
+    ink(ctx, t, .2, poly([[246, 214], [300, 226], [366, 272], [380, 292], [330, 322], [248, 328], [226, 268]]), o.face || C.G4, { seed: 204, shadow: false });
+    ink(ctx, t, .3, P(p => { p.ellipse(130, 340, 26, 16, 0, 0, 7); p.moveTo(286, 340); p.ellipse(260, 340, 26, 16, 0, 0, 7); }), C.G2, { seed: 205, shadow: false });
+    if (t < .35) return;
+    ctx.fillStyle = C.BLK; ctx.beginPath(); ctx.arc(380, 290, 13, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(312, 260, 9, 0, 7); ctx.fill();
+    ctx.fillStyle = C.LUZ; ctx.beginPath(); ctx.arc(309, 257, 3, 0, 7); ctx.fill();
+    ctx.fillStyle = C.G3; ctx.beginPath(); ctx.arc(272, 226, 15, 0, 7); ctx.fill();
+  });
+
+  // tarefa aversiva: caixa de papelão em bloco (frente, topo, lateral), fita creme e etiqueta com linhas, espinhos laranja saindo dos lados.
+  // o.shake (s) treme; o.smooth (s) os espinhos recolhem (vira liso); o.crack (s) racha em zigue-zague e as metades se afastam
+  const caixa = (ctx, t, x, y, s, o = {}) => box(ctx, t, x, y, s, o, () => {
+    let k = bk(seg(t, .3, .65), 2.2); if (o.smooth != null) k *= 1 - eo(seg(t, o.smooth, o.smooth + .5));
+    const sh = o.shake != null && t > o.shake ? Math.sin(t * 75) * 7 * (o.crack != null && t > o.crack + .3 ? .2 : 1) : 0;
+    const draw = tt => {
+      const sp = P(p => { const L = 62 * k; if (L < 1) return; for (let i = 0; i < 4; i++) { thorn(p, 92, 178 + i * 46, 180, 17, L); thorn(p, 348, 138 + i * 46, -12, 17, L); thorn(p, 150 + i * 56, 112, -98 + i * 4, 17, L * .9); } thorn(p, 140, 352, 120, 16, L * .7); thorn(p, 290, 352, 70, 16, L * .7); });
+      ink(ctx, tt, .3, sp, o.c || C.OR, { seed: 210, shc: C.SH, sx: 8, sy: 8, sheen: false });
+      ink(ctx, tt, 0, poly([[90, 150], [310, 150], [310, 350], [90, 350]]), C.G3, { seed: 211, dir: 'y', shc: o.shc });
+      ink(ctx, tt, .05, poly([[90, 150], [310, 150], [350, 112], [130, 112]]), C.G4, { seed: 212, shadow: false });
+      ink(ctx, tt, .05, poly([[310, 150], [350, 112], [350, 312], [310, 350]]), C.G1, { seed: 213, shadow: false });
+      ink(ctx, tt, .15, poly([[184, 150], [216, 150], [256, 112], [224, 112]]), C.LUZ, { seed: 214, shadow: false });
+      ink(ctx, tt, .15, poly([[184, 150], [216, 150], [216, 210], [184, 210]]), C.LUZ, { seed: 215, shadow: false, dir: 'y' });
+      ink(ctx, tt, .22, P(p => { p.rect(118, 236, 164, 92); }), C.CRM, { seed: 216, shadow: false });
+      ink(ctx, tt, .28, P(p => { p.rect(134, 254, 90, 14); p.rect(134, 280, 128, 10); p.rect(134, 302, 70, 10); }), C.BLK, { seed: 217, shadow: false });
+    };
+    ctx.translate(sh, 0);
+    const cr = o.crack == null ? 0 : eo(seg(t, o.crack, o.crack + .35));
+    if (cr <= 0) return draw(t);
+    const zz = [[236, 60], [214, 140], [240, 200], [200, 262], [228, 312], [206, 420]];
+    [[-1, [[-100, -100], ...zz, [-100, 520]]], [1, [[520, -100], ...zz, [520, 520]]]].forEach(([d, pts]) => {
+      ctx.save(); ctx.translate(200, 360); ctx.rotate(d * 7 * cr * R); ctx.translate(-200 + d * 26 * cr, -360);
+      ctx.clip(poly(pts)); draw(t); ctx.restore();
+    });
+    for (let i = 0; i < 6; i++) { const u = seg(t, o.crack, o.crack + .6); if (u >= 1) break; ctx.fillStyle = i % 2 ? C.G4 : C.OR; ctx.fillRect(218 + (hash(i + 21) - .5) * 300 * u, 140 + i * 36 - 140 * u + 260 * u * u, 12, 12); }
+  });
+
+  // sinal de "não": anel grosso + barra diagonal chapados (o.c, padrão laranja), sombra dura; entra em slam e a barra é puxada depois
+  const proibido = (ctx, t, x, y, s, o = {}) => box(ctx, t, x, y, s, o, () => {
+    const u = seg(t, 0, .35); if (u <= 0) return; const k = 1.4 - .4 * bk(u, 2);
+    ctx.translate(200, 200); ctx.scale(k, k); ctx.translate(-200, -200);
+    const c = o.c || C.OR, q = { sx: 0, sy: 10, shc: o.shc || C.SH };
+    ink(ctx, 9, 0, P(p => { p.arc(200, 200, 170, 0, 7); p.moveTo(328, 200); p.arc(200, 200, 128, 0, 7); }), c, { seed: 220, rule: 'evenodd', ...q });
+    ctx.save(); ctx.clip(circle(200, 200, 140));
+    ink(ctx, t, .2, poly(rot([[40, 176], [360, 176], [360, 224], [40, 224]], 45, 200, 200)), c, { seed: 221, dur: .2, ...q });
+    ctx.restore();
+  });
+
+  // mira que se fecha sobre a palavra: 4 cantos em L de 22 px, anel com 4 cortes girando e 4 cunhas apontando para dentro.
+  // o.hw/o.hh meia-largura/altura do quadro (150); o.c tinta (creme); o.crack (s) o anel racha em 4 arcos que voam com estilhaços
+  const mira = (ctx, t, x, y, s, o = {}) => box(ctx, t, x, y, s, { bob: 0, ...o }, () => {
+    const e = eo(seg(t, 0, .55)), d = lerp(1.8, 1, e), hw = (o.hw || 150) * d, hh = (o.hh || 150) * d, c = o.c || C.CRM, q = { shc: o.shc || 'rgba(0,0,0,.5)', sx: 8, sy: 8, sheen: false };
+    if (e <= 0) return;
+    const cr = o.crack == null ? 0 : eo(seg(t, o.crack, o.crack + .5)), jolt = cr > 0 && cr < .6 ? (hash(Math.floor(t * 50)) - .5) * 10 : 0;
+    ctx.translate(jolt, 0);
+    ctx.save(); ctx.globalAlpha = Math.min(1, e * 1.5);
+    ink(ctx, 9, 0, P(p => { const a = 74, w = 22; [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => { const cx = 200 + sx * hw, cy = 200 + sy * hh; p.moveTo(cx, cy); p.lineTo(cx - sx * a, cy); p.lineTo(cx - sx * a, cy - sy * w); p.lineTo(cx - sx * w, cy - sy * w); p.lineTo(cx - sx * w, cy - sy * a); p.lineTo(cx, cy - sy * a); p.closePath(); }); }), c, { seed: 230, ...q });
+    const rr = Math.min(hw, hh) * .78, sp = t * .6 + (1 - e) * 2;
+    for (let i = 0; i < 4; i++) {
+      const a0 = sp + i * Math.PI / 2 + .16, a1 = a0 + Math.PI / 2 - .32, mid = (a0 + a1) / 2, fl = 90 * cr;
+      ctx.save(); ctx.translate(Math.cos(mid) * fl, Math.sin(mid) * fl + 160 * cr * cr); ctx.translate(200, 200); ctx.rotate(cr * (i % 2 ? .6 : -.6)); ctx.translate(-200, -200);
+      ink(ctx, 9, 0, P(p => { p.arc(200, 200, rr, a0, a1); p.arc(200, 200, rr - 18, a1, a0, true); p.closePath(); }), c, { seed: 231 + i, ...q });
+      ctx.restore();
+    }
+    ink(ctx, 9, 0, P(p => { [0, 90, 180, 270].forEach(a => { const ca = Math.cos(a * R), sa = Math.sin(a * R), r0 = rr + 16, r1 = rr + 64; p.moveTo(200 + ca * r0, 200 + sa * r0); p.lineTo(200 + ca * r1 - sa * 16, 200 + sa * r1 + ca * 16); p.lineTo(200 + ca * r1 + sa * 16, 200 + sa * r1 - ca * 16); p.closePath(); }); }), o.a || C.OR, { seed: 235, ...q });
+    if (cr > 0 && cr < 1) for (let i = 0; i < 10; i++) { const a = hash(i + 40) * 7, r = rr + 200 * cr; ctx.fillStyle = i % 2 ? c : (o.a || C.OR); ctx.fillRect(200 + Math.cos(a) * r, 200 + Math.sin(a) * r + 120 * cr * cr, 11, 11); }
+    ctx.restore();
+  });
+
+  // dois círculos desenhados à mão (borda irregular) ligados por fio tracejado; rótulos o.l1/o.l2 abaixo.
+  // o.merge (s): andam um para o outro e viram um só círculo laranja com o.l3 dentro. o.c1/o.c2 tintas, o.fio cor do fio
+  const circulos = (ctx, t, x, y, s, o = {}) => box(ctx, t, x, y, s, o, () => {
+    const m = o.merge == null ? 0 : eio(seg(t, o.merge, o.merge + .55)), c1 = o.c1 || C.BLK, c2 = o.c2 || C.OR, q = { sx: 10, sy: 10, shc: o.shc, sheen: false };
+    const lab = (txt, cx, cy, col, a, fs = 34) => { if (!txt || a <= 0) return; ctx.save(); ctx.globalAlpha = a; ctx.font = `600 ${fs}px Aspekta`; ctx.letterSpacing = '2px'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = col; ctx.fillText(txt, cx, cy); ctx.restore(); };
+    if (m < .9) {
+      const dx = 120 * (1 - m), k1 = bk(seg(t, 0, .4), 2), k2 = bk(seg(t, .15, .55), 2), u = seg(t, .45, .9);
+      if (u > 0 && m < .3) { ctx.save(); ctx.strokeStyle = o.fio || 'rgba(18,18,18,.6)'; ctx.lineWidth = 2; ctx.setLineDash([4, 8]); ctx.lineDashOffset = -t * 30; ctx.beginPath(); ctx.moveTo(200 - dx + 60, 200); ctx.lineTo(200 - dx + 60 + (2 * dx - 120) * eo(u), 200); ctx.stroke(); ctx.restore(); }
+      [[200 - dx, k1, c1, 240, o.l1], [200 + dx, k2, c2, 250, o.l2]].forEach(([cx, kk, col, sd, l]) => {
+        if (kk <= 0) return; ctx.save(); ctx.translate(cx, 200); ctx.scale(kk, kk); ctx.translate(-cx, -200);
+        ink(ctx, 9, 0, poly(blob(cx, 200, 82 + 20 * m, 18, sd, .06)), col, { seed: sd, ...q }); ctx.restore();
+        lab(l, cx, 330, o.lc || C.BLK, Math.min(1, kk) * (1 - m * 2), o.fs || 34);
+      });
+    } else {
+      const k = bk(seg(t, o.merge + .5, o.merge + .9), 2.6), r = 130 * (.8 + .2 * k);
+      ink(ctx, 9, 0, poly(blob(200, 200, r, 20, 260, .05)), c2, { seed: 260, ...q });
+      ink(ctx, 9, 0, P(p => { p.arc(200, 200, r * .78, 200 * R, 250 * R); p.arc(200, 200, r * .64, 250 * R, 200 * R, true); p.closePath(); }), o.luz || C.OR1, { seed: 261, shadow: false, sheen: false });
+      lab(o.l3, 200, 204, o.tc || C.BLK, seg(t, o.merge + .6, o.merge + .8), o.fs3 || 52);
+    }
+  });
+
+  // botão giratório (volume/freio): 11 marcas em arco que acendem até o nível, corpo serrilhado em bloco, ponteiro laranja.
+  // o.lv nível 0..1 (.7); o.osc amplitude da oscilação (.18); o.to/o.at muda o nível para o.to a partir de o.at s
+  const knob = (ctx, t, x, y, s, o = {}) => box(ctx, t, x, y, s, o, () => {
+    const lv0 = o.lv ?? .7, lv = o.to == null ? lv0 : lerp(lv0, o.to, eio(seg(t, o.at || 1, (o.at || 1) + .6)));
+    const v = clamp(lv * eo(seg(t, .25, .85)) + (o.osc ?? .18) * Math.sin(Math.max(0, t - .85) * 4.2) * seg(t, .85, 1.2), 0, 1), A0 = 135, A1 = 405, ang = A0 + (A1 - A0) * v;
+    for (let i = 0; i < 11; i++) {
+      const a = A0 + (A1 - A0) * i / 10, on = a <= ang + .5, big = i % 5 === 0;
+      ink(ctx, t, i * .03, poly(rot([[200 - (big ? 11 : 8), 22], [200 + (big ? 11 : 8), 22], [200 + 6, 52], [200 - 6, 52]], a + 90, 200, 210)), on ? (o.a || C.OR) : C.G3, { seed: 270 + i, shadow: false, sheen: false });
+    }
+    const gear = []; for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2, r = i % 2 ? 138 : 128; gear.push([200 + Math.cos(a) * r, 210 + Math.sin(a) * r]); }
+    ink(ctx, t, .05, poly(gear), C.G1, { seed: 281, dir: 'y', shc: o.shc });
+    ink(ctx, t, .1, circle(200, 210, 108), o.c || C.G3, { seed: 282, shadow: false });
+    ink(ctx, t, .15, P(p => { p.arc(200, 210, 100, 190 * R, 260 * R); p.arc(200, 210, 80, 260 * R, 190 * R, true); p.closePath(); }), C.G4, { seed: 283, shadow: false });
+    if (t < .2) return;
+    const ptr = poly(rot([[188, 196], [212, 196], [210, 120], [190, 120]], ang + 90, 200, 210));
+    ctx.save(); ctx.translate(6, 7); ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fill(ptr); ctx.restore();
+    ctx.fillStyle = o.a || C.OR; ctx.fill(ptr); ctx.fillStyle = C.G1; ctx.beginPath(); ctx.arc(200, 210, 22, 0, 7); ctx.fill();
+  });
+
+  // barras em bloco que descem em degraus da esquerda para a direita (frente, topo claro, lateral escura); sobem em cascata.
+  // o.n barras (5), o.hs alturas (0..1), o.drop (s) todas caem para .35 da altura; o.c frente, o.a pinta a última (a menor)
+  const barras = (ctx, t, x, y, s, o = {}) => box(ctx, t, x, y, s, o, () => {
+    const hs = o.hs || [1, .78, .56, .36, .18], n = hs.length, bw = 300 / n, yb = 370, H = 330, dr = o.drop == null ? 1 : lerp(1, .35, eio(seg(t, o.drop, o.drop + .7)));
+    hs.forEach((h, i) => {
+      const k = bk(seg(t, i * .12, i * .12 + .4), 1.8); if (k <= 0) return;
+      const x0 = 40 + i * bw, w = bw - 14, top = yb - H * h * k * (i ? dr : 1), last = o.a && i === n - 1;
+      ink(ctx, 9, 0, poly([[x0, top], [x0 + w, top], [x0 + w, yb], [x0, yb]]), last ? o.a : (o.c || C.BLK), { seed: 290 + i, shc: o.shc, sx: 10, sy: 10, sheen: false });
+      ink(ctx, 9, 0, poly([[x0, top], [x0 + w, top], [x0 + w + 12, top - 10], [x0 + 12, top - 10]]), last ? C.OR1 : C.G4, { seed: 300 + i, shadow: false, sheen: false });
+      ink(ctx, 9, 0, poly([[x0 + w, top], [x0 + w + 12, top - 10], [x0 + w + 12, yb - 10], [x0 + w, yb]]), last ? C.SH : C.G2, { seed: 310 + i, shadow: false, sheen: false });
+    });
+  });
+
+  return { ourico, caixa, proibido, mira, circulos, knob, barras, C, ink, speck, box, pilha, flecha, grafico, degrau, risco, busto, multidao, medidor, bateria, fita, card, folha, bandeira, lupa, cartao, alvo, check, seta, xis, lista, calendario, relogio, pedra, tunel, mochileiro, escada, balao, selo, pilula, botao, sunburst };
 })();

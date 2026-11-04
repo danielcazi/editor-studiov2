@@ -201,7 +201,6 @@ Nenhuma chamada `compose:treatment` aparece em nenhum `cost[]`. O código que co
 | `embrulhos.ts` | 9 molduras do PDF, seleção por ângulo (Sonnet), composição PNG + vídeo 9:16. |
 | `broll.ts`, `keys.ts`, `voice.ts` | Busca de b-roll (Pexels, Pixabay, Commons), chaves em `~`, TTS (ElevenLabs, Google). |
 | `layout_check.mjs` | Mede no Chrome headless se o texto respeita o locutor (GUIDE §2-§8); `kit.render()` o chama; escreve `review/recorte.png`. |
-| `ae/make_jsx.mjs`, `ae/build_comp.template.jsx` | Exportação After Effects. `pack_aep.mjs` está morto. |
 | `test/` | 16 arquivos `node --test` + 3 Python (`test_kit_lint.py` testa os lints do kit). |
 
 ### Interface (`server/ui.html`, 11 050 linhas, sem build)
@@ -228,7 +227,7 @@ Nenhuma chamada `compose:treatment` aparece em nenhum `cost[]`. O código que co
 | `scripts/auto_edit.py` | Rascunho de `edit.json` (legendas e punch-ins). |
 | `scripts/rvm.py`, `nose.swift` | Recorte do locutor com alfa (RVM ONNX); rastro do nariz (Vision) para enquadrar. |
 | `scripts/build_reel.py` | Caminho A: `edit.json` + `brand.json` → projeto HyperFrames (`proj/`). Sem testes. |
-| `scripts/render.py`, `qa.py`, `deliver.py` | Render do caminho A, QA (tamanho, duração, LUFS, palavras perdidas), cópia de entrega. |
+| `scripts/render.py`, `qa.py` | Render do caminho A, QA (tamanho, duração, LUFS, palavras perdidas), cópia de entrega. |
 | `scripts/make_sfx.py` | Banco de SFX (earshot) → `compose/sfx/*.wav` + `manifest.json`. |
 | `scripts/setup_engine.py`, `doctor.py`, `screenshot.py`, `review_sync.py`, `timings.py` | Instalação do player HF e GSAP; checagem da máquina; captura de site; ponte com a página de revisão antiga. |
 | `compose/kit.py` (1317 linhas) | **O motor do caminho B**: `scene()`, câmera de mundo, 60+ helpers tipográficos e de UI, `canvas()`/`scene3d()`, `engine()`, lints, `render()` → `compositions/*.html` + `index.html` + `scenes.json`. |
@@ -241,7 +240,7 @@ Nenhuma chamada `compose:treatment` aparece em nenhum `cost[]`. O código que co
 
 ### Fora do servidor
 
-`tools/index_refs.mjs` (indexador de referências) e `tools/vision_cutout.swift` (recorte por Vision, substituído pelo RVM) não são chamados.
+`tools/vision_cutout.swift` (recorte por Vision, substituído pelo RVM) não são chamados.
 
 ### Dados (`workspace/`)
 

@@ -67,9 +67,8 @@ Editor 7.0/
 │   ├── server.ts         # Servidor HTTP local + Eventos SSE
 │   ├── pipeline.ts       # Máquina de estados (Passos 1 a 6)
 │   ├── ui.html           # Interface SPA com Top Navbar (Projetos, Brands, Formatos)
-│   └── ae/               # Motor do After Effects (make_jsx.mjs, build_comp.template.jsx, pack_aep.mjs)
+│   └── ae/               # Motor do After Effects (make_jsx.mjs, build_comp.template.jsx)
 ├── tools/
-│   ├── index_refs.mjs    # Indexador de referências (cortes FFmpeg + folha 6x2)
 │   └── vision_cutout.swift # Recorte de pessoa nativo do macOS (Apple Vision RGBA)
 ├── claude-reel-editor/   # Scripts de áudio (-14 LUFS), Whisper, nose.swift e build_reel.py
 └── workspace/

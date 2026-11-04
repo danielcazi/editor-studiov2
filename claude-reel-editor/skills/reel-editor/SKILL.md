@@ -40,7 +40,7 @@ Each reel gets its own folder: `~/reels/<yyyy-mm-dd>-<short-name>/`. Copy the ra
    4. `REEL_PREVIEW=1 python3 scripts/render.py <folder>` for the draft (1080p, low priority), then `python3 scripts/render.py <folder> --final` once they approve it (the resolution in `brand.json`) → `final.mp4` + stage timings.
    Do **not** hand-write composition HTML or use other HyperFrames workflows here: they are slower and ignore the brand template. Only if they explicitly ask for an effect the template lacks (e.g. text behind their head), say it's slower, then use the `hyperframes` skill for that one effect.
 6. **QA** - `python3 scripts/qa.py <folder>` (loudness, size, length, missing words). Then grab a frame at every card and look: text inside the frame, readable over the background, on brand. Fix `edit.json` and re-run render.py until it passes.
-7. **Deliver** - `python3 scripts/deliver.py <final.mp4> "<clear name>"` → upload-ready MP4 in their delivery folder.
+7. **Deliver** - copy the final MP4 to the delivery folder under a clear name.
 
 Tell them what changed, and what to check by ear (cuts, names, brand words spelled right).
 
