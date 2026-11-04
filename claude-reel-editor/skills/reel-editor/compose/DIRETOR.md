@@ -41,6 +41,7 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
 - Os sons vêm do banco do earshot (Leon Lin, MIT; `scripts/make_sfx.py` gera os arquivos e o manifest). Ajustes e intervalos são medianas medidas pelo earshot em efeitos de filmes de lançamento profissionais; o nível de cada arquivo já está balanceado para `vol` 0,5.
 
 ## 6. O treatment.md (o compositor escreve antes do scenes.py)
+0. **Estilo de motion:** se o brief traz "Estilo de motion escolhido", é o que o usuário quer: tipografia, câmera de mundo, beats, sons e receitas vêm dele, sem inventar movimento que ele não tem. Se traz "Estilos de motion disponíveis", escolha o que serve ao assunto e à marca, diga qual e por quê no treatment, leia o `style.json` dele e siga-o.
 0. **Estilo de ilustração:** se existe `ESTILO.md`, é o que o usuário escolheu: siga-o. Senão, leia `estilos/README.md`, liste três candidatos que servem ao assunto e à marca (`ILUSTRACAO.md`), escolha um com o motivo e leia o pacote inteiro (`estilos/<slug>.md`) antes de escrever a shot list. A paleta e os motivos são da marca; a técnica é do estilo.
 1. **Benchmark:** aprender / não levar.
 2. **Três estruturas** e a escolhida.

@@ -3121,6 +3121,7 @@
       <a href="#/" class="nav-tab" id="nav-projects">Projetos</a>
       <a href="#/brands" class="nav-tab" id="nav-brands">Brandkits</a>
       <a href="#/formats" class="nav-tab" id="nav-formats">Formatos</a>
+      <a href="#/styles" class="nav-tab" id="nav-styles">Estilos</a>
       <a href="#/cortes" class="nav-tab" id="nav-cortes">Cortes</a>
       <a href="#/config" class="nav-tab" id="nav-config">Configurações</a>
     </nav>
@@ -5820,11 +5821,12 @@ let dashBrand = '';
 let dashSearch = '';
 
 async function projects() {
-  let [overviewList, bl, flIds, styles] = await Promise.all([
+  let [overviewList, bl, flIds, styles, motionStyles] = await Promise.all([
     api('GET', '/projects/overview').catch(() => []),
     api('GET', '/brands').catch(() => []),
     api('GET', '/formats').catch(() => []),
-    api('GET', '/styles').catch(() => [])
+    api('GET', '/illustration-styles').catch(() => []),
+    api('GET', '/styles').then(ids => Promise.all(ids.map(i => api('GET', `/styles/${i}`).catch(() => null)))).then(l => l.filter(Boolean)).catch(() => [])
   ]);
   globalProjectsData = overviewList;
 
@@ -6308,6 +6310,10 @@ async function projects() {
                 <select class="np-select" name="style" id="npStyleSelect" title="Estilo de ilustração: como o compositor desenha as ilustrações em código">
                   <option value="">Ilustração: automático (o diretor escolhe o estilo)</option>
                   ${styles.map(s => `<option value="${esc(s.id)}" title="${esc(s.line)}">Ilustração: ${esc(s.name)} · ${esc(s.fit)}</option>`).join('')}
+                </select>
+                <select class="np-select" name="styleId" id="npMotionStyleSelect" title="Estilo de motion: um estilo clonado na aba Estilos que o compositor segue à risca; automático deixa o diretor escolher">
+                  <option value="">Motion: automático (o diretor escolhe entre os estilos)</option>
+                  ${motionStyles.map(s => `<option value="${esc(s.id)}" title="${esc(s.description || '')}">Motion: ${esc(s.name || s.id)}</option>`).join('')}
                 </select>
               </div>
 
@@ -6915,7 +6921,7 @@ async function projects() {
           name: nameInput.value.trim() || 'novo-video', text: speechEl.value, voice: { provider: provEl.value, voice: voiceEl.value }, character: charEl.value ? { name: charEl.value } : undefined,
           referenceUrl: refUrlInput.value.trim() || undefined, referenceNote: $('#npRefNote').value.trim() || undefined,
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
-          composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, brollFill
+          composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, styleId: $('#npMotionStyleSelect')?.value || undefined, brollFill
         });
         location.hash = `#/p/${st.id}`;
         api('POST', `/projects/${st.id}/ingest`).catch(() => {});
@@ -6949,7 +6955,7 @@ async function projects() {
             brand,
             formatId,
             images: imagePaths,
-            composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined,
+            composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, styleId: $('#npMotionStyleSelect')?.value || undefined,
             brollFill
           });
           api('POST', `/projects/${st.id}/ingest`).catch(() => {});
@@ -6974,7 +6980,7 @@ async function projects() {
         brand,
         formatId,
         images: imagePaths,
-        composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined,
+        composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, styleId: $('#npMotionStyleSelect')?.value || undefined,
         brollFill
       });
 
@@ -7288,6 +7294,10 @@ async function project(id) {
         <button id="btn-toggle-composer-mode" style="display:inline-flex;align-items:center;gap:5px;background:${isAgent ? 'rgba(168,85,247,0.18)' : 'rgba(59,130,246,0.14)'};color:${isAgent ? '#d8b4fe' : '#93c5fd'};border:1px solid ${isAgent ? 'rgba(168,85,247,0.45)' : 'rgba(59,130,246,0.35)'};padding:2px 8px;border-radius:12px;font:700 11px var(--mono);cursor:pointer;transition:all .15s ease" title="Clique para alternar o modo de composição (Agente HyperFrames vs Cards)">
           ${isAgent ? '🤖 MODO AGENTE' : '🃏 MODO CARDS'}
         </button>
+        <select id="pt-style-select" title="Estilo de motion deste projeto (aba Estilos): vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
+          <option value="">🎞 motion: diretor decide</option>
+          ${st.styleId ? `<option value="${esc(st.styleId)}" selected>🎞 ${esc(st.styleId)}</option>` : ''}
+        </select>
         ${st.completed ? `<span class="badge-done-pill" style="display:inline-flex;align-items:center;gap:5px;background:rgba(0,230,118,0.12);color:#00e676;border:1px solid rgba(0,230,118,0.3);padding:3px 9px;border-radius:12px;font:700 11px var(--mono)">✓ CONCLUÍDO</span>` : ''}
         ${st.interrupted ? `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,170,0,0.14);color:#ffb340;border:1px solid rgba(255,170,0,0.4);padding:2px 8px;border-radius:12px;font:700 11px var(--mono)">⚠ composição interrompida
           <button id="btn-int-open" title="Abrir na Revisão o que o compositor chegou a gerar">abrir o que ficou</button><button id="btn-int-redo" title="Compor de novo do zero">recompor</button></span>` : ''}
@@ -7300,6 +7310,11 @@ async function project(id) {
         running = { step: 'motion', startedAt: Date.now() }; viewStep = 'motion'; render();
         api('POST', `/projects/${id}/motion`).catch(err => { running = null; line(`ERRO ao recompor: ${err.message}`); render(); });
       };
+      const styleSel = $('#pt-style-select');
+      if (styleSel) {
+        api('GET', '/styles').then(ids => { for (const sid of ids) if (![...styleSel.options].some(o => o.value === sid)) styleSel.add(new Option(`🎞 ${sid}`, sid)); }).catch(() => {});
+        styleSel.onchange = async () => { await api('PUT', `/projects/${id}/style`, { styleId: styleSel.value || null }); render(); };
+      }
       const btnMode = $('#btn-toggle-composer-mode');
       if (btnMode) {
         btnMode.onclick = async () => {
@@ -9397,15 +9412,14 @@ async function formats() {
         <div>
           <h2 class="fmt-gallery-title">
             Formatos
-            <span class="fmt-gallery-count">${displayFormats.length} estilos</span>
+            <span class="fmt-gallery-count">${displayFormats.length} formatos</span>
           </h2>
           <p class="fmt-gallery-desc">
-            Estilos de edição consagrados em redes sociais com pré-visualização animada e acionamento de Cut-out (Apple Vision).
-            Clique em qualquer estilo para visualizar detalhes, exportar, excluir ou formar novos presets.
+            O formato orienta a edição: onde fica o locutor, câmera e enquadramento, imagens e B-roll, zonas seguras e ritmo, com Cut-out (Apple Vision) opcional.
+            O motion design vem da aba Estilos. Clique em um formato para ver detalhes, exportar, excluir ou formar novos presets.
           </p>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <button id="fmtCloneBtn" class="quiet-button" style="font-size:12px;padding:8px 14px">✨ Clonar animação</button>
           <button id="fmtImportBtn" class="quiet-button" style="font-size:12px;padding:8px 14px;display:flex;align-items:center;gap:6px">📥 Importar (.json)</button>
           <input type="file" id="fmtImportFile" accept=".json" style="display:none">
           <a href="#/config" class="quiet-button" style="text-decoration:none;font-size:12px;padding:8px 14px;display:flex;align-items:center;gap:6px">
@@ -9440,8 +9454,6 @@ async function formats() {
     </div>
     <div id="fmtModalHost"></div>
   `;
-
-  $('#fmtCloneBtn').onclick = () => openCloneModal();
 
   // Importar formato .json
   $('#fmtImportBtn').onclick = () => $('#fmtImportFile').click();
@@ -9496,7 +9508,133 @@ async function formats() {
   });
 }
 
-// Clonar animação: vídeos (link ou arquivo) + imagens de referência -> novo formato escrito pelo Opus
+// Estilos: o motion design clonado de referências (workspace/styles/<id>/). O formato decide a edição; o estilo, o movimento.
+async function stylesView() {
+  const ids = await api('GET', '/styles');
+  const all = (await Promise.all(ids.map(id => api('GET', `/styles/${id}`).catch(() => null)))).filter(x => x && x.id);
+  const cover = x => x.refs?.length ? `<img src="/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(x.refs.find(f => /^x\d+_0\./.test(f)) || x.refs[0])}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`
+    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font:700 40px var(--serif);color:var(--ay);background:var(--stage)">${esc((x.name || x.id).slice(0, 1))}</div>`;
+  app.innerHTML = `
+    <div class="fmt-gallery-wrap">
+      <div class="fmt-gallery-head">
+        <div>
+          <h2 class="fmt-gallery-title">Estilos <span class="fmt-gallery-count">${all.length} estilos</span></h2>
+          <p class="fmt-gallery-desc">
+            Estilos de motion design clonados de referências: tipografia, paleta, câmera e profundidade, beats, sons e receitas GSAP.
+            Escolha um ao criar o projeto (ou no cabeçalho dele) para o compositor seguir à risca; sem escolha, o diretor decide entre os da lista.
+          </p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button id="styCloneBtn" class="quiet-button" style="font-size:12px;padding:8px 14px">✨ Clonar estilo</button>
+          <button id="styImportBtn" class="quiet-button" style="font-size:12px;padding:8px 14px">📥 Importar (.json)</button>
+          <input type="file" id="styImportFile" accept=".json" style="display:none">
+        </div>
+      </div>
+      ${all.length ? '' : '<p class="muted">Nenhum estilo ainda. Clone um a partir de vídeos, links ou imagens de referência.</p>'}
+      <div class="fmt-grid">
+        ${all.map(x => `
+          <article class="fmt-style-card" data-sty-id="${esc(x.id)}">
+            <div class="fmt-card-actions">
+              <button type="button" class="fmt-quick-btn export" data-sty-id="${esc(x.id)}" title="Exportar estilo (JSON)">📥</button>
+              <button type="button" class="fmt-quick-btn delete" data-sty-id="${esc(x.id)}" data-sty-name="${esc(x.name || x.id)}" title="Excluir estilo">🗑️</button>
+            </div>
+            <div style="aspect-ratio:9/16;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#111">${cover(x)}</div>
+            <div class="fmt-card-meta">
+              <div class="fmt-card-row">
+                <h4 class="fmt-card-name">${esc(x.name || x.id)}</h4>
+                <div class="fmt-card-tags">
+                  ${x.camera?.world?.length ? `<span class="badge-fmt">🎥 ${x.camera.world.length}</span>` : ''}
+                  ${x.sfxRules?.length ? `<span class="badge-fmt">🔊 ${x.sfxRules.length}</span>` : ''}
+                </div>
+              </div>
+              <p class="fmt-card-desc">${esc(x.description || x.motif || '')}</p>
+            </div>
+          </article>`).join('')}
+      </div>
+    </div>
+    <div id="fmtModalHost"></div>`;
+  $('#styCloneBtn').onclick = () => openCloneModal();
+  $('#styImportBtn').onclick = () => $('#styImportFile').click();
+  $('#styImportFile').onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const chosen = prompt('Identificador (ID) do estilo importado:', parsed.id || file.name.replace(/\.json$/i, ''));
+      if (!chosen) return;
+      const id = chosen.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      if (!id) return alert('ID inválido');
+      await api('POST', '/styles', { id, style: { ...parsed, id } });
+      stylesView();
+    } catch (err) { alert(`Erro ao importar estilo: ${err.message || err}`); } finally { e.target.value = ''; }
+  };
+  const exportStyle = x => { const { refs, ...rest } = x; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(rest, null, 2)], { type: 'application/json' })); a.download = `estilo-${x.id}.json`; a.click(); URL.revokeObjectURL(a.href); };
+  const del = async (id, name) => { if (!confirm(`Excluir o estilo "${name}"? Os quadros de referência vão junto.`)) return; await api('DELETE', `/styles/${id}`); location.hash === '#/styles' ? stylesView() : location.hash = '#/styles'; };
+  app.querySelectorAll('.fmt-quick-btn.export').forEach(btn => btn.onclick = e => { e.stopPropagation(); exportStyle(all.find(x => x.id === btn.dataset.styId)); });
+  app.querySelectorAll('.fmt-quick-btn.delete').forEach(btn => btn.onclick = e => { e.stopPropagation(); del(btn.dataset.styId, btn.dataset.styName); });
+  app.querySelectorAll('.fmt-style-card').forEach(card => card.onclick = () => openStyleModal(card.dataset.styId, exportStyle, del));
+}
+
+async function openStyleModal(id, exportStyle, del) {
+  const host = $('#fmtModalHost');
+  if (!host) return;
+  const x = await api('GET', `/styles/${id}`);
+  const cam = x.camera || {}, unit = k => k === 'push' || k === 'pull' ? ' scale' : k === 'pan' || k === 'crane' ? ' px' : '°';
+  const sec = (title, body) => `<div class="fmt-section-box"><h5 class="fmt-section-title">${title}</h5>${body}</div>`;
+  const kv = (k, v) => v ? `<div style="font-size:12px"><b style="color:var(--cream)">${k}:</b> <span class="muted">${esc(String(v))}</span></div>` : '';
+  host.innerHTML = `
+    <div class="fmt-modal-overlay" id="styMdlOverlay">
+      <div class="fmt-modal-box">
+        <button class="fmt-modal-close" id="styMdlClose" title="Fechar">&times;</button>
+        <div class="fmt-modal-preview">
+          <div style="width:230px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            ${(x.refs || []).filter(f => /^(v\d+_\d+|img\d+|x\d+_\d+)\./.test(f)).slice(0, 8).map(f => `<img src="/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(f)}" style="width:100%;border-radius:6px;border:1px solid var(--line)" alt="">`).join('')}
+          </div>
+        </div>
+        <div class="fmt-modal-content">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap">
+            <div>
+              <h2 style="margin:0 0 6px;color:var(--cream);font-size:22px">${esc(x.name || x.id)}</h2>
+              <p style="margin:0;font-size:13px;color:var(--mute);line-height:1.5">${esc(x.description || '')}</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button id="sty_export" class="quiet-button" style="font-size:11.5px;padding:6px 12px">📥 Exportar (.json)</button>
+              <button id="sty_delete" class="quiet-button" style="font-size:11.5px;padding:6px 12px;color:#ff5a4d;border-color:rgba(255,90,77,0.3)">🗑️ Excluir</button>
+            </div>
+          </div>
+          ${sec('Guia do estilo', `<textarea id="sty_guide" rows="6" style="width:100%;font-size:12.5px;resize:vertical;border-radius:8px">${esc(x.guide || '')}</textarea>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="muted" style="font-size:11px">${x.motif ? `Motivo recorrente: ${esc(x.motif)}` : ''}</span><button class="primary" id="sty_save">💾 Salvar guia</button></div>`)}
+          ${sec('Câmera e profundidade', `
+            ${cam.world?.length ? `<ul style="margin:0 0 6px;padding-left:18px;font-size:12px">${cam.world.map(m => `<li><b style="color:var(--cream)">${esc(m.kind)} ${esc(String(m.amount))}${unit(m.kind)}</b> <span class="muted">${esc(m.when || '')}</span></li>`).join('')}</ul>` : '<p class="muted" style="margin:0 0 6px;font-size:12px">Sem câmera de mundo na referência (palco estático).</p>'}
+            ${kv('Enquadramento', cam.framing)}${kv('Transições', cam.transitions)}${kv('Profundidade e foco', cam.depth)}${kv('Plano-assinatura', cam.signature)}`)}
+          ${x.palette?.length ? sec('Paleta (aproximada; a marca substitui as cores, os papéis ficam)', `<div style="display:flex;gap:8px;flex-wrap:wrap">${x.palette.map(c => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px"><i style="width:18px;height:18px;border-radius:4px;background:${esc(c.hex)};border:1px solid var(--line);display:inline-block"></i>${esc(c.hex)} ${esc(c.role || '')}</span>`).join('')}</div>`) : ''}
+          ${x.beats?.length ? sec(`Beats da referência (${x.beats.length})`, `<details><summary class="muted" style="cursor:pointer;font-size:12px">ver decupagem</summary><ol style="padding-left:18px;font-size:11.5px;line-height:1.5">${x.beats.map(b => `<li><b style="color:var(--cream)">${esc(String(b.from))}–${esc(String(b.to))}s</b> ${esc(b.composition || '')} · ${esc(b.elements || '')} · <i>${esc(b.typography || '')}</i> · ${esc(b.motion || '')} → ${esc(b.transitionOut || '')}${b.sfx ? ` · 🔊 ${esc(b.sfx)}` : ''}</li>`).join('')}</ol></details>`) : ''}
+          ${x.sfxRules?.length || x.motionRecipes?.length ? sec('Sons e receitas de movimento', `<details><summary class="muted" style="cursor:pointer;font-size:12px">ver</summary>
+            ${x.sfxRules?.length ? `<ul style="padding-left:18px;font-size:11.5px">${x.sfxRules.map(r => `<li>${esc(r.when)} → <b>${esc(r.sfx || '—')}</b> (${esc(r.level)})</li>`).join('')}</ul>` : ''}
+            ${x.motionRecipes?.length ? `<ul style="padding-left:18px;font-size:11.5px">${x.motionRecipes.map(r => `<li><b>${esc(r.name)}</b> (${esc(r.use)}): <code>${esc(r.gsap)}</code></li>`).join('')}</ul>` : ''}</details>`) : ''}
+          ${x.clonedFrom ? sec('🔁 Refinar com um render', `
+            <p class="muted" style="margin:0;font-size:11px">Renderize um reel com este estilo, cole o caminho do .mp4 e o Opus compara com a referência (quadros, beats e câmera) e corrige o guia.${x.refineLog?.length ? ` Última comparação: ${esc(String(x.refineLog.at(-1).match))}/10.` : ''}</p>
+            <input id="sty_refine_path" placeholder="/caminho/do/render.mp4" style="width:100%;font-size:12px;margin-top:4px">
+            <input id="sty_refine_note" placeholder="o que ficou diferente (opcional)" style="width:100%;font-size:12px;margin-top:4px">
+            <button id="sty_refine" style="margin-top:6px">Comparar e ajustar</button>
+            <div id="sty_refine_out" class="muted" style="font-size:11.5px;margin-top:6px"></div>`) : ''}
+        </div>
+      </div>
+    </div>`;
+  const close = () => host.innerHTML = '';
+  $('#styMdlClose').onclick = close;
+  $('#styMdlOverlay').onclick = e => { if (e.target.id === 'styMdlOverlay') close(); };
+  $('#sty_export').onclick = () => exportStyle(x);
+  $('#sty_delete').onclick = () => del(id, x.name || id);
+  $('#sty_save').onclick = e => act(e.target, async () => { await api('PUT', `/styles/${id}`, { style: { guide: $('#sty_guide').value } }); close(); stylesView(); });
+  if ($('#sty_refine')) $('#sty_refine').onclick = e => act(e.target, async () => {
+    $('#sty_refine_out').textContent = 'Comparando...';
+    const r = await api('POST', `/styles/${id}/refine`, { path: $('#sty_refine_path').value.trim(), note: $('#sty_refine_note').value.trim() });
+    $('#sty_refine_out').innerHTML = `Semelhança ${esc(String(r.match))}/10. Guia atualizado.<br>` + r.differences.map(d => '• ' + esc(d)).join('<br>');
+  });
+}
+
+// Clonar estilo de motion: vídeos (link ou arquivo) + imagens de referência -> workspace/styles/<id>/ escrito pelo Opus
 function openCloneModal() {
   const host = $('#fmtModalHost');
   if (!host) return;
@@ -9536,9 +9674,9 @@ function openCloneModal() {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <span style="font:700 10px var(--mono);background:rgba(247,183,8,0.18);color:#f7b708;padding:3px 8px;border-radius:5px;border:1px solid rgba(247,183,8,0.35);text-transform:uppercase;letter-spacing:.05em">✦ Claude Opus 5.5 • Vision & Sound</span>
           </div>
-          <h3 style="margin:0 0 6px;font-size:22px;color:var(--cream);letter-spacing:-.01em">Clonar Formato de Animação</h3>
+          <h3 style="margin:0 0 6px;font-size:22px;color:var(--cream);letter-spacing:-.01em">Clonar Estilo de Motion</h3>
           <p class="muted" style="margin:0;font-size:12.5px;line-height:1.45">
-            Forneça vídeos ou imagens de referência, links (YouTube/Shorts/Reels) ou um SKILL.md. O Claude Opus analisará ritmo de cortes, tipografia cinética, momentos de som e comporá o formato reutilizável.
+            Forneça vídeos ou imagens de referência, links (YouTube/Shorts/Reels) ou um SKILL.md. O Claude Opus decupa beat a beat, lê tipografia, paleta, câmera e profundidade, mede ritmo e momentos de som e escreve o estilo reutilizável.
           </p>
         </div>
 
@@ -9547,7 +9685,7 @@ function openCloneModal() {
           <!-- Campo ID -->
           <div class="clone-field-group">
             <label class="clone-label">
-              <span>Identificador do Formato (Slug / ID) <b style="color:#f7b708">*</b></span>
+              <span>Identificador do Estilo (Slug / ID) <b style="color:#f7b708">*</b></span>
               <span class="hint">Usado como identificador do preset (ex: <code>cinematico-hype</code>)</span>
             </label>
             <div class="clone-input-wrap">
@@ -9650,7 +9788,7 @@ function openCloneModal() {
           <div style="display:flex;gap:10px">
             <button type="button" id="cloneBtnCancel" style="flex:1;padding:11px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.12);background:transparent;color:var(--cream);border-radius:9px;cursor:pointer">Cancelar</button>
             <button type="button" id="cloneGo" class="primary" style="flex:2;padding:11px;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg, #f7b708 0%, #ebac00 100%);color:#000;border:none;border-radius:9px;cursor:pointer;box-shadow:0 3px 14px rgba(247,183,8,0.28)">
-              ✨ Analisar e Criar Formato com Opus
+              ✨ Analisar e Criar Estilo com Opus
             </button>
           </div>
         </div>
@@ -9910,13 +10048,13 @@ function openCloneModal() {
 
     const id = sanitizeSlug($('#cloneId').value.trim());
     if (!id) {
-      errBox.textContent = 'Por favor, digite o identificador do formato.';
+      errBox.textContent = 'Por favor, digite o identificador do estilo.';
       errBox.style.display = 'block';
       $('#cloneId').focus();
       return;
     }
     if (!/^[\w][\w.-]*$/.test(id)) {
-      errBox.textContent = 'Nome do formato inválido. Use apenas letras minúsculas, números, hífens ou sublinhados.';
+      errBox.textContent = 'Nome do estilo inválido. Use apenas letras minúsculas, números, hífens ou sublinhados.';
       errBox.style.display = 'block';
       $('#cloneId').focus();
       return;
@@ -9964,7 +10102,7 @@ function openCloneModal() {
       loadTitle.textContent = '✨ Claude Opus 5.5 analisando referências...';
       loadMsg.innerHTML = 'Extraindo frames de corte, ritmo e alinhamento sonoro (SFX)...<br><span style="font-size:11px;opacity:0.8">Esta análise profunda pode levar entre 30 e 90 segundos.</span>';
 
-      await api('POST', '/formats/clone', {
+      await api('POST', '/styles/clone', {
         id,
         urls: urlsList,
         paths,
@@ -9973,13 +10111,12 @@ function openCloneModal() {
       });
 
       // Sucesso
-      loadTitle.innerHTML = '🎉 Formato clonado com sucesso!';
-      loadMsg.textContent = `O estilo "${id}" agora está disponível na sua galeria de formatos.`;
+      loadTitle.innerHTML = '🎉 Estilo clonado com sucesso!';
+      loadMsg.textContent = `O estilo "${id}" agora está disponível na aba Estilos.`;
       
       setTimeout(() => {
         close();
-        location.hash = '#/formats';
-        formats();
+        location.hash = '#/styles';
       }, 1000);
 
     } catch (e) {
@@ -9988,7 +10125,7 @@ function openCloneModal() {
       $('#cloneFormFoot').style.display = 'flex';
       $('#cloneLoadingView').style.display = 'none';
       $('#cloneClose').style.display = 'flex';
-      errBox.textContent = `Erro ao clonar formato: ${e.message || e}`;
+      errBox.textContent = `Erro ao clonar estilo: ${e.message || e}`;
       errBox.style.display = 'block';
     }
   };
@@ -10056,15 +10193,6 @@ async function openFormatModal(id) {
             </div>
           </div>
 
-          ${f.clonedFrom ? `<div class="fmt-section-box">
-            <h5 class="fmt-section-title">🔁 Refinar com um render</h5>
-            <p class="muted" style="margin:0;font-size:11px">Renderize um reel com este formato, cole o caminho do .mp4 e o Opus compara com a referência e corrige o guia.${f.refineLog?.length ? ` Última comparação: ${esc(String(f.refineLog.at(-1).match))}/10.` : ''}</p>
-            <input id="mdl_refine_path" placeholder="/caminho/do/render.mp4" style="width:100%;font-size:12px;margin-top:4px">
-            <input id="mdl_refine_note" placeholder="o que ficou diferente (opcional)" style="width:100%;font-size:12px;margin-top:4px">
-            <button id="mdl_refine" style="margin-top:6px">Comparar e ajustar</button>
-            <div id="mdl_refine_out" class="muted" style="font-size:11.5px;margin-top:6px"></div>
-          </div>` : ''}
-
           <!-- Formar Novo Preset a partir deste -->
           <div class="fmt-section-box" style="border-color:rgba(242,230,0,0.25);background:rgba(242,230,0,0.03)">
             <h5 class="fmt-section-title">✨ Formar Novo Preset a partir deste</h5>
@@ -10080,7 +10208,7 @@ async function openFormatModal(id) {
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
               <div>
                 <h5 class="fmt-section-title" style="color:var(--mute)">Backup & Exportação</h5>
-                <p class="muted" style="margin:2px 0 0;font-size:11px">Baixe o arquivo de configuração <code>format.json</code> com todas as diretrizes de ritmo, legendas e motion GSAP.</p>
+                <p class="muted" style="margin:2px 0 0;font-size:11px">Baixe o arquivo de configuração <code>format.json</code> com as diretrizes de layout, câmera, legendas e ritmo.</p>
               </div>
               <button id="mdl_export_btn_sec" style="font-size:12px;padding:7px 14px;white-space:nowrap;font-weight:600">📥 Baixar format.json</button>
             </div>
@@ -10123,12 +10251,6 @@ async function openFormatModal(id) {
     await api('PUT', `/formats/${id}`, { format: { ...f, comments, cutout } });
     alert('Comentários e configurações do formato atualizados!');
     formats();
-  });
-
-  if ($('#mdl_refine')) $('#mdl_refine').onclick = e => act(e.target, async () => {
-    $('#mdl_refine_out').textContent = 'Comparando...';
-    const r = await api('POST', `/formats/${id}/refine`, { path: $('#mdl_refine_path').value.trim(), note: $('#mdl_refine_note').value.trim() });
-    $('#mdl_refine_out').innerHTML = `Semelhança ${esc(String(r.match))}/10. Guia atualizado.<br>` + r.differences.map(d => '• ' + esc(d)).join('<br>');
   });
 
   // Criar novo preset a partir deste
@@ -11064,14 +11186,16 @@ function route() {
   const m = h.match(/^\/p\/(.+)$/);
   const b = h.match(/^\/brands\/?(.*)$/);
   const f = h.match(/^\/formats\/?(.*)$/);
+  const sty = h.match(/^\/styles\/?(.*)$/);
   const cfg = h.match(/^\/config\/?(.*)$/);
   const ct = h.match(/^\/cortes\/?(.*)$/);
   $("#nav-cortes")?.classList.toggle("active", !!ct);
 
   // Atualiza destaque na top navbar
-  $("#nav-projects")?.classList.toggle("active", !b && !f && !cfg && !m && !ct);
+  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !cfg && !m && !ct);
   $("#nav-brands")?.classList.toggle("active", !!b);
   $("#nav-formats")?.classList.toggle("active", !!f);
+  $("#nav-styles")?.classList.toggle("active", !!sty);
   $("#nav-config")?.classList.toggle("active", !!cfg);
 
   // Garante que o trigger do Cmd+K esteja ativo
@@ -11091,6 +11215,8 @@ function route() {
       brands(b[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (f) {
       formats(f[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
+    } else if (sty) {
+      stylesView().catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (ct) {
       cortes(ct[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (cfg) {

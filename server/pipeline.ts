@@ -58,6 +58,7 @@ type State = {
   approvedAt?: number;   // the reviewer approved the AI composition (Revisão); cleared by any new AI pass, not by manual edits
   composerMode?: 'agent' | 'card';
   style?: string;                      // illustration style pack (compose/estilos/<id>.md) chosen at creation; none = the director picks
+  styleId?: string;                    // motion style (workspace/styles/<id>/) chosen at creation or in Revisão; none = the director picks from the list in the brief
   character?: { name: string; pose?: string };   // animation-brandkit character standing in for the speaker (cutout.webm is built from its pose)
   brollFill?: boolean;   // fill beats of the reel with stock b-roll in the lower band (see brollFill below)
 };
@@ -1260,7 +1261,6 @@ ${brandMd}`,
   return out;
 }
 
-const formatSkill = (id: string): string => { try { const f = join(formatDir(id), 'skill.md'); return existsSync(f) ? readFileSync(f, 'utf8') : ''; } catch { return ''; } };
 function formatGuide(st: State): string {
   let f: any;
   try { f = getFormat(st.formatId || 'business-reels'); } catch { return ''; }
@@ -1275,12 +1275,7 @@ function formatGuide(st: State): string {
       'Put every diagram/custom card inside x 70-1010, y 1040-1580 (strictly on the bottom half, never over the presenter). Captions sit on the seam (y ~900-1000) and stay on while cards play, so cards must not repeat the spoken words.',
     (f.id === 'feed-portrait-4-5' || f.id === 'youtube-16-9' || f.aspectRatio === '4:5' || f.aspectRatio === '16:9') &&
       'Lateral positioning rule: Animated texts, cards, graphics and images MUST NEVER cover the presenter\'s face or body. Position them strictly on the lateral sides (left or right) or safe lower-thirds, keeping the centered presenter completely unobstructed.',
-    f.sfxRules?.length && `Sound effects of this style:\n- ${f.sfxRules.map((r: any) => `${r.when} → ${r.sfx || 'no matching sound'} (${r.level})`).join('\n- ')}`,
-    (f.sfxGainDb || f.sfxForbidden?.length) && `Sound effects: ${f.sfxGainDb ? `overall gain ${f.sfxGainDb} dB. ` : ''}${f.sfxForbidden?.length ? `Never use: ${f.sfxForbidden.join(', ')}.` : ''}`,
-    f.motionRecipes?.length && `Motion recipes of this style (GSAP, adapt SEL and values):\n- ${f.motionRecipes.map((r: any) => `${r.name} (${r.use}): ${r.gsap}`).join('\n- ')}`,
-    formatSkill(f.id) && `Skill of this style (the user's own rules, they win):\n${formatSkill(f.id)}`,
     f.captionsStyle && `Captions style: ${f.captionsStyle}`,
-    f.styleCatalog?.length && `Style catalog (vary between these):\n- ${f.styleCatalog.join('\n- ')}`,
     e.pacing && `Pacing: ${e.pacing}, a new screen about every ${e.screenPacingSeconds}s, cards last ${e.cardMinDuration}-${e.cardMaxDuration}s, transitions: ${e.transitions ?? 'cut'}`,
     e.punchIns && `Punch-in zooms: ${e.punchIns.enabled ? `yes, x${e.punchIns.zoomScale}` : 'no'}`,
     c.headroomPercent != null && `Presenter framing: ${c.mode}, headroom ${c.headroomPercent}%`,
@@ -1289,7 +1284,7 @@ function formatGuide(st: State): string {
   return `# Format brief (chosen by the user, follow it)\n${lines.join('\n')}\n` +
     (siteRef(st) ? 'A site reference is attached below: its palette, images and facts win over the brand colours and over any "text only" rule of this format; the brand keeps fonts and tone; the format decides structure and rhythm.\n\n'
       : 'The brand rules above always win on colours, fonts, icons, tone and caption look; the format decides layout, structure and rhythm.\n\n') +
-    formatCards(f) + referenceGuide(st) + userImageGuide(st);
+    styleGuide(st) + formatCards(f) + referenceGuide(st) + userImageGuide(st);
 }
 // Images the user sent with the form: an image card points at one of them (src = the path listed here).
 function userImageGuide(st: State): string {
@@ -1371,8 +1366,10 @@ export function createFormat(id: string, data?: any) {
   return base;
 }
 
-// Clone an animation style: reference videos (links or files) and images become a new format. Rhythm is measured here with ffmpeg;
-// Opus only reads the frames and writes the visual direction, so numbers never come from the model's eye.
+// ---- motion styles (workspace/styles/<id>/: style.json, refs/ with the frames the style came from, optional skill.md) ----------
+// A style is the motion design cloned from references (typography, camera, beats, sfx, GSAP recipes); the format owns layout,
+// face tracking and rhythm. Rhythm and sound hits are measured here with ffmpeg; Opus only reads the frames and writes the
+// visual direction, so those numbers never come from the model's eye.
 const execP = (cmd: string, args: string[]) => new Promise<string>((ok, ko) =>
   execFile(cmd, args, { maxBuffer: 64 << 20 }, (e, out, err) => e ? ko(new Error(`${cmd} failed: ${String(err || e.message).slice(-400)}`)) : ok(out + err)));
 
@@ -1391,9 +1388,95 @@ async function sfxOnsets(clip: string, dur: number): Promise<number[]> {
   return hits.filter(t => t <= dur);
 }
 
-export async function cloneFormat(body: { id: string; name?: string; urls?: string[]; paths?: string[]; note?: string; skill?: string }) {
-  const id = body?.id, dir = formatDir(id);
-  if (existsSync(dir)) fail(`formato ${id} já existe`);
+const styleDir = (s: string) => safeId(s) ? join(WS, 'styles', s) : fail('style id: letters, digits, - and _ only');
+export const listMotionStyles = (): string[] => existsSync(join(WS, 'styles')) ? readdirSync(join(WS, 'styles')).filter(d => existsSync(join(WS, 'styles', d, 'style.json'))).sort() : [];
+export function getStyle(id: string) {
+  const file = join(styleDir(id), 'style.json');
+  if (!existsSync(file)) fail(`estilo ${id} não encontrado`);
+  return { ...JSON.parse(readFileSync(file, 'utf8')), refs: styleRefs(id).map(f => basename(f)) };   // refs: the frames beside it, for the UI covers
+}
+export function createStyle(id: string, data: any) {
+  const dir = styleDir(id);
+  if (existsSync(dir)) fail(`estilo ${id} já existe`);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('style must be an object');
+  mkdirSync(dir, { recursive: true });
+  const { refs: _r, ...fields } = data;   // refs is what getStyle adds on read, not a field
+  const base = { name: id, ...fields, id, camera: clampCamera(fields.camera) };
+  writeFileSync(join(dir, 'style.json'), JSON.stringify(base, null, 2));
+  return base;
+}
+export function updateStyle(id: string, data: any) {
+  const file = join(styleDir(id), 'style.json');
+  if (!existsSync(file)) fail(`estilo ${id} não encontrado`);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('style must be an object');
+  const { refs: _r, ...fields } = data;
+  const next = { ...deepMerge(JSON.parse(readFileSync(file, 'utf8')), fields), id };
+  next.camera = clampCamera(next.camera);
+  writeFileSync(file, JSON.stringify(next, null, 2));
+  return next;
+}
+export function deleteStyle(id: string) {
+  const dir = styleDir(id);
+  if (!existsSync(dir)) fail(`estilo ${id} não encontrado`);
+  rmSync(dir, { recursive: true, force: true });
+  return { ok: true, deleted: id };
+}
+export function styleRefFile(id: string, f: string) {
+  getStyle(id);
+  if (!/^[\w.-]+\.(jpe?g|png|webp)$/i.test(f) || f.includes('..') || !existsSync(join(styleDir(id), 'refs', f))) fail(`no ref ${f}`);
+  return join(styleDir(id), 'refs', f);
+}
+const styleSkill = (id: string): string => { try { const f = join(styleDir(id), 'skill.md'); return existsSync(f) ? readFileSync(f, 'utf8') : ''; } catch { return ''; } };
+const styleRefs = (id: string): string[] => { const d = join(styleDir(id), 'refs'); return existsSync(d) ? readdirSync(d).filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort().map(f => join(d, f)) : []; };
+
+// World-camera limits of kit.py (GUIDE.md "Câmera de mundo"): out of range is a lint error in the composer, so a cloned move is kept inside them.
+const CAM_LIMIT: Record<string, [number, number]> = { push: [0.9, 1.35], pull: [0.9, 1.35], pan: [-120, 120], crane: [-120, 120], tilt: [-8, 8], orbit: [-8, 8], roll: [-6, 6] };
+const camUnit = (kind: string) => kind === 'push' || kind === 'pull' ? ' scale' : kind === 'pan' || kind === 'crane' ? ' px' : '°';
+export function clampCamera(cam: any) {
+  if (!cam || typeof cam !== 'object' || !Array.isArray(cam.world)) return cam;
+  const world = cam.world.filter((m: any) => m && CAM_LIMIT[m.kind]).map((m: any) => {
+    const [lo, hi] = CAM_LIMIT[m.kind], v = Number(m.amount);
+    return { ...m, amount: Math.min(hi, Math.max(lo, Number.isFinite(v) ? v : lo)) };
+  });
+  return { ...cam, world };
+}
+
+// The style's brief, read by the motion model (after the format brief) and by the agent composer (brief.md).
+function styleBrief(s: any, refs: string[] = []): string {
+  const cam = s.camera ?? {};
+  const lines = [
+    s.guide && `Style guide: ${s.guide}`,
+    s.motif && `Recurring motif (bring it back through the reel): ${s.motif}`,
+    s.palette?.length && `Palette of the reference (approximate hex; the brand colours take their place, keep the roles and contrasts): ${s.palette.map((p: any) => `${p.hex} = ${p.role}`).join(', ')}`,
+    s.pace && `Measured rhythm of the reference: a new screen about every ${s.pace}s${s.sfxPerMinute ? `, ${s.sfxPerMinute} sound hits per minute` : ''}`,
+    cam.world?.length ? `World camera (the scene(..., world=) grammar of kit.py; amounts are targets):\n- ${cam.world.map((m: any) => `${m.kind} ${m.amount}${camUnit(m.kind)}: ${m.when}`).join('\n- ')}`
+      : (cam.framing || cam.transitions) && 'World camera: none in the reference (static stage); do not invent camera moves',
+    cam.framing && `Presenter framing: ${cam.framing}`,
+    cam.transitions && `Scene transitions: ${cam.transitions}`,
+    cam.depth && `Depth and focus: ${cam.depth}`,
+    cam.signature && `Signature shot (mark it signature=True): ${cam.signature}`,
+    s.beats?.length && `Beats of the reference (what is on screen and how it moves; reproduce the design, never the words):\n- ${s.beats.slice(0, 12).map((b: any) =>
+      `${b.from}-${b.to}s · ${b.composition} · ${b.elements} · type: ${b.typography} · motion: ${b.motion} · out: ${b.transitionOut}${b.sfx ? ` · sfx: ${b.sfx}` : ''}`).join('\n- ')}`,
+    refs.length && `Reference frames and images of the style (open each with Read before composing: the motion, textures and composition come from them, not the words): ${refs.join(', ')}`,
+    s.styleCatalog?.length && `Style catalog (vary between these):\n- ${s.styleCatalog.join('\n- ')}`,
+    s.sfxRules?.length && `Sound effects of this style (names from sfx/manifest.json):\n- ${s.sfxRules.map((r: any) => `${r.when} → ${r.sfx || 'no matching sound'} (${r.level})`).join('\n- ')}`,
+    (s.sfxGainDb || s.sfxForbidden?.length) && `Sound effects: ${s.sfxGainDb ? `overall gain ${s.sfxGainDb} dB. ` : ''}${s.sfxForbidden?.length ? `Never use: ${s.sfxForbidden.join(', ')}.` : ''}`,
+    s.motionRecipes?.length && `Motion recipes of this style (GSAP, adapt SEL and values):\n- ${s.motionRecipes.map((r: any) => `${r.name} (${r.use}): ${r.gsap}`).join('\n- ')}`,
+    styleSkill(s.id) && `Skill of this style (the user's own rules, they win):\n${styleSkill(s.id)}`,
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+export function styleGuide(st: State): string {
+  if (!st.styleId) return '';
+  let s: any;
+  try { s = getStyle(st.styleId); } catch { return ''; }
+  return `# Style brief (motion style chosen by the user, follow it; the format decides layout and rhythm, the brand decides colours and fonts)\n${styleBrief(s)}\n\n`;
+}
+
+// Clone a motion style: reference videos (links or files) and images become workspace/styles/<id>/.
+export async function cloneStyle(body: { id: string; name?: string; urls?: string[]; paths?: string[]; note?: string; skill?: string }) {
+  const id = body?.id, dir = styleDir(id);
+  if (existsSync(dir)) fail(`estilo ${id} já existe`);
   const urls = (body.urls ?? []).map(u => String(u).trim()).filter(Boolean), paths = (body.paths ?? []).map(expandHome);
   const videos = paths.filter(p => VIDEO_EXT.includes(extname(p).toLowerCase())), images = paths.filter(p => IMAGE_EXT.includes(extname(p).toLowerCase()));
   if (!urls.length && !videos.length && !images.length && !body.skill?.trim()) fail('envie ao menos um vídeo, link, imagem ou skill de referência');
@@ -1402,6 +1485,7 @@ export async function cloneFormat(body: { id: string; name?: string; urls?: stri
   const skill = typeof body.skill === 'string' ? body.skill.trim().slice(0, 30_000) : '';
   const refs = join(dir, 'refs');
   mkdirSync(refs, { recursive: true });
+  const grab = async (clip: string, t: number, f: string, w = 540) => { await execP('ffmpeg', ['-v', 'error', '-y', '-ss', Math.max(0, t).toFixed(2), '-i', clip, '-frames:v', '1', '-vf', `scale=${w}:-2`, f]); return f; };
   try {
     const clips = [...videos];
     for (const [i, u] of urls.entries()) {
@@ -1409,70 +1493,69 @@ export async function cloneFormat(body: { id: string; name?: string; urls?: stri
       await execP(YT_DLP, ['-f', 'best[ext=mp4]/best', '--download-sections', '*0-60', '-o', f, '--', u]);
       clips.push(f);
     }
-    const frames: string[] = [], stats: { clip: string; duration: number; cuts: number; secondsPerCut: number; size: string; sfxHits?: number[] }[] = [], hitFrames: string[] = [];
+    const frames: string[] = [], pairs: string[] = [], hires: string[] = [], hitFrames: string[] = [];
+    const stats: { clip: string; duration: number; cuts: number; secondsPerCut: number; size: string; sfxHits?: number[] }[] = [];
     for (const [i, clip] of clips.entries()) {
       const info = (await execP('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', clip]));
       const j = JSON.parse(info), dur = Math.min(60, Number(j.format.duration) || 0), size = `${j.streams?.[0]?.width}x${j.streams?.[0]?.height}`;
       const cuts = [...(await execP('ffmpeg', ['-v', 'info', '-t', '60', '-i', clip, '-vf', "select='gt(scene,0.3)',showinfo", '-f', 'null', '-'])).matchAll(/pts_time:([\d.]+)/g)].map(m => +m[1]);
       stats.push({ clip: basename(clip), duration: +dur.toFixed(1), cuts: cuts.length, secondsPerCut: +(dur / (cuts.length + 1)).toFixed(2), size });
-      // one frame just after each cut (at most 8 per video), so every distinct treatment is seen, plus the opening frame
-      const step = Math.max(1, Math.ceil(cuts.length / 7)), times = [0.2, ...cuts.filter((_, k) => k % step === 0).map(t => t + 0.15)].slice(0, 8);
+      // the opening frame, one frame just after each cut (at most 12 per video) and the last held frame (end card, CTA)
+      const step = Math.max(1, Math.ceil(cuts.length / 10)), times = [0.2, ...cuts.filter((_, k) => k % step === 0).map(t => t + 0.15)].slice(0, 11);
       // a continuous take has no cuts: sample evenly so the model still sees how the on-screen text and graphics change over time
       for (let k = 1; times.length < 6 && dur > 2; k++) times.push(dur * k / 6);
+      if (dur > 1) times.push(dur - 0.3);
       const hits = await sfxOnsets(clip, dur).catch(() => [] as number[]);
       stats[stats.length - 1].sfxHits = hits.slice(0, 40);
-      for (const [k, t] of hits.slice(0, 6).entries()) {   // the frame at a hit shows what the sound belongs to
-        const f = join(refs, `h${i}_${k}.jpg`);
-        await execP('ffmpeg', ['-v', 'error', '-y', '-ss', Math.max(0, t - 0.05).toFixed(2), '-i', clip, '-frames:v', '1', '-vf', 'scale=540:-2', f]);
-        hitFrames.push(f);
-      }
+      for (const [k, t] of hits.slice(0, 6).entries()) hitFrames.push(await grab(clip, t - 0.05, join(refs, `h${i}_${k}.jpg`)));   // the frame at a hit shows what the sound belongs to
       for (const [k, t] of times.entries()) {
-        const f = join(refs, `v${i}_${k}.jpg`);
-        await execP('ffmpeg', ['-v', 'error', '-y', '-ss', t.toFixed(2), '-i', clip, '-frames:v', '1', '-vf', 'scale=540:-2', f]);
-        frames.push(f);
+        frames.push(await grab(clip, t, join(refs, `v${i}_${k}.jpg`)));
+        if (k < 6 && t + 0.4 < dur) pairs.push(await grab(clip, t + 0.4, join(refs, `v${i}_${k}b.jpg`)));   // a second frame 0.4 s later: the camera and the motion show in the difference
       }
+      // shortcut: the two full-width frames are the opening and the middle of the clip, not the densest beat (unknown before the model reads); upgrade if type details come out wrong
+      hires.push(await grab(clip, 0.2, join(refs, `x${i}_0.jpg`), 1080), await grab(clip, dur / 2, join(refs, `x${i}_1.jpg`), 1080));
     }
     const imgs = images.map((p, k) => { const f = join(refs, `img${k}${extname(p).toLowerCase()}`); intake(p, f); return f; });
     const avg = stats.length ? +(stats.reduce((a, s) => a + s.secondsPerCut, 0) / stats.length).toFixed(2) : null;
-    const res = await ask<any>('cloneFormat', 'format:clone', {
-      system: 'You clone an animation style into a reusable format for a talking-head reel editor. Read every frame/image, then describe the style so another model can reproduce it ' +
-        'with different content: typography (weight, case, size, position), colour use, card/graphic types, how elements enter and leave, text-versus-presenter layout, camera moves, captions. ' +
-        'Be concrete (positions, sizes, colours, durations). Write in Brazilian Portuguese. Never copy the on-screen words of the references, only the design. ' +
-        'Rhythm numbers and sound-hit times are measured by a script and given to you: use them, do not re-estimate. ' +
+    const move = obj({ kind: { type: 'string', enum: Object.keys(CAM_LIMIT) }, when: str, amount: num });
+    const res = await ask<any>('cloneFormat', 'style:clone', {
+      system: 'You are a motion graphics director cloning the motion design of reference videos into a reusable style for a talking-head reel editor. Read every frame and image first, across the whole duration. ' +
+        'Work in this order (the fields of the answer are in that order): (1) beats: a shot-by-shot breakdown, at most 12 per video, each with its time range, composition and camera, every element (icons, illustrations, shapes, 3D), the typography (weight, case, size hierarchy, colour, how it animates), the motion, the transition into the next beat and the sound; ' +
+        '(2) palette: the colours as approximate hex with their role (background, ink, accent, gradient, glow); (3) camera; (4) motif: the recurring element that defines the style; then (5) guide: the condensed direction another designer follows to rebuild the style with different content ' +
+        '(typography, colour use, card/graphic types, how elements enter and leave, text-versus-presenter layout, density), and the recipes. Be concrete (positions, sizes, colours, durations). Write in Brazilian Portuguese. Never copy the on-screen words of the references, only the design. ' +
+        'Rhythm numbers and sound-hit times are measured by a script and given to you: use them, do not re-estimate. Frames named v*b.jpg were taken 0.4 s after the frame of the same number: compare the pair to read the camera and the motion. x*.jpg are full-width for type and icon detail. ' +
+        'camera.world: the camera moves seen, in this grammar: push/pull (target scale 0.9-1.35), pan/crane (px, up to ±120), tilt/orbit (degrees, up to ±8), roll (degrees, up to ±6); "when" says on which kind of beat it happens. Empty list when the stage is static: never invent moves. ' +
+        'camera.framing: presenter framing modes used (M, L, XL punch-in, XXL) and how the frame changes (hold, snap, push, shake) and every how many seconds. camera.transitions: which transitions appear (push, fade, slide, wipe, cut) and how often the hard cut. ' +
+        'camera.depth: parallax between layers (plate, background, presenter, foreground) and how much, depth-of-field blur (what is sharp, what is soft), and where the focal point sits per kind of scene. camera.signature: the single most striking shot. ' +
         'sfxRules: which visual event gets which sound (sfx = a name from the available list, or "" if the reference plays something not in the list); ignore hits that are speech; empty list if the video has no effects. ' +
         'motionRecipes: 3 to 6 reusable motions of this style as GSAP fragments (tween/timeline calls on the selector placeholder SEL, with from/to values, duration and ease), concrete enough to paste. ' +
-        'safeZones: pixel margins (1080x1920) when the skill or user states them, else all 0. sfxGainDb: overall sound-effect gain in dB when stated (negative number), else 0. ' +
-        'sfxForbidden: sounds the skill or user rejects (e.g. typing, riser), else empty. sceneSeconds: typical seconds one idea/scene stays on screen, from the skill or the frames; 0 if unknown.',
+        'sfxGainDb: overall sound-effect gain in dB when stated (negative number), else 0. sfxForbidden: sounds the skill or user rejects (e.g. typing, riser), else empty. sceneSeconds: typical seconds one idea/scene stays on screen, from the skill or the frames; 0 if unknown.',
       readDir: refs,
-      content: `Frames from reference videos (read each): ${frames.join(', ') || 'none'}\nFrames at detected sound hits (read each): ${hitFrames.join(', ') || 'none'}\nAvailable sound effects (use these names only): ${Object.keys(JSON.parse(readFileSync(join(SKILL, 'compose/sfx/manifest.json'), 'utf8'))).join(', ')}\nDesign reference images (the target look, not content): ${imgs.join(', ') || 'none'}\n` +
+      content: `Frames from reference videos (read each): ${frames.join(', ') || 'none'}\nFrames 0.4 s after the ones above (read each, compare the pairs): ${pairs.join(', ') || 'none'}\nFull-width frames (type and icon detail): ${hires.join(', ') || 'none'}\nFrames at detected sound hits (read each): ${hitFrames.join(', ') || 'none'}\nAvailable sound effects (use these names only): ${Object.keys(JSON.parse(readFileSync(join(SKILL, 'compose/sfx/manifest.json'), 'utf8'))).join(', ')}\nDesign reference images (the target look, not content): ${imgs.join(', ') || 'none'}\n` +
         `Measured: ${JSON.stringify(stats)}\n` + (body.note ? `What the user wants copied (priority): ${body.note}\n` : '') +
-        (skill ? `\nA skill the user already uses with Claude for this style. Its rules WIN over what you infer from the frames; fold them into promptGuide, sfxRules and motionRecipes:\n<skill>\n${skill}\n</skill>\n` : ''),
+        (skill ? `\nA skill the user already uses with Claude for this style. Its rules WIN over what you infer from the frames; fold them into guide, sfxRules and motionRecipes:\n<skill>\n${skill}\n</skill>\n` : ''),
       schema: obj({
-        name: str, description: str, promptGuide: str, captionsStyle: { type: 'string', enum: ['one-word', 'two-words', 'phrase', 'none'] },
-        cutout: { type: 'boolean' }, punchIns: { type: 'boolean' }, transitions: str, cardMinDuration: num, cardMaxDuration: num,
+        beats: { type: 'array', items: obj({ from: num, to: num, composition: str, elements: str, typography: str, motion: str, transitionOut: str, sfx: str }) },
+        palette: { type: 'array', items: obj({ hex: str, role: str }) },
+        camera: obj({ world: { type: 'array', items: move }, framing: str, transitions: str, depth: str, signature: str }),
+        motif: str, name: str, description: str, guide: str,
         sfxRules: { type: 'array', items: obj({ when: str, sfx: str, level: { type: 'string', enum: ['subtle', 'normal', 'loud'] } }) },
-        sfxGainDb: num, sfxForbidden: { type: 'array', items: str },
-        safeZones: obj({ top: num, bottom: num, left: num, right: num }), sceneSeconds: num,
+        sfxGainDb: num, sfxForbidden: { type: 'array', items: str }, sceneSeconds: num,
         motionRecipes: { type: 'array', items: obj({ name: str, use: str, gsap: str }) },
       }),
-    }, c => console.log(`[cloneFormat ${id}] ${c.model} in=${c.in} out=${c.out}`));
+    }, c => console.log(`[cloneStyle ${id}] ${c.model} in=${c.in} out=${c.out}`));
     // secondsPerCut only means something when the video has cuts; a continuous take has none, so the model's sceneSeconds stands in
     const cutCount = stats.reduce((a, x) => a + x.cuts, 0);
-    const avgPace = cutCount && avg ? Math.min(6, Math.max(0.5, avg)) : res.sceneSeconds > 0 ? Math.min(12, Math.max(0.5, res.sceneSeconds)) : 2;
-    const sz = res.safeZones, zonesOk = sz && [sz.top, sz.bottom, sz.left, sz.right].every((v: number) => v > 0);
+    const pace = cutCount && avg ? Math.min(6, Math.max(0.5, avg)) : res.sceneSeconds > 0 ? Math.min(12, Math.max(0.5, res.sceneSeconds)) : 0;
     const base: any = {
-      name: body.name?.trim() || res.name, order: 100 + listFormats().length, aspectRatio: '9:16', width: 1080, height: 1920, category: 'Clonado',
-      cutout: !!res.cutout, description: res.description, promptGuide: res.promptGuide, comments: '', captionsStyle: res.captionsStyle,
-      camera: { mode: 'face-center', headroomPercent: 18, zoomFactor: 1.15, smoothSamples: 5 },
-      visualAssets: { safeZones: zonesOk ? sz : { top: 200, bottom: 380, left: 70, right: 70 }, backgroundStyle: 'blur-extend' },
-      editingStyle: { pacing: avgPace < 2 ? 'fast-cut' : 'dynamic', screenPacingSeconds: avgPace, cardMinDuration: res.cardMinDuration, cardMaxDuration: res.cardMaxDuration,
-        punchIns: { enabled: !!res.punchIns, intervalSeconds: [3, 6], zoomScale: 1.25 }, transitions: res.transitions },
-      sfxRules: res.sfxRules, sfxGainDb: res.sfxGainDb || undefined, sfxForbidden: res.sfxForbidden?.length ? res.sfxForbidden : undefined, sfxPerMinute: stats.length ? Math.round(stats.reduce((a, x) => a + (x.sfxHits?.length ?? 0) / Math.max(1, x.duration), 0) / stats.length * 60) : 0, motionRecipes: res.motionRecipes,
+      id, name: body.name?.trim() || res.name, description: res.description, guide: res.guide, motif: res.motif, palette: res.palette,
+      camera: clampCamera(res.camera), beats: (res.beats ?? []).slice(0, 12 * Math.max(1, clips.length)), pace: pace || undefined,
+      sfxRules: res.sfxRules, sfxGainDb: res.sfxGainDb || undefined, sfxForbidden: res.sfxForbidden?.length ? res.sfxForbidden : undefined,
+      sfxPerMinute: stats.length ? Math.round(stats.reduce((a, x) => a + (x.sfxHits?.length ?? 0) / Math.max(1, x.duration), 0) / stats.length * 60) : 0, motionRecipes: res.motionRecipes,
       clonedFrom: { urls, measured: stats, note: body.note ?? '' },
     };
-    base.id = id;
-    if (skill) writeFileSync(join(dir, 'skill.md'), skill);   // also given verbatim to every project that uses the format
-    writeFileSync(join(dir, 'format.json'), JSON.stringify(base, null, 2));   // refs/ stays beside it: the images and frames the style came from
+    if (skill) writeFileSync(join(dir, 'skill.md'), skill);   // also given verbatim to every project that uses the style
+    writeFileSync(join(dir, 'style.json'), JSON.stringify(base, null, 2));   // refs/ stays beside it: the images and frames the style came from
     return base;
   } catch (e) {
     rmSync(dir, { recursive: true, force: true });
@@ -1480,13 +1563,13 @@ export async function cloneFormat(body: { id: string; name?: string; urls?: stri
   }
 }
 
-// Compares a render made with a cloned format (frames) against the frames the style was cloned from, and rewrites the guide where they differ.
-// The render is made by the user in a normal project; the loop here is compare -> fix the format -> render again.
-export async function refineFormat(id: string, body: { path?: string; note?: string }) {
-  const dir = formatDir(id), file = join(dir, 'format.json'), refs = join(dir, 'refs');
-  if (!existsSync(file) || !existsSync(refs)) fail(`formato ${id} não foi criado por clone`);
+// Compares a render made with a cloned style (frames) against the beats, camera and frames the style was cloned from, and rewrites the guide where they differ.
+// The render is made by the user in a normal project; the loop here is compare -> fix the style -> render again.
+export async function refineStyle(id: string, body: { path?: string; note?: string }) {
+  const dir = styleDir(id), file = join(dir, 'style.json'), refs = join(dir, 'refs');
+  if (!existsSync(file) || !existsSync(refs)) fail(`estilo ${id} não foi criado por clone`);
   const clip = expandHome(String(body?.path ?? ''));
-  if (!VIDEO_EXT.includes(extname(clip).toLowerCase()) || !existsSync(clip)) fail('path: caminho de um vídeo (.mp4 .mov) renderizado com este formato');
+  if (!VIDEO_EXT.includes(extname(clip).toLowerCase()) || !existsSync(clip)) fail('path: caminho de um vídeo (.mp4 .mov) renderizado com este estilo');
   const dur = Number((await execP('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clip])).trim()) || 0;
   const out = join(dir, 'refs-test');
   rmSync(out, { recursive: true, force: true }); mkdirSync(out);
@@ -1498,16 +1581,16 @@ export async function refineFormat(id: string, body: { path?: string; note?: str
   }
   const orig = readdirSync(refs).filter(f => /^v\d+_\d+\.jpg$/.test(f)).slice(0, 8).map(f => join(refs, f));
   const cur = JSON.parse(readFileSync(file, 'utf8'));
-  const res = await ask<any>('cloneFormat', 'format:refine', {
-    system: 'You compare a render made with a cloned animation format against the reference it was cloned from. Read every frame of both sets, list concrete differences ' +
-      '(typography, colours, layout, element types, motion you can infer, density), then rewrite the guide so the next render is closer. Keep what already matches. match is a 0-10 similarity score. Write in Brazilian Portuguese.',
+  const res = await ask<any>('cloneFormat', 'style:refine', {
+    system: 'You compare a render made with a cloned motion style against the reference it was cloned from. Read every frame of both sets, list concrete differences ' +
+      '(typography, colours, layout, element types, camera and motion you can infer, density), then rewrite the guide so the next render is closer. Keep what already matches. match is a 0-10 similarity score. Write in Brazilian Portuguese.',
     readDir: dir,
-    content: `Reference frames (the target): ${orig.join(', ')}\nRender frames (what the format produced): ${test.join(', ')}\n\nCurrent promptGuide:\n${cur.promptGuide}\n` +
+    content: `Reference frames (the target): ${orig.join(', ')}\nRender frames (what the style produced): ${test.join(', ')}\n\nBeats and camera of the reference:\n${JSON.stringify({ beats: cur.beats ?? [], camera: cur.camera ?? {} })}\n\nCurrent guide:\n${cur.guide}\n` +
       (body.note ? `\nUser feedback on the render (priority): ${body.note}\n` : ''),
-    schema: obj({ match: num, differences: { type: 'array', items: str }, promptGuide: str,
+    schema: obj({ match: num, differences: { type: 'array', items: str }, guide: str,
       motionRecipes: { type: 'array', items: obj({ name: str, use: str, gsap: str }) } }),
-  }, c => console.log(`[refineFormat ${id}] ${c.model} in=${c.in} out=${c.out}`));
-  const next = { ...cur, promptGuide: res.promptGuide, motionRecipes: res.motionRecipes,
+  }, c => console.log(`[refineStyle ${id}] ${c.model} in=${c.in} out=${c.out}`));
+  const next = { ...cur, guide: res.guide, motionRecipes: res.motionRecipes,
     refineLog: [...(cur.refineLog ?? []), { at: new Date().toISOString(), match: res.match, differences: res.differences }] };
   writeFileSync(file, JSON.stringify(next, null, 2));
   return { match: res.match, differences: res.differences };
@@ -1545,6 +1628,7 @@ export async function createProject(o: {
   formats?: string[];
   composerMode?: 'agent' | 'card';
   style?: string;                      // illustration style pack (compose/estilos/<id>.md) chosen at creation; none = the director picks
+  styleId?: string;                    // motion style id (workspace/styles/<id>/); validated here
   brollFill?: boolean;
   /** Text → voice: the script is spoken as written; replaces the video. `voice` falls back to the brand's `voice`. */
   text?: string;
@@ -1648,7 +1732,7 @@ export async function createProject(o: {
       return `assets/user/${name}`;
     });
     if (userImages.length) appendProjectLog(id, `🖼️ Imagens importadas: ${userImages.length}`);
-    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], composerMode, ...(style ? { style } : {}), ...(o.character ? { character: o.character } : {}), ...(o.brollFill === true ? { brollFill: true } : {}) };
+    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], composerMode, ...(style ? { style } : {}), ...(o.styleId ? { styleId: getStyle(o.styleId).id } : {}), ...(o.character ? { character: o.character } : {}), ...(o.brollFill === true ? { brollFill: true } : {}) };
     save(st);
     await run(id, 'git', ['init', '-q', P]);
     await run(id, 'git', ['-C', P, 'config', 'core.autocrlf', 'false']);
@@ -1696,6 +1780,12 @@ export async function renameProject(id: string, name: unknown) {
   await commit(id, `rename: ${st.name}`);
   return getProject(id);
 }
+export const setStyle = (id: string, styleId?: string | null) => {
+  const st = load(id);
+  st.styleId = styleId ? getStyle(styleId).id : undefined;
+  save(st);
+  return { ok: true, styleId: st.styleId ?? null };
+};
 export const setComposerMode = (id: string, mode: 'agent' | 'card') => {
   const st = load(id);
   st.composerMode = mode;
@@ -3050,8 +3140,10 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const brandMd = existsSync(join(brandDir(st.brand), 'brand.md')) ? readFileSync(join(brandDir(st.brand), 'brand.md'), 'utf8') : '';
   const refFile = join(P, 'reference.json'), refAnalysis = existsSync(refFile) ? Object.entries(readJSON(refFile)).map(([k, v]) => `- ${k}: ${v}`).join('\n') : '';
   const imgFiles = existsSync(join(A, 'img')) ? readdirSync(join(A, 'img')).filter(f => !f.startsWith('.')) : [];
-  // quadros e imagens que deram origem ao formato (clone): o estilo a reproduzir, que o promptGuide descreve mas não mostra
-  const fmtRefs = existsSync(join(formatDir(fmt.id), 'refs')) ? readdirSync(join(formatDir(fmt.id), 'refs')).filter(f => /\.(jpe?g|png|webp)$/i.test(f)).map(f => join(formatDir(fmt.id), 'refs', f)) : [];
+  // the motion style: chosen (followed to the letter, with the frames it came from) or, if none, the list the director picks from
+  let style: any = null;
+  if (st.styleId) try { style = getStyle(st.styleId); } catch { style = null; }
+  const styleList = style ? [] : listMotionStyles().map(sid => { try { return getStyle(sid); } catch { return null; } }).filter(Boolean);
   const imgDesc = imgFiles.length ? `img/ (${imgFiles.length} imagens da referência disponíveis: ${imgFiles.join(', ')}; olhe cada uma com Read antes de usar, e mostre com <img src="assets/img/..."> em back/front)` : 'img/ (vazio)';
 
   writeFileSync(join(C, 'brief.md'), [`# Briefing: ${st.name}`,
@@ -3061,7 +3153,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     motion ? `## Referência visual: site da marca\nSem locutor na tela. Leia ref_site/site.md e olhe as imagens de ref_site/ (Read). Paleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site.`
       : siteRef(st) ? `## Marca (${st.brand}) e site\nPaleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site, que é a campanha atual: ela vence as cores do brand.md. Do brand.md valem só o tom e a fonte.\nOlhe ../ref/top_mobile.png e ../ref/top_desktop.png com Read: o print mostra qual cor é fundo, destaque e botão.\n${referenceGuide(st)}\n\n${brandMd.replace(/## Cores[\s\S]*?(?=\n## |$)/, '')}`
       : `## Marca (${st.brand})\nPaleta mapeada em compose.json (RED, RED2, AMB, BLK, CRM; ajuste se o brand.md pedir outra).\n\n${brandMd}`,
-    !motion ? `## Estilo do formato escolhido (${fmt.name})\nAplique este estilo tipográfico dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.\n${fmtRefs.length ? `Quadros e imagens de referência do formato (abra cada um com Read antes de compor: o movimento, as texturas e a composição vêm daí, não as palavras): ${fmtRefs.join(', ')}\n` : ''}${(fmt.promptGuide ?? '').replace(/[^.]*(só texto|sem imagens)[^.]*\.\s*/gi, '')}\n${(fmt.styleCatalog ?? []).map((x: string) => `- ${x}`).join('\n')}\n${formatSkill(fmt.id) ? `## Skill do estilo (regras do usuário, valem sobre o resto)\n${formatSkill(fmt.id)}\n` : ''}${fmt.sfxRules?.length ? `## Efeitos sonoros do estilo (nomes em assets/sfx/manifest.json)${fmt.sfxGainDb ? `\nGanho geral dos SFX: ${fmt.sfxGainDb} dB.` : ''}${fmt.sfxForbidden?.length ? `\nProibido: ${fmt.sfxForbidden.join(', ')}.` : ''}\n${fmt.sfxRules.map((r: any) => `- ${r.when} → ${r.sfx || '(sem som equivalente)'} (${r.level})`).join('\n')}` : ''}\n${fmt.motionRecipes?.length ? `## Receitas de movimento do estilo (GSAP)\n${fmt.motionRecipes.map((r: any) => `- ${r.name} (${r.use}): ${r.gsap}`).join('\n')}` : ''}` : '',
+    !motion ? `## Formato escolhido (${fmt.name})\nÉ a edição: onde fica o locutor, câmera, imagens e ritmo. Aplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.\n${(fmt.promptGuide ?? '').replace(/[^.]*(só texto|sem imagens)[^.]*\.\s*/gi, '')}` : '',
+    !motion && style ? `## Estilo de motion escolhido (${style.name})\nSiga-o: tipografia, câmera, beats, sons e receitas vêm dele; o formato decide o layout e a marca decide cores e fontes.\n${styleBrief(style, styleRefs(style.id))}` : '',
+    !motion && !style && styleList.length ? `## Estilos de motion disponíveis\nNenhum foi escolhido: escolha o que serve ao assunto e à marca, diga qual e por quê no treatment e siga o style.json dele (Read). Para seguir um à risca em todos os renders, o usuário escolhe no projeto.\n${styleList.map((x: any) => `- ${x.id}: ${x.name}. ${x.description ?? ''}${x.motif ? ` Motivo: ${x.motif}.` : ''}${x.camera?.signature ? ` Câmera: ${x.camera.signature}.` : ''} (${join(styleDir(x.id), 'style.json')})`).join('\n')}` : '',
     !motion && refAnalysis && !siteRef(st) ? `## Análise da referência (reference.json)\nÉ o estilo a reproduzir. Olhe os quadros em ../ref/ com Read antes de escrever.\n${refAnalysis}` : '',
     `## Ilustração\n${st.style ? `Estilo de ilustração escolhido pelo usuário: ESTILO.md (${st.style}). Siga-o; a paleta e os motivos vêm do ILUSTRACAO.md.` : 'Nenhum estilo escolhido: o diretor escolhe um em estilos/README.md dentro do treatment (DIRETOR.md §6, item 0) e lê o pacote inteiro antes do scenes.py.'}\nILUSTRACAO.md (se existir) é o estilo de desenho desta marca: toda ilustração é desenhada em código seguindo-o, com \`canvas()\` (Canvas 2D) ou \`scene3d()\` (three.js) do kit, ou é uma imagem do site (assets/img/). Nunca pictograma de pessoa, ícone de linha fina, emoji ou balão com texto de exemplo, mesmo que a análise do site acima sugira "ícones de traço fino". Decida a câmera de cada plano pelo DIRETOR.md e escreva treatment.md antes do scenes.py.`,
     !motion && script.moments?.length ? `## Momentos do roteiro\nUm bloco por momento: tempo, fala e ação visual sugerida. O kit.py é opcional: use um helper só quando ele for a melhor ideia para o momento.\n${script.moments.map((m: any) => `- ${m.t_start}s–${m.t_end}s · "${m.texto ?? ''}" · ${m.visual_action ?? ''}`).join('\n')}` : '',

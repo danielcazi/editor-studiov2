@@ -17,7 +17,8 @@ Antes do primeiro vídeo, monte a **Marca** e escolha um **Formato** (seção "C
 - **Marca (Brandkit)**: cores, fontes, ícones, estilo de legenda e regras de voz. Fica em `workspace/brands/<id>/` (`brand.json` + `brand.md`). Crie e edite na aba **Brands**; dá para pedir ao chat da marca para clonar o estilo de uma referência.
 ![Formatos](docs/img/05-formats.png)
 
-- **Formato**: proporção e jeito de montar (reel 9:16, feed 1:1, feed 4:5, YouTube 16:9, motion completo, split etc.). Fica em `workspace/formats/<id>/format.json`. Aba **Formatos**.
+- **Formato**: proporção e jeito de montar a edição (onde fica o locutor, câmera, imagens, zonas seguras, ritmo: reel 9:16, feed 1:1, feed 4:5, YouTube 16:9, motion completo, split etc.). Fica em `workspace/formats/<id>/format.json`. Aba **Formatos**.
+- **Estilo**: o motion design clonado de vídeos ou imagens de referência (tipografia, paleta, câmera e profundidade, beats, sons, receitas GSAP). Fica em `workspace/styles/<id>/style.json` com os quadros em `refs/`. Aba **Estilos**. Escolhido no projeto, o compositor segue à risca; sem escolha, o diretor decide entre os da lista.
 - **Projeto**: um vídeo. Fica em `workspace/projects/<id>/` e é um repositório git próprio: cada passo e cada edição manual viram commit, então dá para voltar atrás.
 
 ## Passo a passo

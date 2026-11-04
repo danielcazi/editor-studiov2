@@ -33,10 +33,15 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['DELETE', /^\/settings\/keys\/([^/]+)$/, m => K.deleteKey(m[1])],
   ['POST', /^\/settings\/keys\/([^/]+)\/test$/, m => K.testKey(m[1])],
   ['GET', /^\/formats$/, () => P.listFormats()],
-  ['GET', /^\/styles$/, () => P.listStyles()],
+  ['GET', /^\/illustration-styles$/, () => P.listStyles()],
+  ['GET', /^\/styles$/, () => P.listMotionStyles()],
+  ['GET', /^\/styles\/([^/]+)$/, m => P.getStyle(m[1])],
+  ['POST', /^\/styles\/([^/]+)\/refine$/, (m, b) => P.refineStyle(m[1], b)],
+  ['POST', /^\/styles\/clone$/, (_, b) => P.cloneStyle(b)],
+  ['POST', /^\/styles$/, (_, b) => P.createStyle(b.id, b.style)],
+  ['PUT', /^\/styles\/([^/]+)$/, (m, b) => P.updateStyle(m[1], b.style)],
+  ['DELETE', /^\/styles\/([^/]+)$/, m => P.deleteStyle(m[1])],
   ['GET', /^\/formats\/([^/]+)$/, m => P.getFormat(m[1])],
-  ['POST', /^\/formats\/([^/]+)\/refine$/, (m, b) => P.refineFormat(m[1], b)],
-  ['POST', /^\/formats\/clone$/, (_, b) => P.cloneFormat(b)],
   ['POST', /^\/formats$/, (_, b) => P.createFormat(b.id, b.format)],
   ['PUT', /^\/formats\/([^/]+)$/, (m, b) => P.updateFormat(m[1], b.format)],
   ['DELETE', /^\/formats\/([^/]+)$/, m => P.deleteFormat(m[1])],
@@ -75,6 +80,7 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/projects\/([^/]+)\/motion$/, m => P.motion(m[1])],
   ['POST', /^\/projects\/([^/]+)\/broll$/, m => P.brollFill(m[1])],
   ['POST', /^\/projects\/([^/]+)\/composer-mode$/, (m, b) => P.setComposerMode(m[1], b?.mode ?? 'agent')],
+  ['PUT', /^\/projects\/([^/]+)\/style$/, (m, b) => P.setStyle(m[1], b?.styleId)],
   ['POST', /^\/projects\/([^/]+)\/preview$/, m => P.renderPreview(m[1])],
   ['PUT', /^\/projects\/([^/]+)\/edit$/, (m, b) => P.putEdit(m[1], b)],
   ['POST', /^\/projects\/([^/]+)\/batch$/, (m, b) => P.batchEdit(m[1], b)],
@@ -157,6 +163,8 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && hf) return file(P.hfFile(hf[1]), req, res);
     const tc = path.match(/^\/tests\/([^/]+)\/final\.mp4$/);
     if (req.method === 'GET' && tc) return file(P.testFile(decodeURIComponent(tc[1])), req, res);
+    const sr = path.match(/^\/styles\/([^/]+)\/refs\/([^/]+)$/);
+    if (req.method === 'GET' && sr) return file(P.styleRefFile(decodeURIComponent(sr[1]), decodeURIComponent(sr[2])), req, res);
     const ff = path.match(/^\/brands\/([^/]+)\/fonts\/([^/]+)$/);
     if (req.method === 'GET' && ff) return file(P.fontFile(decodeURIComponent(ff[1]), decodeURIComponent(ff[2])), req, res);
     const cp = path.match(/^\/brands\/([^/]+)\/characters\/([^/]+)\/([^/]+)$/);

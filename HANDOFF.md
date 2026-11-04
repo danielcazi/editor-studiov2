@@ -82,7 +82,8 @@ Regras transversais:
 | Só motion (teste) | `POST /compose {mode:"motion"}` | site, voz, transcript (sem locutor) | mesmo agente com `GUIDE-motion.md`, renderiza | `compose-motion/out.mp4` → `preview-motion.mp4` |
 | **Cortes** (lateral, fora do projeto) | `/cortes…` | palestra de ~1 h | Whisper → Sonnet `cortes` escolhe 10 trechos de 1-2 min (duas passagens) → Haiku `cortesSrt` corrige o srt → mp4 + srt por trecho. UI faz polling, sem SSE. | `workspace/cortes/<id>/out/` |
 | **Marcas** | `/brands…` | imagem ou YouTube (`cloneBrandWithOpus`), fontes, ícones SVG/PNG, poses de personagem, `brand.md` | Opus clona a marca; `syncBrandMarkdown` mantém brand.md e brand.json coerentes; `testClip` renderiza um clipe de teste | `workspace/brands/<id>/` |
-| **Formatos** | `/formats…` | vídeos/imagens de referência (`cloneFormat`), nota (`refineFormat`), `skill.md` do usuário | Opus extrai `promptGuide`, `styleCatalog`, `motionRecipes`, `sfxRules`; `format.json` com `composer`, `cutout`, `aspectRatio`, `safeZones` | `workspace/formats/<id>/` |
+| **Formatos** | `/formats…` | edição por `format.json` (`composer`, `cutout`, `aspectRatio`, `layout`, `camera`, `safeZones`, `editingStyle`, `promptGuide`) | sem modelo | `workspace/formats/<id>/` |
+| **Estilos** | `/styles…` | vídeos/imagens de referência (`cloneStyle`), nota (`refineStyle`), `skill.md` do usuário | Opus decupa `beats`, `palette`, `camera` (gramática do kit, limites aplicados por `clampCamera`), `motif`, `guide`, `motionRecipes`, `sfxRules`; `styleGuide` entra no prompt de motion e no `brief.md` quando o projeto tem `styleId`, senão o brief lista os estilos para o diretor | `workspace/styles/<id>/` |
 | **Configurações** | `/settings/keys…`, `/update/*` | chaves Pexels, Pixabay, ElevenLabs, Google TTS | `keys.ts` guarda em `~` com modo 0600; `checkUpdate/applyUpdate` fazem `git pull` da raiz | |
 
 Qual caminho a Revisão toma (`usesAgent`, `pipeline.ts:1054`): `composerMode` do projeto manda; senão, `format.composer === "agent"` (hoje só `motion-completo`) ou `format.cutout && referência é site` (business-reels, personal-reels, explainer-panel, fitted-captions, cutout-backdrop com site). Todos os 11 projetos recentes foram pelo caminho B.
@@ -244,7 +245,7 @@ Nenhuma chamada `compose:treatment` aparece em nenhum `cost[]`. O código que co
 
 ### Dados (`workspace/`)
 
-`brands/<id>/` (brand.json, brand.md, ILUSTRACAO.md + ilustracao.json, fonts/, icons/, characters/) · `formats/<id>/` (format.json, skill.md, refs/) · `projects/<id>/` (repositório git; ver §2) · `cortes/<id>/` · `locks/` · `uploads/` · `tests/`.
+`brands/<id>/` (brand.json, brand.md, ILUSTRACAO.md + ilustracao.json, fonts/, icons/, characters/) · `formats/<id>/` (format.json) · `styles/<id>/` (style.json, skill.md, refs/) · `projects/<id>/` (repositório git; ver §2) · `cortes/<id>/` · `locks/` · `uploads/` · `tests/`.
 
 ---
 
