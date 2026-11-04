@@ -6311,6 +6311,7 @@ async function projects() {
                   <option value="">Ilustração: automático (o diretor escolhe o estilo)</option>
                   ${styles.map(s => `<option value="${esc(s.id)}" title="${esc(s.line)}">Ilustração: ${esc(s.name)} · ${esc(s.fit)}</option>`).join('')}
                 </select>
+                <a href="#/styles" class="muted" style="font-size:11px;align-self:flex-end">ver estilos de ilustração ↗</a>
                 <select class="np-select" name="styleId" id="npMotionStyleSelect" title="Estilo de motion: um estilo clonado na aba Estilos que o compositor segue à risca; automático deixa o diretor escolher">
                   <option value="">Motion: automático (o diretor escolhe entre os estilos)</option>
                   ${motionStyles.map(s => `<option value="${esc(s.id)}" title="${esc(s.description || '')}">Motion: ${esc(s.name || s.id)}</option>`).join('')}
@@ -9512,6 +9513,7 @@ async function formats() {
 async function stylesView() {
   const ids = await api('GET', '/styles');
   const all = (await Promise.all(ids.map(id => api('GET', `/styles/${id}`).catch(() => null)))).filter(x => x && x.id);
+  const packs = await api('GET', '/illustration-styles').catch(() => []);
   const cover = x => x.refs?.length ? `<img src="/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(x.refs.find(f => /^x\d+_0\./.test(f)) || x.refs[0])}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font:700 40px var(--serif);color:var(--ay);background:var(--stage)">${esc((x.name || x.id).slice(0, 1))}</div>`;
   app.innerHTML = `
@@ -9551,8 +9553,32 @@ async function stylesView() {
             </div>
           </article>`).join('')}
       </div>
+      <h2 class="fmt-gallery-title" style="margin-top:34px">Estilos de ilustração <span class="fmt-gallery-count">${packs.length} pacotes</span></h2>
+      <p class="fmt-gallery-desc">Como o compositor desenha as ilustrações em código (canvas / 3D): materiais, cor, movimento e som. A folha mostra o demo do motor de cada pacote; escolha um ao criar o projeto.</p>
+      <div class="fmt-grid">
+        ${packs.map(x => `
+          <article class="fmt-style-card" data-pack-id="${esc(x.id)}">
+            <div class="pack-sheet" style="aspect-ratio:4/1.78;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#111;display:flex;align-items:center;justify-content:center;font:12px var(--mono);color:var(--mute)">gerando folha…</div>
+            <div class="fmt-card-meta">
+              <h4 class="fmt-card-name">${esc(x.name)}</h4>
+              <p class="fmt-card-desc">${esc(x.line)}</p>
+              ${x.fit ? `<p class="fmt-card-desc" style="color:var(--mute)">Serve para: ${esc(x.fit)}</p>` : ''}
+            </div>
+          </article>`).join('')}
+      </div>
     </div>
     <div id="fmtModalHost"></div>`;
+  // the sheet route renders on first request (seconds per pack, one at a time): 404 = pack without engine, any other failure retries
+  const sheet = async (card, tries = 0) => {
+    const box = card.querySelector('.pack-sheet'), id = card.dataset.packId;
+    try {
+      const r = await fetch(`/illustration-styles/${encodeURIComponent(id)}/sheet.png`);
+      if (r.status === 404) return box.textContent = 'sem motor: só receita';
+      if (!r.ok) throw new Error(r.status);
+      box.innerHTML = `<img src="${URL.createObjectURL(await r.blob())}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`;
+    } catch { if (box.isConnected && tries < 4) setTimeout(() => sheet(card, tries + 1), 15000); else box.textContent = 'folha não gerada'; }
+  };
+  app.querySelectorAll('[data-pack-id]').forEach(card => { sheet(card); card.onclick = () => openPackModal(card.dataset.packId, packs.find(p => p.id === card.dataset.packId)); });
   $('#styCloneBtn').onclick = () => openCloneModal();
   $('#styImportBtn').onclick = () => $('#styImportFile').click();
   $('#styImportFile').onchange = async e => {
@@ -9573,6 +9599,29 @@ async function stylesView() {
   app.querySelectorAll('.fmt-quick-btn.export').forEach(btn => btn.onclick = e => { e.stopPropagation(); exportStyle(all.find(x => x.id === btn.dataset.styId)); });
   app.querySelectorAll('.fmt-quick-btn.delete').forEach(btn => btn.onclick = e => { e.stopPropagation(); del(btn.dataset.styId, btn.dataset.styName); });
   app.querySelectorAll('.fmt-style-card').forEach(card => card.onclick = () => openStyleModal(card.dataset.styId, exportStyle, del));
+}
+
+// the pack's markdown (the recipe the composer reads) as plain text, with its sheet when the pack has an engine
+async function openPackModal(id, x) {
+  const host = $('#fmtModalHost');
+  if (!host) return;
+  const md = await fetch(`/illustration-styles/${encodeURIComponent(id)}/md`).then(r => r.text()).catch(e => String(e));
+  const img = app.querySelector(`[data-pack-id="${CSS.escape(id)}"] img`);
+  host.innerHTML = `
+    <div class="fmt-modal-overlay" id="packMdlOverlay">
+      <div class="fmt-modal-box" style="flex-direction:column;gap:0">
+        <button class="fmt-modal-close" id="packMdlClose" title="Fechar">&times;</button>
+        ${img ? `<img src="${img.src}" style="width:100%;display:block;border-bottom:1px solid rgba(255,255,255,0.08)" alt="">` : ''}
+        <div class="fmt-modal-content" style="gap:8px">
+          <h2 style="margin:0;color:var(--cream);font-size:22px">${esc(x?.name || id)}</h2>
+          <p style="margin:0;font-size:13px;color:var(--mute)">${esc(x?.line || '')}</p>
+          <pre style="white-space:pre-wrap;font:12px/1.5 var(--mono);color:var(--cream);margin:8px 0 0">${esc(md)}</pre>
+        </div>
+      </div>
+    </div>`;
+  const close = () => host.innerHTML = '';
+  $('#packMdlClose').onclick = close;
+  $('#packMdlOverlay').onclick = e => { if (e.target.id === 'packMdlOverlay') close(); };
 }
 
 async function openStyleModal(id, exportStyle, del) {

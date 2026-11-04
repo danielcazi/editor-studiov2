@@ -12,6 +12,9 @@ FR = {'M': .95, 'L': 1.2, 'XL': 1.5, 'XXL': 1.8} if H >= W else {'M': .65, 'L': 
 FACE_X = CFG.get('faceX', 980)
 SPEAKER = CFG.get('speaker', True)   # false = reel só de motion: sem plate, sem recorte, sem câmera
 CUTS = CFG.get('cuts', [])          # emendas do corte (s, no relógio do reel): o recorte ganha um zoom alternado em cada uma
+PANEL = CFG.get('panel')            # Speech Screen: {'top': fração de H}; cena com cam='panel' mostra o vídeo bruto (assets/talk.mp4) no painel de baixo
+PANEL_TOP = round(H * PANEL['top']) if PANEL else None
+CUT_WINDOWS = CFG.get('cutWindows')  # [[a, b], ...] s: só aqui existe recorte; cena com câmera M/L/XL fora delas é erro (use 'panel' ou None)
 
 # Relógio por palavra: toda batida cai numa palavra da fala, nunca num segundo digitado. assets/transcript.json vem do master.
 WORDS = json.load(open('assets/transcript.json')) if os.path.exists('assets/transcript.json') else []
@@ -66,6 +69,24 @@ CENTER = "left:0;right:0;margin:auto;width:max-content"
 
 def kenburns(sel, d, s0=1.0, s1=1.12):
     return f'tl.fromTo("{sel}",{{scale:{s0}}},{{scale:{s1},duration:{d},ease:"none"}},0);'
+
+def floatimg(p, src, x, y, w, at=0.0, rot=-4, drift=16, d=None, k='fi'):
+    """Imagem do site flutuando: card com sombra que entra com mola e deriva devagar (ida e volta) enquanto fica.
+    x, y, w em px (área de cima no Speech Screen; ao redor do locutor nos outros); d = segundos até sair (None = fica)."""
+    i = f'{p}-{k}'
+    html = f'<img id="{i}" class="card" src="{src}" style="left:{x}px;top:{y}px;width:{w}px;transform:rotate({rot}deg);opacity:0">'
+    js = (f'tl.fromTo("#{i}",{{opacity:0,scale:.6,y:40,rotation:{rot - 8}}},{{opacity:1,scale:1,y:0,rotation:{rot},duration:.55,ease:"back.out(1.6)"}},{at:.2f});'
+          f'tl.to("#{i}",{{y:-{drift},rotation:{rot + 2},duration:1.6,ease:"sine.inOut",repeat:5,yoyo:true}},{at + .55:.2f});')
+    if d is not None: js += f'tl.to("#{i}",{{opacity:0,scale:.85,duration:.3,ease:"power2.in"}},{at + d - .3:.2f});'
+    return html, js
+
+def cascade(p, words, top=300, size=14, at=0.0, step=.4, color=None, accent=None, k='cs'):
+    """Palavras que caem uma por batida e empilham linhas; a última na cor de destaque. Tipografia gigante: vai em back. size em % da largura, top em px."""
+    color, accent = color or CRM, accent or AMB
+    rows = ''.join(f'<div class="ln" id="{p}-{k}{i}" style="color:{accent if i == len(words) - 1 else color};opacity:0">{w}</div>' for i, w in enumerate(words))
+    html = f'<div class="giant" id="{p}-{k}" data-layout-allow-overlap data-layout-allow-occlusion style="font-size:{u(size)};top:{top}px;line-height:.9">{rows}</div>'
+    js = ''.join(f'tl.fromTo("#{p}-{k}{i}",{{opacity:0,y:-80,scale:1.25}},{{opacity:1,y:0,scale:1,duration:.42,ease:"power4.out"}},{at + i * step:.2f});' for i in range(len(words)))
+    return html, js
 
 def ladder(p, hi, bg, fg, rows, at=.05):
     # rows: 3 linhas de texto; a linha `hi` fica ativa (vermelha, pulsa)
@@ -173,6 +194,7 @@ def counter(p, d):
 
 # Regras do locutor (GUIDE.md §3 a §5). Erro = o cliente proíbe; aviso = pede revisão nas folhas de contato.
 MODOS = ('hold', 'snap', 'push', 'shake')
+BG_NAMES = ('foot', 'red', 'amber', 'black', 'cream', 'broll')
 ERROS, AVISOS = [], []
 
 def erro(msg): ERROS.append(msg)
@@ -208,17 +230,28 @@ def lint_variety(src, html, js):
 def lint_static():
     for s in S:
         n, cam = s['n'], s['cam']
+        if s['bg'] == 'plate': erro(f'cena {n}: fundo "plate" (o vídeo do locutor replicado/desfocado) é proibido: use imagem do site, sólido ou gradiente da marca, ou ilustração')
+        elif s['bg'] not in BG_NAMES: erro(f'cena {n}: fundo {s["bg"]!r} desconhecido (use {", ".join(BG_NAMES)})')
+        if cam == 'panel':
+            if not PANEL: erro(f'cena {n}: câmera "panel" só existe em formato com painel (compose.json panel)')
+            if s['cta']: erro(f'cena {n}: CTA exige locutor XXL (recortado), não painel')
+            if s['tr'] not in TRS: erro(f'cena {n}: transição {s["tr"]!r} inválida (use {", ".join(TRS)})')
+            continue
+        if isinstance(cam, str):
+            erro(f'cena {n}: câmera {cam!r} desconhecida (tupla (enquadramento, modo, final), "panel" ou None)'); continue
         if cam:
             fr, mode, fin = cam
             if fr not in FR or fin not in FR or mode not in MODOS:
                 erro(f'cena {n}: câmera {cam} inválida (enquadramentos {list(FR)}, modos {list(MODOS)})')
                 continue
             if s['bg'] == 'broll': erro(f'cena {n}: fundo broll com locutor: o recorte some, use câmera None')
+            if CUT_WINDOWS is not None and not any(w[0] - .01 <= s['a'] and s['b'] <= w[1] + .01 for w in CUT_WINDOWS):
+                erro(f'cena {n}: recorte fora das janelas {CUT_WINDOWS} (s); use cam="panel" ou None, ou encaixe a cena numa janela')
             if mode == 'hold' and s['b'] - s['a'] > 4: aviso(f'cena {n}: {s["b"] - s["a"]:.1f} s com locutor parado; divida em duas com enquadramentos diferentes')
         if s['cta'] and not (cam and cam[0] == 'XXL'): erro(f'cena {n}: CTA exige locutor XXL')
         if s['tr'] not in TRS: erro(f'cena {n}: transição {s["tr"]!r} inválida (use {", ".join(TRS)})')
     for x, y in zip(S, S[1:]):
-        if x['cam'] and y['cam'] and x['cam'][0] == y['cam'][0]:
+        if isinstance(x['cam'], tuple) and isinstance(y['cam'], tuple) and x['cam'][0] == y['cam'][0]:
             aviso(f'cenas {x["n"]} e {y["n"]}: mesmo enquadramento {x["cam"][0]} em cenas vizinhas (alterne XL, L, M)')
 
 def render():
@@ -275,7 +308,7 @@ def render():
     BGS = {'foot': 'background:rgba(0,0,0,.6)', 'red': f'background:radial-gradient(120% 80% at 50% 30%,{RED},{RED2})',
            'amber': f'background:radial-gradient(110% 75% at 50% 35%,{AMB},color-mix(in srgb,{AMB} 78%,#000))',
            'black': 'background:radial-gradient(110% 70% at 50% 38%,#1c1c1c,#000)',
-           'cream': f'background:radial-gradient(110% 75% at 50% 35%,{CRM},color-mix(in srgb,{CRM} 93%,#000))', 'broll': 'background:#000', 'plate': 'background:transparent'}
+           'cream': f'background:radial-gradient(110% 75% at 50% 35%,{CRM},color-mix(in srgb,{CRM} 93%,#000))', 'broll': 'background:#000'}
     os.makedirs('compositions', exist_ok=True)
     for f in os.listdir('compositions'):
         os.remove(os.path.join('compositions', f))
@@ -309,7 +342,10 @@ def render():
             fx_n += 1  # trilhas 9..14 em rodízio global: efeitos vizinhos nunca dividem a mesma trilha
             sfx_tags.append(f'<audio id="fx{n:02d}{i}" class="clip" src="assets/sfx/{SFX[name]['file']}" data-start="{a + off:.2f}" data-duration="{min(SFX[name]['duration'], DUR - a - off):.2f}" data-track-index="{9 + fx_n % 6}" data-volume="{vol}"></audio>')
         # câmera do recorte: escala fixa por enquadramento, origem no rosto/base (regra 1 e 2)
-        if s['cam']:
+        if PANEL: cam.append(f'tl.set("#tcam",{{opacity:{1 if s["cam"] == "panel" else 0}}},{a});')
+        if s['cam'] == 'panel':
+            cam.append(f'tl.set("#ccam",{{opacity:0}},{a});')
+        elif s['cam']:
             fr, mode, fin = s['cam']
             cs = FR[fr]
             cam.append(f'tl.set("#ccam",{{opacity:1,x:0,scale:{FR[fin] if mode == "snap" else cs:.3f}}},{a});')
@@ -322,9 +358,9 @@ def render():
         else:
             cam.append(f'tl.set("#ccam",{{opacity:0}},{a});')
 
-    cam.extend(f'tl.set("#cut",{{scale:{1.06 if i % 2 == 0 else 1}}},{t:.3f});' for i, t in enumerate(CUTS) if 0 < t < DUR)
+    cam.extend(f'tl.set(".cut",{{scale:{1.06 if i % 2 == 0 else 1}}},{t:.3f});' for i, t in enumerate(CUTS) if 0 < t < DUR)
     cam = cam if SPEAKER else []
-    pcam_js = 'tl.set("#pcam", { scale:1.12 }, 0);' if SPEAKER else ''
+    pcam_js = ''
     world_js, world_kinds = world_track()
     AVISOS.extend(lint_world(world_kinds))
     # ordem de pintura dentro do #world (preserve-3d) é a profundidade: deep < mid < ccam (0) < near; o z-index dos hosts fica só como documentação
@@ -335,9 +371,20 @@ def render():
     finish_html = (f'<div id="grain" style="position:absolute;inset:-40px;z-index:5;pointer-events:none;background:{GRAIN};opacity:{grain};mix-blend-mode:overlay"></div>'
                    f'<div id="vig" style="position:absolute;inset:0;z-index:5;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 58%,rgba(0,0,0,.24) 100%)"></div>') if grain else ''
     finish_js = ''.join(f'tl.set("#grain",{{x:{(i * 37) % 40 - 20},y:{(i * 53) % 40 - 20}}},{i / 6:.2f});' for i in range(int(DUR * 6))) if grain else ''
+    # cada mídia só nos trechos em que aparece (como um NLE): o render extrai e pinta só esses quadros, não o reel inteiro por vídeo
+    talk_ranges = []
+    for s in S:
+        if s['cam'] != 'panel': continue
+        if talk_ranges and abs(talk_ranges[-1][1] - s['a']) < 1e-6: talk_ranges[-1][1] = s['b']
+        else: talk_ranges.append([s['a'], s['b']])
+    clip = lambda i, kind, src, a, b, track, extra='': f'<video class="clip {kind}" id="{kind}{i}" src="{src}" data-start="{a:.3f}" data-duration="{b - a:.3f}" data-media-start="{a:.3f}" data-track-index="{track}" muted playsinline data-layout-allow-occlusion {extra}></video>'
+    talk_clips = ''.join(clip(i, 'talk', 'assets/talk.mp4', a, b, 6) for i, (a, b) in enumerate(talk_ranges))
+    cut_clips = ''.join(clip(i, 'cut', 'assets/cut.webm', a, b, 3, 'data-layout-allow-overflow') for i, (a, b) in enumerate(CUT_WINDOWS if CUT_WINDOWS is not None else [[0, DUR]]))
+    panel_html = (f'<div id="tcam" style="z-index:3">{talk_clips}<div class="rule"></div></div>' if SPEAKER and PANEL else '')
+    # camada 1: o vídeo original inteiro, escondido, só como backup para a Edição e o After (data-backup: o render final o remove)
     speaker_html = (f"""
-      <div id="pcam" style="z-index:1;position:absolute;inset:0"><video id="plate" class="clip" src="assets/plate.mp4" data-start="0" data-duration="{DUR}" data-track-index="0" muted playsinline></video></div>
-      <div id="ccam" style="z-index:3"><video id="cut" class="clip" src="assets/cut.webm" data-start="0" data-duration="{DUR}" data-track-index="3" muted playsinline data-layout-allow-occlusion data-layout-allow-overflow></video></div>
+      <div id="pcam" style="z-index:1;position:absolute;inset:0;opacity:0;pointer-events:none"><video id="raw" class="clip" src="assets/raw.mp4" data-start="0" data-duration="{DUR}" data-track-index="0" muted playsinline data-backup data-layout-allow-occlusion></video></div>
+      <div id="ccam" style="z-index:3">{cut_clips}</div>
 """ if SPEAKER else '')
     open('index.html', 'w').write(f"""<!doctype html>
     <html lang="pt-BR" data-resolution="{'landscape' if W > H else 'portrait'}">
@@ -354,6 +401,10 @@ def render():
     /* recorte em largura inteira (1920x1080): rosto (x={FACE_X}) no centro da tela, base no rodapé; escala a partir desse ponto */
     #ccam {{ position:absolute; left:{W // 2 - FACE_X}px; top:{H - 1080}px; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
     #ccam video {{ position:absolute; inset:0; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
+    /* painel do Speech Screen: fora do #world, a câmera de mundo não o move */
+    #tcam {{ position:absolute; left:0; top:{PANEL_TOP or 0}px; width:{W}px; height:{H - (PANEL_TOP or 0)}px; overflow:hidden; opacity:0; }}
+    #tcam video {{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }}
+    #tcam .rule {{ position:absolute; left:0; right:0; top:0; height:6px; background:{AMB}; }}
     </style>
     </head>
     <body>
@@ -364,6 +415,7 @@ def render():
       {('<div id="ccam"' + speaker_html.split('<div id="ccam"')[1]) if SPEAKER else ''}
       <div id="near" style="{depth('near')}">{(chr(10) + '  ').join(near_hosts)}</div>
       </div>
+      {panel_html}
       {finish_html}
       <audio id="voice" class="clip" src="assets/voice.m4a" data-start="0" data-duration="{DUR}" data-track-index="8" data-volume="1"></audio>
       {(chr(10) + '  ').join(sfx_tags)}
@@ -383,9 +435,12 @@ def render():
     print(len(S), "cenas,", len(hosts), "hosts,", len(sfx_tags), "sons")
     json.dump([dict(n=s['n'], a=s['a'], b=s['b'], bg=s['bg'], cam=s['cam'], cta=s['cta'], world=s['world'], signature=s['signature']) for s in S], open('scenes.json', 'w'), indent=1)
     # caixa do corpo do locutor por cena (≈840 px em volta do rosto, escala do enquadramento): o pace.py não conta o locutor mexendo
-    json.dump([dict(t0=s['a'], ignore=[[round(W / 2 - 420 * k), round(H - 1080 * k), round(840 * k), round(1080 * k)]] if s['cam'] else [])
-               for s in S for k in [max(FR[s['cam'][0]], FR[s['cam'][2]] if s['cam'][1] == 'push' else 0) if s['cam'] and SPEAKER else 0]],
-              open('motion_mask.json', 'w'))
+    def _mask(s):
+        if not SPEAKER or not s['cam']: return []
+        if s['cam'] == 'panel': return [[0, PANEL_TOP, W, H - PANEL_TOP]]
+        k = max(FR[s['cam'][0]], FR[s['cam'][2]] if s['cam'][1] == 'push' else 0)
+        return [[round(W / 2 - 420 * k), round(H - 1080 * k), round(840 * k), round(1080 * k)]]
+    json.dump([dict(t0=s['a'], ignore=_mask(s)) for s in S], open('motion_mask.json', 'w'))
     if MISSING: aviso('T() sem palavra na fala (a batida caiu em `after`): ' + '; '.join(MISSING))
     AVISOS.extend(lint_variety(open(sys.argv[0], encoding='utf8').read() if sys.argv and os.path.isfile(sys.argv[0]) else '', '\n'.join(all_html), '\n'.join(all_js)))
     for m in AVISOS: print('aviso:', m)

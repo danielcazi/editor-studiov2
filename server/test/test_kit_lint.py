@@ -43,7 +43,7 @@ kit.scene(1, 0, 4, 'red', ('L', 'push', 'XL'), back=lambda p, d: (kit.giant(p, [
 kit.render()
 mask = json.load(open("motion_mask.json")); html = open("index.html").read()
 assert mask == [{"t0": 0, "ignore": [[-90, 300, 1260, 1620]]}, {"t0": 4, "ignore": []}], mask
-assert 'tl.set("#cut",{scale:1.06},1.500);' in html and 'tl.set("#cut",{scale:1},3.000);' in html and ',12.000);' not in html
+assert 'tl.set(".cut",{scale:1.06},1.500);' in html and 'tl.set(".cut",{scale:1},3.000);' in html and ',12.000);' not in html
 assert any('T() sem palavra' in a and '"nada"' in a for a in kit.AVISOS), kit.AVISOS
 kit.S.clear(); kit.CUTS.clear()
 # motores por estilo: engine() lê engines/<nome>.js uma vez, canvas(engine=) marca o uso da cena, e cada motor é JS válido

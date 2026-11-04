@@ -77,3 +77,21 @@ export function deleteCards(edit: any, items: EditItem[]) {
   const idx = [...new Set(items.filter(i => i.type === 'card_delete').map(i => Number(i.cardIndex)))].sort((a, b) => b - a);
   for (const i of idx) if (i >= 0 && i < edit.cards.length) edit.cards.splice(i, 1);
 }
+
+// Cut-out windows of a format (format.json "cutWindows": {head, mid: [a, b], tail}, seconds): the speaker is cut out only there,
+// the rest of the reel shows him in a panel or not at all. Clipped to the clip and merged when they touch; null = cut out everywhere.
+export type CutWindows = { head?: number; mid?: [number, number]; tail?: number };
+export function cutWindows(spec: CutWindows | undefined | null, dur: number): Span[] | null {
+  if (!spec) return null;
+  const raw: Span[] = [];
+  if (spec.head) raw.push([0, spec.head]);
+  if (spec.mid) raw.push([spec.mid[0], spec.mid[1]]);
+  if (spec.tail) raw.push([dur - spec.tail, dur]);
+  const out: Span[] = [];
+  for (const [a0, b0] of raw.map(([a, b]) => [Math.max(0, Math.min(a, b)), Math.min(dur, Math.max(a, b))] as Span).sort((x, y) => x[0] - y[0])) {
+    if (b0 <= a0) continue;
+    const last = out[out.length - 1];
+    if (last && a0 <= last[1]) last[1] = Math.max(last[1], b0); else out.push([a0, b0]);
+  }
+  return out;
+}

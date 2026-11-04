@@ -9,12 +9,18 @@ Você compõe o reel inteiro, cena a cena, em HyperFrames 0.8.217 + GSAP 3.14.2.
 4. Corrija o que viu e repita. Só então renderize: `npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery`.
 
 ## Camadas (z-index)
-1 `#pcam` plate desfocado · 2 `bNN` fundo + texto gigante atrás (callback `back=`) · 3 `#ccam` locutor recortado (RVM, 1920×1080 com alfa) · 4 `sNN` frente (callback `front=`). Voz na trilha 8; efeitos em rodízio nas trilhas 9–14.
+1 `#pcam` o vídeo original inteiro, escondido (backup para a Edição e o After; nunca aparece e o render final o remove) · 2 `bNN` fundo + texto gigante atrás (callback `back=`) · 3 `#ccam` locutor recortado (RVM, 1920×1080 com alfa; um clipe por janela de recorte) · 4 `sNN` frente (callback `front=`).
+- **Fundo da cena: nunca o vídeo do locutor desfocado ou replicado** (`bg='plate'` é erro). Use imagem do site, cor sólida ou gradiente da marca (`black`, `red`, `amber`, `cream`) ou ilustração desenhada.
+- Cada mídia só existe nos trechos em que aparece (o kit emite `cut.webm` por janela e `talk.mp4` por trecho de painel): o render extrai e pinta só esses quadros. Voz na trilha 8; efeitos em rodízio nas trilhas 9–14.
 - **Tipografia Gigante / Texto Atrás**: OBRIGATORIAMENTE em `back` (camada 2, z-index 2). O locutor recortado (`#ccam`, z-index 3) fica naturalmente por cima. NUNCA coloque tipografia gigante em `front` (z-index 4) tampando o locutor, e NUNCA use contorno artificial grosso (`-webkit-text-stroke`) para forçar o texto na frente do corpo.
 - **Camada `front` (z-index 4)**: Apenas para UI, mockups, cartões, recibos e badges na altura do peito ou topo, sem obstruir o rosto do locutor.
 
 ## Enquadramentos do locutor (rosto em x≈980 de 1920)
 M 0,95 · L 1,2 (padrão) · XL 1,5 (punch-in) · XXL 1,8 (mão erguida, CTA). Modos de câmera: `hold`, `snap`, `push`, `shake`. Troque de enquadramento a cada 2–4 s. Nunca "locutor pequeno no canto".
+
+## Speech Screen (formato com painel)
+Quando `compose.json` traz `panel` e `cutWindows`, o recorte só existe nas janelas listadas (fora delas o alfa do cut.webm é vazio). Cena fora de uma janela: `cam='panel'` (o vídeo bruto do locutor, assets/talk.mp4, ocupa o painel de baixo a partir de `H*panel.top`, com uma régua na cor de destaque; toda a animação fica acima, e a checagem de layout reprova texto sobre o painel) ou `cam=None` (tela cheia). A CTA fica na última janela, com XXL. `render()` reprova câmera de recorte fora das janelas.
+O `hyperframes check` pode acusar `canvas_covered` no fundo (`bgfill`) de uma cena de painel: é falso positivo, o painel (`#tcam`) fica fora do `#world` e cobre o fundo; confira no snapshot e siga.
 
 ## Recorte e centro do rosto
 - Recorte sempre RVM (`rvm_mobilenetv3_fp32.onnx`), nunca u2net: a máscara u2net fazia o braço sumir em 9 cenas e tremia.
@@ -52,7 +58,8 @@ M 0,95 · L 1,2 (padrão) · XL 1,5 (punch-in) · XXL 1,8 (mão erguida, CTA). M
 
 ## Estilos prontos do kit
 Helpers testados (cada um devolve `(html, js)`; junte com `both(...)`; `at` é relativo ao início da cena; `k=` separa duas instâncias na mesma cena). Use como ponto de partida, não em toda cena: um estilo novo por cena, sem repetir o mesmo dois seguidos. `render()` avisa quando mais de 70% dos tweens só animam opacity/x/y/scale, quando a câmera de mundo tem menos de 4 movimentos distintos ou quando nenhuma cena é `signature=True`: trate esses avisos como os outros.
-- **Tipografia estrutural** (palavras com papel físico): `lintel` palavra-viga que aperta a frase numa fresta · `hang` palavra descida por cabos que verga a base · `column` palavra que sobe e gira até virar coluna · `platform` palavras anteriores formam um piso justificado e a final assenta nele · `aperture` parede com a palavra cuja letra vira íris e abre a cena (no início da cena; escolha uma letra do meio da palavra) · `phrase` frase que sobe por máscara em grupos (`|`).
+- **Imagens do site**: `floatimg(p, src, x, y, w, at, rot, drift, d)` card flutuando (sombra, rotação leve, entra com mola, deriva ida e volta); várias por cena, em `front` ao redor do locutor ou na área de cima do painel.
+- **Tipografia estrutural** (palavras com papel físico): `cascade` palavras que caem uma por batida e empilham (a última em destaque; `back`) · `lintel` palavra-viga que aperta a frase numa fresta · `hang` palavra descida por cabos que verga a base · `column` palavra que sobe e gira até virar coluna · `platform` palavras anteriores formam um piso justificado e a final assenta nele · `aperture` parede com a palavra cuja letra vira íris e abre a cena (no início da cena; escolha uma letra do meio da palavra) · `phrase` frase que sobe por máscara em grupos (`|`).
 - **Vídeo como código**: `slam` uma palavra por batida, a última invertida · `code` editor digitado com sintaxe · `diff` linhas +/− · `count` número que conta e pousa · `braces` assinatura `{ TÍTULO }` · `typeline` linha monoespaçada digitada.
 - **UI que se transforma**: `morph` um objeto que passa por estados sem corte · `iris` revelação circular de uma camada · `flood` cor inundando a tela · `glass` painel de vidro que nasce como gota · `pay` botão → loader → check · `toggle` · `tabs` abas com indicador líquido · `island` ilha dinâmica no topo · `toast` · `cmdk` paleta ⌘K que filtra · `widget` card de métrica com gráfico.
 - **Textura e sinal**: `scope` osciloscópio: o feixe varre um traço de 10×8 e deixa cauda de fósforo · `papel` recorte de papel: duas folhas entram girando com sombra dura e borda serrilhada · `crt` glitch RGB sobre linhas de varredura, com tremor em passos fixos · `frame` moldura de edição: rótulo e timecode que conta no topo, cantos e régua de progresso embaixo (vá em `front`, acima do locutor).

@@ -91,7 +91,7 @@ function coletaNaPagina(ids) {
   if (cc) {
     const r = cc.getBoundingClientRect();
     cam = { s: r.width / 1920, sx: r.width / 1920, sy: r.height / 1080, x0: r.left, y0: r.top, op: opac(cc) };
-    const v = document.getElementById('cut');
+    const v = [...document.querySelectorAll('#ccam video')].find((x) => x.currentTime > 0) || document.querySelector('#ccam video');
     if (v) cam.video = { rs: v.readyState, ct: +v.currentTime.toFixed(2), paused: v.paused, op: opac(v), err: v.error ? v.error.code : null, src: (v.currentSrc || '').slice(-20) };
   }
   const out = {};
@@ -206,9 +206,12 @@ try {
     await window.__player.renderSeek(x);
     if (window.__hfWaitForSeekCompletion) await window.__hfWaitForSeekCompletion();
     await document.fonts.ready;
-    const v = document.getElementById('cut');
-    if (v && Math.abs(v.currentTime - x) > 0.02) {
-      await new Promise((ok) => { v.addEventListener('seeked', ok, { once: true }); v.currentTime = x; setTimeout(ok, 2000); });
+    // o recorte é um clipe por janela (kit.py): leva ao tempo o clipe que cobre este instante
+    for (const v of document.querySelectorAll('#ccam video')) {
+      const s = +v.dataset.start, d = +v.dataset.duration, ms = +(v.dataset.mediaStart ?? 0);
+      if (!(x >= s && x < s + d)) continue;
+      const want = x - s + ms;
+      if (Math.abs(v.currentTime - want) > 0.02) await new Promise((ok) => { v.addEventListener('seeked', ok, { once: true }); v.currentTime = want; setTimeout(ok, 2000); });
     }
   }, t);
 
@@ -231,10 +234,12 @@ try {
         console.log(`  ${c.n} ${x[0]} "${x[1].t}" x=${x[1].x.toFixed(0)} y=${x[1].y.toFixed(0)} w=${x[1].w.toFixed(0)} h=${x[1].h.toFixed(0)}`);
       }
       // texto em animação (ou cortado pelo quadro) não entra na conta: a folha mostra o que ficou
+      // Speech Screen: numa cena de painel (cam 'panel') o texto fica acima do painel do locutor
+      const zonaBottom = c.cam === 'panel' && cfg.panel ? Math.round(H * cfg.panel.top) - 10 : ZONA.bottom;
       for (const x of [...back, ...(out[ids[1]]?.texts ?? [])]) {
         if (x.frac < 0.9) { reporta('aviso', `${c.n}|parcial|${x.t}`, `cena ${c.n}: "${x.t}" parcialmente fora do quadro ou do recorte neste instante (animação ou corte); confira na folha`); continue; }
-        if (x.x < ZONA.left || x.x + x.w > ZONA.right || x.y < ZONA.top || x.y + x.h > ZONA.bottom) {
-          const msg = `cena ${c.n}: "${x.t}" fora da zona segura (topo ${ZONA.top}, base ${H - ZONA.bottom}, laterais ${ZONA.left})`;
+        if (x.x < ZONA.left || x.x + x.w > ZONA.right || x.y < ZONA.top || x.y + x.h > zonaBottom) {
+          const msg = `cena ${c.n}: "${x.t}" fora da zona segura (topo ${ZONA.top}, base ${H - zonaBottom}${zonaBottom !== ZONA.bottom ? ', painel do locutor' : ''}, laterais ${ZONA.left})`;
           reporta('erro', msg, msg);
         }
       }

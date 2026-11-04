@@ -8,6 +8,7 @@ import * as K from './keys.ts';
 import * as B from './broll.ts';
 import * as V from './voice.ts';
 import * as C from './cortes.ts';
+import * as S from './style_sheets.ts';
 
 process.chdir(import.meta.dirname);
 
@@ -163,6 +164,12 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && hf) return file(P.hfFile(hf[1]), req, res);
     const tc = path.match(/^\/tests\/([^/]+)\/final\.mp4$/);
     if (req.method === 'GET' && tc) return file(P.testFile(decodeURIComponent(tc[1])), req, res);
+    const is = path.match(/^\/illustration-styles\/([^/]+)\/(sheet\.png|md)$/);
+    if (req.method === 'GET' && is && is[2] === 'md') return res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(readFileSync(S.packFile(decodeURIComponent(is[1]))));
+    if (req.method === 'GET' && is) {   // awaits the render (one pack at a time, ~10 s each); 404 = pack without engine, nothing to draw
+      const png = await S.illustrationSheet(decodeURIComponent(is[1]));
+      return png ? file(png, req, res) : res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"estilo sem motor"}');
+    }
     const sr = path.match(/^\/styles\/([^/]+)\/refs\/([^/]+)$/);
     if (req.method === 'GET' && sr) return file(P.styleRefFile(decodeURIComponent(sr[1]), decodeURIComponent(sr[2])), req, res);
     const ff = path.match(/^\/brands\/([^/]+)\/fonts\/([^/]+)$/);

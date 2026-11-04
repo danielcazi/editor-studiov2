@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deepMerge, pickFormats, remapWords, safeId, shortcutPlan, spansFromWords } from '../lib.ts';
+import { cutWindows, deepMerge, pickFormats, remapWords, safeId, shortcutPlan, spansFromWords } from '../lib.ts';
 
 test('formats render in a fixed order and reject unknown ones', () => {
   assert.deepEqual(pickFormats(['4:5', '1:1', '9:16']), ['9:16', '1:1', '4:5']);
@@ -46,4 +46,12 @@ test('~ expands to the home folder, other paths untouched', async () => {
   const { expandHome } = await import('../pipeline.ts');
   assert.match(expandHome('~/a.mp4'), /^\/.+\/a\.mp4$/);
   assert.equal(expandHome('/x/~y'), '/x/~y');
+});
+
+test('cutWindows: head, mid and tail clipped to the clip and merged when they touch', () => {
+  assert.deepEqual(cutWindows({ head: 5, mid: [15, 20], tail: 5 }, 97.3), [[0, 5], [15, 20], [92.3, 97.3]]);
+  assert.deepEqual(cutWindows({ head: 5, mid: [15, 20], tail: 5 }, 18), [[0, 5], [13, 18]]);   // short clip: mid and tail overlap
+  assert.deepEqual(cutWindows({ head: 5, tail: 5 }, 8), [[0, 8]]);
+  assert.equal(cutWindows(undefined, 30), null);
+  assert.deepEqual(cutWindows({}, 30), []);
 });

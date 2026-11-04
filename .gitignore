@@ -17,3 +17,6 @@ workspace/cortes/
 workspace/testes/
 workspace/locks/
 VERSION
+workspace/cache/
+workspace/tests/
+workspace/trash/

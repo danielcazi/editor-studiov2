@@ -46,7 +46,7 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
 1. **Benchmark:** aprender / não levar.
 2. **Três estruturas** e a escolhida.
 3. **Logline e arco:** uma frase, depois setup → virada → final.
-4. **Shot list:** para cada cena, o tempo, a fala, o enquadramento do locutor, o movimento de mundo (`world=`) e o motivo, o destaque único e a transição para a próxima. Marque o plano-assinatura.
+4. **Shot list:** para cada cena, o tempo, a fala, o enquadramento do locutor, o movimento de mundo (`world=`) e o motivo, o destaque único e a transição para a próxima. Marque o plano-assinatura. Se o brief traz janelas de recorte (Speech Screen), diga por cena se é recorte (dentro da janela), painel (`cam='panel'`, animação em cima) ou tela cheia. Em toda cena, um elemento tipográfico animado e, sempre que a fala permitir, uma imagem do site flutuando (`floatimg`).
    Mais duas linhas por cena, sem as quais a cena não está planejada:
    - **Na batida:** cada palavra tônica da fala → o que entra ou muda nela (um evento por palavra tônica, a cada 0,4–0,8 s), escrito como `T('palavra')` (kit.py: o tempo vem da fala, nunca de um segundo digitado). O pouso, o corte e o carimbo caem **na** palavra, nunca antes.
    - **Vivo:** a vida ociosa de cada elemento enquanto fica em cena (deriva, tique, piscar, digitar, balanço): nada parado por mais de 1 s; o `pace.py` mede isso no vídeo e reprova.

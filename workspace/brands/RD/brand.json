@@ -33,7 +33,7 @@
   "underline": false,
   "align": "center"
  },
- "max_seconds": 60,
+ "max_seconds": 120,
  "fonts": {
   "head": {
    "family": "Brown",
