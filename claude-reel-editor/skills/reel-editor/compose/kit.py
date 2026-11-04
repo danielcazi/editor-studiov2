@@ -150,14 +150,8 @@ def world_track():
     return js, kinds
 
 def lint_world(kinds):
-    """Avisos de direção (DIRETOR.md §3): quatro gramáticas de câmera e um plano-assinatura."""
-    out = []
-    used = sorted(set(kinds))
-    if len(used) < 4:
-        out.append(f'câmera: {len(used)} movimento(s) de mundo distinto(s) ({", ".join(used) or "nenhum: nenhuma cena usa world="}); use pelo menos 4 entre push, pull, pan, crane, tilt, orbit, roll (DIRETOR.md §3)')
-    if not any(s['signature'] for s in S):
-        out.append('câmera: nenhuma cena marcada signature=True; escolha o plano-assinatura (oner, revelação de escala ou transição feita do meio)')
-    return out
+    """Sem cotas de câmera (v8): quantos movimentos e se há plano-assinatura é decisão do diretor, não aviso do lint."""
+    return []
 
 GRAIN = ("url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E"
          "%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E"
@@ -222,9 +216,6 @@ def lint_variety(src, html, js):
     short = sum(1 for x in durs if x <= .3)
     if durs and short / len(durs) > .5:
         out.append(f'fluidez: {short} de {len(durs)} tweens duram ≤ 0,3 s (animação travada); entradas de .4–.7 s com power3.out/expo.out, saídas de .25–.4 s com power2.in, e movimento sustentado (> 1 s) em cada cena')
-    plain = sum(1 for t in tweens if set(re.findall(r'(?<![\w"\'])([A-Za-z]\w*)\s*:', t)) - NOT_PROPS <= PLAIN)
-    if tweens and plain / len(tweens) > MAX_PLAIN:
-        out.append(f'variedade: {plain} de {len(tweens)} tweens só animam opacity/x/y/scale (entrada e saída); use rotation, clipPath, filter, skew, stagger, morph ou movimento sustentado (>1 s) em parte deles')
     return out
 
 def lint_static():
@@ -876,11 +867,14 @@ const build=T=>{const c=new T.Color('@COLOR@'),mat=l=>new T.MeshPhysicalMaterial
   if(kind==='cursor')g.add(new T.Mesh(ext(T,poly(T,[[0,1.2],[0,-.9],[.3,-.6],[.52,-1.1],[.78,-1],[.56,-.5],[.95,-.48]]),.22,.07),mat(0)));
   else if(kind==='bolt')g.add(new T.Mesh(ext(T,poly(T,[[.25,1.2],[-.65,-.1],[-.08,-.1],[-.3,-1.2],[.7,.25],[.12,.25]]),.25,.07),mat(0)));
   else if(kind==='layers')[-.5,0,.5].forEach((y,i)=>{const m=new T.Mesh(ext(T,rr(T,1.5,1,.2),.1,.05),mat(i*.06-.06));m.position.set(0,y,i*.18);m.rotation.x=-.9;g.add(m)});
+  else if(kind.endsWith('.glb'))return g;
   else g.add(new T.Mesh(ext(T,rr(T,1.7,1.1,.22),.16,.06),mat(0)));
   return g};
-window.__hf.buildReady['@ID@']=window.__hfThree.then(T=>{
+const loadGlb=async(T,g)=>{const {GLTFLoader}=await import('https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/loaders/GLTFLoader.js/+esm');const r=await new GLTFLoader().loadAsync('@KIND@');
+  const m=r.scene,bb=new T.Box3().setFromObject(m),sz=bb.getSize(new T.Vector3()),c=bb.getCenter(new T.Vector3());m.position.sub(c);m.scale.setScalar(2.2/Math.max(sz.x,sz.y,sz.z,1e-6));g.add(m)};
+window.__hf.buildReady['@ID@']=window.__hfThree.then(async T=>{
   const rd=new T.WebGLRenderer({canvas:cv,alpha:true,antialias:true,preserveDrawingBuffer:true});rd.setPixelRatio(1);rd.setSize(S,S,false);
-  const sc=new T.Scene(),cam=new T.PerspectiveCamera(30,1,.1,50),o=build(T);cam.position.set(0,0,6.4);
+  const sc=new T.Scene(),cam=new T.PerspectiveCamera(30,1,.1,50),o=build(T);cam.position.set(0,0,6.4);if('@KIND@'.endsWith('.glb'))await loadGlb(T,o);
   sc.add(new T.HemisphereLight(0xffffff,0x9a9ad8,2.2));const a=new T.DirectionalLight(0xffffff,2.6);a.position.set(-2,3,4);sc.add(a);
   const b=new T.DirectionalLight(0xdfe0ff,1.1);b.position.set(3,-1,2);sc.add(b);sc.add(o);
   R=()=>{const t=tl.time()-AT,e=@SEED@;o.visible=st.s>.001;o.scale.setScalar(Math.max(st.s,.001));o.position.y=Math.sin(t*2.1+e)*.08;
@@ -965,8 +959,11 @@ def scene3d(p, build, d, x=0, y=0, w=None, h=None, at=0.0, fov=35, dist=8, fog=N
 
 
 def obj3d(p, kind, x, y, size=520, at=0.0, d=2.4, color=None, spin=False, tilt=0.0, seed=0.0, k='o3'):
-    """Objeto 3D flutuante com centro em (x,y) px. kind: cursor|card|layers|bolt. Entra em `at`, sai em at+d. Use dentro de both()."""
-    assert kind in ('cursor', 'card', 'layers', 'bolt'), kind
+    """Objeto 3D flutuante com centro em (x,y) px. kind: cursor|card|layers|bolt ou o caminho de um .glb (assets/3d/, assets/lib/3d/),
+    carregado com GLTFLoader e ajustado ao quadro (materiais do arquivo). Entra em `at`, sai em at+d. Use dentro de both()."""
+    assert kind in ('cursor', 'card', 'layers', 'bolt') or kind.endswith('.glb'), kind
+    if kind.endswith('.glb'): assert os.path.exists(kind), f'{kind} não existe (ver assets/manifest.json e assets/lib/3d/)'
+
     i = f'{p}-{k}'
     html = f'<canvas id="{i}" width="{size}" height="{size}" {AO} style="position:absolute;left:{x - size / 2:.0f}px;top:{y - size / 2:.0f}px;width:{size}px;height:{size}px;opacity:{0 if at > 0 else 1}"></canvas>'
     code = (_OBJ3D.replace('@ID@', i).replace('@SIZE@', str(size)).replace('@COLOR@', color or '#6f6fc9').replace('@KIND@', kind)

@@ -38,5 +38,6 @@
       "zoomScale": 1.2
     },
     "transitions": "cut"
-  }
+  },
+  "hidden": true
 }

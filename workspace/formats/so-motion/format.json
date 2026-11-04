@@ -1,0 +1,22 @@
+{
+  "id": "so-motion",
+  "name": "Só Motion",
+  "order": 16,
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "category": "Short form (9:16)",
+  "cutout": false,
+  "speaker": false,
+  "composer": "agent",
+  "description": "Sem locutor na tela: só ilustrações, imagens, objetos e tipografia explicando a fala (a voz continua).",
+  "promptGuide": "Nenhum locutor aparece. Cada ideia da fala vira uma cena ilustrada: imagens da biblioteca, objetos 3D, tipografia gigante, gráficos e comparações que demonstram o que está sendo dito. A voz é a narração; o ritmo visual segue as palavras. Gancho visual forte nos 3 primeiros segundos; CTA no fim com botão e URL.",
+  "visualAssets": {
+    "safeZones": {
+      "top": 200,
+      "bottom": 380,
+      "left": 70,
+      "right": 70
+    }
+  }
+}

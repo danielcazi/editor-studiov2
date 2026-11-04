@@ -1,0 +1,260 @@
+{
+  "id": "build",
+  "name": "Insula Build",
+  "description": "Reel SaaS limpo: locutor recortado sobre fundo creme pontilhado ou roxo, UI do produto em cards, objetos 3D, números gigantes e CTA com botão.",
+  "guide": "Locutor recortado sempre em plano M, centralizado, sem movimento de câmera. Fundo: creme #F3F1EC com grade de pontos (8px, 6% opacidade, passo de 40px) e glow lilás difuso num canto; a cada ideia nova (~2-4 s) ele vira roxo #6B63C4 por corte seco ou por um wipe diagonal de placa sólida. Tipografia sans geométrica: títulos com 2 palavras em 2 linhas, 160-200px em 1080, Medium em CAIXA ALTA sobre creme (tinta #1E1E1E e só 1 caractere/palavra em roxo) ou Bold minúsculo branco sobre roxo; terço superior (y 200-550) ou sobre o peito no CTA. Números grandes brancos/roxos com contador. Gráficos: cards brancos, raio de 16-24px, sombra 0 20px 40px rgba(40,30,90,.18); janelas de mockup estilo macOS ocupando 85% da largura no terço inferior, sobrepondo o tronco; pílulas roxas com texto branco Semibold; cursor seta roxo 3D que desliza e clica; cards de chat/notificação empilhados; barras verticais com gradiente; objetos 3D (preto+roxo) de ~180-220px ao lado da cabeça, flutuando. Máximo de 1 título + 1-2 elementos por vez; o rosto fica livre. Entradas: slide-up 60-120px + fade, 0.4-0.5s power3.out, ou pop back.out; saídas: fade/scale 0.9 em 0.25s ou corte. Fechamento: fundo roxo, logo no topo, título gigante, botão pílula branco com cursor clicando.",
+  "motif": "Fundo chapado creme com grade de pontos que alterna para roxo #6B63C4 no beat, com UI do produto (cards com sombra, pílula roxa, cursor) e objetos 3D roxo/preto flutuando ao redor do locutor recortado",
+  "palette": [
+    {
+      "hex": "#F3F1EC",
+      "role": "background creme com grade de pontos"
+    },
+    {
+      "hex": "#6B63C4",
+      "role": "background alternativo / accent roxo"
+    },
+    {
+      "hex": "#463A9A",
+      "role": "roxo profundo / gradiente"
+    },
+    {
+      "hex": "#1E1E1E",
+      "role": "ink títulos"
+    },
+    {
+      "hex": "#FFFFFF",
+      "role": "cards e texto sobre roxo"
+    },
+    {
+      "hex": "#DCD6F7",
+      "role": "glow lilás e preenchimentos de UI"
+    }
+  ],
+  "camera": {
+    "world": [],
+    "framing": "Sempre M (meio corpo, cabeça a 30-40% da altura); sem punch-ins; o quadro fica parado e a mudança vem da troca de fundo e dos elementos a cada ~2 s",
+    "transitions": "Cortes secos de troca de cor do fundo (creme↔roxo) no beat, wipe diagonal de placa sólida, cards com slide-up; corte seco a cada ~2 s no vídeo rápido",
+    "depth": "Placa de cor chapada atrás, locutor recortado no meio, cards/3D na frente sobrepondo o tronco; sem parallax; sombras suaves dão a profundidade; tudo nítido, exceto o fundo original desfocado em algumas cenas",
+    "signature": "Placa roxa inclinada atravessando a tela e cobrindo a cabeça do locutor numa troca de fundo"
+  },
+  "beats": [
+    {
+      "from": 0,
+      "to": 3.8,
+      "composition": "Locutor recortado plano M centralizado (cabeça em ~35% da altura) sobre fundo creme com grade de pontos; objeto 3D no quadrante superior direito",
+      "elements": "Caneta-tinteiro 3D preta com anéis roxos e arco orbital, ~180px, flutuando ao lado da cabeça; brilho lilás difuso no canto superior esquerdo",
+      "typography": "Nenhuma ou título gigante de duas linhas no terço superior: sans geométrica (tipo Inter/SF) Medium, CAIXA ALTA, ~170px em 1080, tinta quase-preta, um caractere final em roxo",
+      "motion": "Objeto 3D entra com scale 0.6→1 + rotação -15°→0 back.out, depois flutua ±10px em loop sine; título sobe 40px com fade por linha, stagger 0.12s",
+      "transitionOut": "Wipe diagonal: painel roxo chapado desce inclinado (~8°) cobrindo o topo",
+      "sfx": "pop no objeto 3D, whoosh-short no wipe"
+    },
+    {
+      "from": 3.8,
+      "to": 8.5,
+      "composition": "Fundo troca para roxo chapado no beat; locutor permanece; painel inclinado varre o quadro",
+      "elements": "Placa de cor sólida roxa em diagonal; barra vertical gradiente lilás→roxo à esquerda",
+      "typography": "Número gigante branco (+NN%) ~200px Medium no terço superior direito",
+      "motion": "Contador numérico de 0 ao valor em 0.8s power2.out; barra cresce scaleY 0→1 da base",
+      "transitionOut": "Corte seco de volta ao creme",
+      "sfx": "swish no wipe, click-soft por passo do contador"
+    },
+    {
+      "from": 8.5,
+      "to": 14.4,
+      "composition": "Interface de editor: réguas no topo e à esquerda, guias roxas finas cruzando o quadro, locutor M ao centro",
+      "elements": "Card de layout com caixa de seleção roxa, alças nos cantos e etiqueta preta de coordenadas; cursor 3D roxo; pílula roxa de botão",
+      "typography": "Pílula: branco Semibold ~44px sobre roxo, raio total; etiqueta mono branca pequena em fundo preto",
+      "motion": "Guias desenham (scaleX 0→1, 0.4s); card faz pop de scale 0.8→1; cursor desliza em arco até o botão e clica (scale 1→0.85→1)",
+      "transitionOut": "Corte seco",
+      "sfx": "click no clique do cursor, pop na pílula"
+    },
+    {
+      "from": 14.4,
+      "to": 22.8,
+      "composition": "Fundo escuro desfocado (gravação original) ou roxo; locutor M; mockup de janela no terço inferior sobrepondo o tronco",
+      "elements": "Janela estilo macOS (três bolinhas) branca translúcida com sombra suave, 85% da largura; card de métrica branco no topo com raio 12px; screenshot do produto",
+      "typography": "Rótulo CAIXA ALTA espaçado roxo ~22px acima de número grande roxo ~90px",
+      "motion": "Janela sobe 120px com fade 0.5s power3.out; barra de progresso interna preenche; número conta",
+      "transitionOut": "Corte seco com troca de cor de fundo",
+      "sfx": "whoosh-short na janela, ding/chime na conclusão"
+    },
+    {
+      "from": 22.8,
+      "to": 30.1,
+      "composition": "Locutor M; cards de chat e notificação empilhados lado a lado",
+      "elements": "Cards brancos com sombra, avatar circular, balões; ícones 3D raio e quebra-cabeça",
+      "typography": "Texto de card Regular ~32px tinta escura, nome em Semibold",
+      "motion": "Cards entram um a um deslizando 60px de baixo com stagger 0.25s back.out(1.4)",
+      "transitionOut": "Cards saem com fade+scale 0.9 em 0.25s",
+      "sfx": "notification por card, pop nos ícones 3D"
+    },
+    {
+      "from": 30.1,
+      "to": 36.2,
+      "composition": "CTA final sobre roxo: logo branco no topo, locutor M, título gigante sobreposto ao peito, botão branco no rodapé",
+      "elements": "Logo com ícone em círculo branco; calendário 3D à direita da cabeça; botão pílula branco com cursor clicando; linha de legenda pequena",
+      "typography": "Duas linhas gigantes brancas Bold ~200px em minúsculas, centralizadas; botão: roxo Bold ~60px em pílula branca",
+      "motion": "Título entra palavra a palavra scale 1.2→1 + fade 0.35s; botão pop; cursor clica com pulso",
+      "transitionOut": "Fim",
+      "sfx": "impact-bass-1 no título, click no botão"
+    }
+  ],
+  "pace": 6,
+  "sfxRules": [
+    {
+      "when": "objeto 3D ou pílula aparece",
+      "sfx": "pop",
+      "level": "normal"
+    },
+    {
+      "when": "cursor clica num botão",
+      "sfx": "click",
+      "level": "normal"
+    },
+    {
+      "when": "wipe ou troca de cor do fundo",
+      "sfx": "whoosh-short",
+      "level": "subtle"
+    },
+    {
+      "when": "card de chat/notificação entra",
+      "sfx": "notification",
+      "level": "subtle"
+    },
+    {
+      "when": "contador numérico",
+      "sfx": "click-soft",
+      "level": "subtle"
+    },
+    {
+      "when": "título do CTA final",
+      "sfx": "impact-bass-1",
+      "level": "normal"
+    }
+  ],
+  "sfxPerMinute": 49,
+  "motionRecipes": [
+    {
+      "name": "pop-3d-flutua",
+      "use": "objetos 3D ao lado da cabeça",
+      "gsap": "gsap.timeline().from(SEL,{scale:0.6,rotation:-15,autoAlpha:0,duration:0.5,ease:'back.out(1.7)'}).to(SEL,{y:'-=10',duration:1.6,ease:'sine.inOut',yoyo:true,repeat:-1})"
+    },
+    {
+      "name": "card-sobe",
+      "use": "mockups, cards de chat e notificação",
+      "gsap": "gsap.from(SEL,{y:100,autoAlpha:0,duration:0.5,ease:'power3.out',stagger:0.25})"
+    },
+    {
+      "name": "wipe-diagonal",
+      "use": "troca de fundo creme→roxo",
+      "gsap": "gsap.fromTo(SEL,{yPercent:-110,rotation:-8},{yPercent:0,rotation:-8,duration:0.45,ease:'power4.inOut'})"
+    },
+    {
+      "name": "cursor-clique",
+      "use": "cursor indo até o botão",
+      "gsap": "gsap.timeline().from(SEL,{x:160,y:120,autoAlpha:0,duration:0.6,ease:'power2.out'}).to(SEL,{scale:0.85,duration:0.08,yoyo:true,repeat:1})"
+    },
+    {
+      "name": "titulo-palavra",
+      "use": "tipografia gigante de duas palavras",
+      "gsap": "gsap.from(SEL,{y:40,scale:1.15,autoAlpha:0,duration:0.35,ease:'power3.out',stagger:0.12})"
+    },
+    {
+      "name": "contador",
+      "use": "números e porcentagens",
+      "gsap": "gsap.from(SEL,{textContent:0,duration:0.8,ease:'power2.out',snap:{textContent:1}})"
+    }
+  ],
+  "clonedFrom": {
+    "urls": [],
+    "measured": [
+      {
+        "clip": "004 - Build 02.mp4",
+        "duration": 36.2,
+        "cuts": 1,
+        "secondsPerCut": 18.1,
+        "size": "720x1280",
+        "sfxHits": [
+          1.16,
+          1.58,
+          3.8,
+          5.14,
+          6.18,
+          8.5,
+          9.8,
+          11.56,
+          11.84,
+          12.84,
+          13.34,
+          14.36,
+          16.52,
+          16.98,
+          18.38,
+          19.6,
+          21.14,
+          21.6,
+          22.26,
+          22.78,
+          26.04,
+          26.58,
+          26.88,
+          27.32,
+          28,
+          30.1,
+          33.86,
+          35.3
+        ]
+      },
+      {
+        "clip": "004 Build .mp4",
+        "duration": 46.6,
+        "cuts": 21,
+        "secondsPerCut": 2.12,
+        "size": "1080x1920",
+        "sfxHits": [
+          0.22,
+          1.12,
+          1.42,
+          2.02,
+          2.58,
+          2.86,
+          3.54,
+          3.94,
+          4.96,
+          5.34,
+          5.9,
+          6.72,
+          7.08,
+          7.34,
+          7.84,
+          8.44,
+          9.16,
+          10.46,
+          10.78,
+          11.5,
+          12.12,
+          13.44,
+          13.7,
+          14.24,
+          16.6,
+          17.02,
+          17.44,
+          17.92,
+          18.78,
+          19.82,
+          20.34,
+          21.92,
+          22.84,
+          23.56,
+          24.08,
+          25.08,
+          25.34,
+          26.12,
+          26.92,
+          29.06
+        ]
+      }
+    ],
+    "note": "Estilo Insula Build: locutor recortado sobre fundo chapado que troca de cor no beat (creme / roxo), objetos 3D flutuantes (caneta, quebra-cabeça, raio, calendário), mockups do produto como cards com sombra, cursor clicando, cards de chat e notificação, contadores e barras, tipografia gigante de duas palavras com uma cor de destaque, CTA com botão no fim."
+  }
+}

@@ -1,0 +1,330 @@
+{
+  "id": "black-rd",
+  "name": "Black RD (oferta)",
+  "description": "Reel de oferta/Black Friday em 9:16. Apresentador recortado sobre fundo preto com raios cinza em explosão, alternando com fundo creme liso. Entram cards de oferta escuros com porcentagem laranja, palavras gigantes em creme ou vermelho, ilustração em cartão, pílulas e botão de CTA laranja. Cortes secos a cada ~3,75 s com muito efeito sonoro de impacto e whoosh.",
+  "guide": "TIPOGRAFIA: grotesca bold neo-sans (tipo Helvetica Neue Bold/Inter Display 700), caixa alta nas palavras gigantes, tracking levemente negativo (-1%). Palavra-herói ocupa 85-90% da largura (~900 px em 1080), altura de cap ~150-190 px, no terço superior (y≈180-420 em 1920). Cor: creme #FFF9E6 sobre preto, vermelho #D9001B sobre creme. Segunda linha em minúscula bold dentro de pílula laranja. Rótulos pequenos: caixa alta, tracking +20%, 26-30 px, cinza-quente #9A9388. Números de oferta: 160-200 px, gradiente laranja #FF8A3D→#E8641A, com \"%\" e \"OFF\" bem menores (~60 px) na mesma linha de base.\n\nCOR: três \"salas\" que alternam por corte. (1) Preto #0E0E0E com raios radiais cinza #3A3A3A (~28 raios, o centro do raio fica no topo ou atrás da cabeça); (2) creme #FFF9E6 liso, apresentador recortado; (3) palco azul-cobalto #1F2BD8 desfocado, usado como exceção. Laranja #F47B20 é o único acento quente (cards, pílulas, botão). Vermelho só em palavra gigante sobre creme. Fundo sempre preto/creme, nunca gradiente colorido.\n\nLAYOUT: vertical 1080x1920. Apresentador recortado (sem fundo) ocupa a metade inferior, cabeça em y≈1050-1300, ombros cortados pela base. Todo texto/gráfico fica na metade superior (y 150-950), nunca sobre o rosto. Exceção: close XL do CTA, em que a pílula e o botão ficam sobre o peito, em y≈1280 e y≈1420. Um elemento principal por cena, no máximo dois.\n\nCARDS: (a) card de oferta: retângulo 940x440, raio 36, fundo grafite #1E1E1E→#2A2A2A, borda 2px #3A3A3A, rotação -3°, rótulo pequeno em cima, número laranja gigante embaixo. Atrás dele, 3-5 cards iguais desfocados e escurecidos, em leque ou grade, a 25% de opacidade. (b) card de ilustração: cartão 420x540, raio 28, fundo off-white #F3EEE9, sombra suave, com ilustração flat roxa/rosa/amarela, entra acima da cabeça. (c) pílula de aviso: 700x68, laranja com texto preto em caixa alta e ponto preto à esquerda. (d) botão CTA: 820x90, raio 45, gradiente laranja, texto preto bold, ícone circular preto com seta ↗ à direita, brilho laranja difuso (glow 40px).\n\nENTRADA/SAÍDA: palavras gigantes entram com scale 1.25→1 + blur 12→0 em 0,35 s power3.out, e saem com corte seco ou scale 0.9 + fade em 0,15 s. Cards entram de cima (y -200→0) com rotação 6°→-3° e overshoot back.out(1.6) em 0,5 s. O fundo desfocado atrás do card aparece primeiro (a sala escurece para 15% de brilho). Raios giram devagar (+8° em 3,5 s) e pulsam em escala 1→1.04. Troca de sala sempre por corte seco no beat da fala, com whoosh-short ou impact.\n\nDENSIDADE: 15 cortes em 60 s, uma ideia por 3-4 s. Metade do tempo é só apresentador sobre raios. Logo/selo aparece só na abertura e no fechamento. CTA fecha o vídeo com close XL em punch-in. Grão leve (2-3%) sobre tudo, vinheta 15%.",
+  "motif": "Raios radiais cinza sobre preto, alternando por corte com fundo creme liso, e o laranja #F47B20 como único acento (card de oferta, pílula, botão). O apresentador é um recorte colado na base do quadro.",
+  "palette": [
+    {
+      "hex": "#0E0E0E",
+      "role": "fundo preto principal"
+    },
+    {
+      "hex": "#3A3A3A",
+      "role": "raios radiais cinza sobre o preto"
+    },
+    {
+      "hex": "#FFF9E6",
+      "role": "fundo creme alternado e cor das palavras gigantes sobre preto"
+    },
+    {
+      "hex": "#D9001B",
+      "role": "vermelho das palavras gigantes sobre creme"
+    },
+    {
+      "hex": "#F47B20",
+      "role": "acento laranja de pílulas, botões e números"
+    },
+    {
+      "hex": "#FF8A3D",
+      "role": "início do gradiente laranja (topo do número e do botão)"
+    },
+    {
+      "hex": "#E8641A",
+      "role": "fim do gradiente laranja"
+    },
+    {
+      "hex": "#1E1E1E",
+      "role": "fundo dos cards de oferta escuros"
+    },
+    {
+      "hex": "#1F2BD8",
+      "role": "azul-cobalto do fundo de exceção"
+    },
+    {
+      "hex": "#F2A25C",
+      "role": "laranja claro do selo, com textura de papel"
+    },
+    {
+      "hex": "#7A3CFF",
+      "role": "roxo da ilustração dentro do cartão"
+    }
+  ],
+  "camera": {
+    "world": [],
+    "framing": "Apresentador em M na maior parte do tempo (cabeça y≈1000-1300 de 1920), com L nas cenas de reação e XL/XXL no CTA final. A troca é por snap em corte seco, não por zoom gradual. Há um micro punch-in de 1.0→1.05 sobre os beats com palavra gigante. O XL aparece uma vez por volta de 35-43 s. Mudança de enquadramento a cada 3-4 s, acompanhando o corte.",
+    "transitions": "Quase tudo é corte seco (15 cortes em 60 s, um a cada 3,75 s), casados com whoosh-short ou impact. Alternância creme/preto/azul serve como transição visual. Fade só de ~0,2 s no fechamento. Sem push, slide ou wipe de câmera.",
+    "depth": "Parallax baixo: o recorte do apresentador fica estático e os raios giram devagar atrás (±8° em 3,5 s). Nas cenas de oferta, o fundo fica desfocado (blur ~18 px) e escurecido a 15% de brilho, com cards fantasma atrás. O card principal e o apresentador ficam nítidos. Foco no rosto e no card/palavra. No XXL, a mão em primeiro plano fica desfocada (motion blur).",
+    "signature": "Card de oferta escuro inclinado -3° com número laranja gigante, caindo sobre um fundo preto desfocado com cards fantasma, enquanto o apresentador faz o gesto de contar com a mão aberta."
+  },
+  "beats": [
+    {
+      "from": 0,
+      "to": 3.5,
+      "composition": "Abertura em M/L. Apresentador na metade inferior (cabeça y≈1000-1300 de 1920), selo no terço superior (centro x≈540, y≈430). Raios radiais cinza saem do selo e cobrem o quadro.",
+      "elements": "Selo de marca em adesivo: laranja-creme com borda de volume em 3D, texto preto bold e balão. Sombra escura em volta do selo (glow invertido). 24 raios #3A3A3A em fundo #0E0E0E.",
+      "typography": "Letras do selo ultra-black em itálico, caixa alta, preto sobre laranja #F2A25C com textura de papel/grão. Subtítulo em faixa preta com texto laranja.",
+      "motion": "Selo entra com scale 0.6→1.08→1 e rotação -6°→-2°. Raios pulsam e giram devagar (~8° em 3 s).",
+      "transitionOut": "Corte seco para fundo creme.",
+      "sfx": "impact-bass-1 na chegada do selo (0,2 s), whoosh-short no corte"
+    },
+    {
+      "from": 3.5,
+      "to": 7,
+      "composition": "Fundo creme #FFF9E6 liso, apresentador recortado em L, cabeça y≈800-1150. Área superior vazia, reservada para palavra gigante ou cartão.",
+      "elements": "Só o recorte do apresentador com bordas levemente duras. Nenhum outro gráfico no primeiro instante.",
+      "typography": "Palavra gigante em vermelho #D9001B, bold grotesca, caixa alta, ~85% da largura, y≈170-240 (em 960 de altura de referência), entra no beat da fala.",
+      "motion": "Palavra entra com scale 1.2→1 e blur→0 em 0,3 s. Apresentador faz micro punch-in de 1.0→1.05.",
+      "transitionOut": "Corte seco.",
+      "sfx": "pop na palavra, snap no corte"
+    },
+    {
+      "from": 7,
+      "to": 11,
+      "composition": "Fundo creme. Cartão de ilustração centralizado acima da cabeça (x 165-375, y 185-450 na referência), apresentador em M embaixo.",
+      "elements": "Cartão off-white com cantos arredondados 28 px e sombra suave. Ilustração flat de cabeça roxa aberta com ícones soltos (coração, olho, cursor, balão de fala) em rosa, amarelo e roxo.",
+      "typography": "Sem texto no cartão. Voz carrega a mensagem.",
+      "motion": "Cartão cai de y -120 com rotação 4°→0° e leve overshoot (0,45 s). Os ícones internos flutuam ±6 px em loop.",
+      "transitionOut": "Corte seco para o fundo azul.",
+      "sfx": "land no cartão, whoosh-short na saída"
+    },
+    {
+      "from": 11,
+      "to": 15,
+      "composition": "Fundo azul-cobalto #1F2BD8 desfocado (cena de estúdio com página de texto, plano 100% fora de foco). Apresentador M no centro-baixo.",
+      "elements": "Plate de vídeo com blur 18 px, tingido de azul. Palavra gigante cobre o topo.",
+      "typography": "Palavra gigante creme #FFF9E6, bold, caixa alta, ~88% da largura, y≈120-190 na referência.",
+      "motion": "Palavra entra com scale 1.25→1 em 0,35 s power3.out, fundo faz push lento 1→1.06.",
+      "transitionOut": "Corte seco.",
+      "sfx": "impact-bass-2 na palavra, swish no corte"
+    },
+    {
+      "from": 15,
+      "to": 20,
+      "composition": "Cena de oferta. Fundo preto desfocado e escurecido (brilho 15%) com 3-4 cards de oferta apagados atrás. Card principal no topo (y 110-330), inclinado -3°. Apresentador em M embaixo, gesto de mão aberta.",
+      "elements": "Card grafite 940x440 raio 36 com borda fina. Cards fantasma desfocados nas laterais (30% OFF, 80% OFF) em laranja apagado. Pílula laranja longa e apagada no topo.",
+      "typography": "Rótulo cinza caixa alta com tracking +20%, 28 px. Número laranja gigante (~190 px) em gradiente #FF8A3D→#E8641A, bold. \"%\" e \"OFF\" em ~60 px, alinhados na linha de base.",
+      "motion": "Card entra de cima, rotação 6°→-3° com back.out(1.6) em 0,5 s. Cards fantasma deslizam 40 px em parallax lento. Número faz contagem rápida (count-up) em 0,6 s.",
+      "transitionOut": "Corte seco para raios.",
+      "sfx": "land no card, ping no número fechar, whoosh no corte"
+    },
+    {
+      "from": 20,
+      "to": 26,
+      "composition": "Fundo preto com raios convergindo para um ponto no centro (y≈230 na referência), apresentador em L com rosto alto (y 340-650), reação expressiva.",
+      "elements": "Raios de convergência radial bem definidos, cinza #3A3A3A. Nenhum gráfico, só a voz e a expressão.",
+      "typography": "Nenhum.",
+      "motion": "Raios giram +6° em 3,5 s, apresentador respira com punch-in 1.0→1.04.",
+      "transitionOut": "Corte seco, ou raios mudam de centro.",
+      "sfx": "swish no corte, sem efeito durante a fala"
+    },
+    {
+      "from": 26,
+      "to": 31,
+      "composition": "Raios saem de trás da cabeça. Logo \"RD\" laranja no canto superior esquerdo (x 45-250, y 125-255 na referência). Apresentador M, mãos em gesto.",
+      "elements": "Logotipo RD laranja com gradiente #F28A3A→#E8641A e dois traços inferiores. Raios cinza.",
+      "typography": "Logo em bold grotesca, caixa alta, laranja em gradiente, ~210 px de largura.",
+      "motion": "Logo entra com slide da esquerda 80 px + fade em 0,3 s expo.out e fica parado.",
+      "transitionOut": "Corte seco para preto liso.",
+      "sfx": "pop no logo, whoosh-short no corte"
+    },
+    {
+      "from": 31,
+      "to": 35,
+      "composition": "Preto puro #0A0A0A, sem raios. Apresentador M centralizado, topo vazio (y 0-400).",
+      "elements": "Só o apresentador. Espaço preto reservado para palavra gigante ou card de curso.",
+      "typography": "Pausa visual, sem texto. O próximo beat usa palavra gigante creme.",
+      "motion": "Respiro: mover nada. Apenas drift de 1.0→1.03 no apresentador.",
+      "transitionOut": "Corte seco.",
+      "sfx": "swell sutil, sem impacto"
+    },
+    {
+      "from": 35,
+      "to": 39,
+      "composition": "Close XL em punch-in (rosto ocupa 60% da altura, y 50-520). Raios apagados ao fundo. Pílula laranja de aviso sobre o peito (x 95-445, y 640-675 na referência).",
+      "elements": "Pílula laranja 700x68 com ponto preto à esquerda. Raios em 25% de opacidade.",
+      "typography": "Caixa alta, bold, preto, tracking +15%, ~26 px, alinhado ao centro da pílula.",
+      "motion": "Pílula sobe 40 px e faz fade em 0,3 s back.out. Apresentador faz snap de L para XL em 0,12 s.",
+      "transitionOut": "Corte seco para CTA.",
+      "sfx": "snap no punch-in, click-soft na pílula"
+    },
+    {
+      "from": 39,
+      "to": 43,
+      "composition": "XXL: apresentador aponta para a câmera, mão desfocada em primeiro plano (motion blur), rosto cortado à direita. Pílula esmaece em cima, botão CTA aparece embaixo (x 65-475, y 685-730 na referência).",
+      "elements": "Botão laranja com gradiente, texto preto e ícone circular preto com seta ↗. Brilho laranja difuso em volta (glow 40 px, 50%). Pílula anterior em fade-out.",
+      "typography": "Caixa alta, bold, preto, ~22 px no botão, alinhado à esquerda com ícone circular à direita.",
+      "motion": "Botão entra de baixo (y +60→0) com back.out(1.8) e pulsa o glow 0→1→0.6. Pílula desce e apaga em 0,25 s.",
+      "transitionOut": "Corte seco para o selo de fechamento.",
+      "sfx": "land no botão, click na seta, impact-bass-1 no corte"
+    },
+    {
+      "from": 43,
+      "to": 47,
+      "composition": "Retorno à sala de raios. Apresentador M com selo no topo, igual à abertura.",
+      "elements": "Selo de marca e raios. Fecha o ciclo visual.",
+      "typography": "Selo ultra-black preto sobre laranja.",
+      "motion": "Selo faz pop 0.8→1.05→1 e raios pulsam 1→1.04.",
+      "transitionOut": "Corte seco.",
+      "sfx": "impact-bass-1 na entrada do selo"
+    },
+    {
+      "from": 47,
+      "to": 60,
+      "composition": "Palavra gigante creme sobre raios (y≈130-240 na referência) mais pílula laranja logo abaixo (y 255-340). Apresentador XL embaixo com expressão empolgada, mãos fechadas.",
+      "elements": "Palavra em creme #FFF9E6, pílula laranja com texto preto bold em minúsculas. Raios cinza. Apresentador recortado.",
+      "typography": "Palavra gigante bold caixa alta ~88% da largura. Pílula 310x85, raio total, texto bold em minúsculas ~42 px, preto sobre laranja #F47B20.",
+      "motion": "Palavra entra com scale 1.25→1 + blur→0. Pílula entra 0,2 s depois, scale 0.7→1 com back.out(2). Raios giram devagar.",
+      "transitionOut": "Fade rápido de 0,2 s para o fim, ou corte seco.",
+      "sfx": "impact-bass-2 na palavra, pop na pílula"
+    }
+  ],
+  "pace": 3.75,
+  "sfxRules": [
+    {
+      "when": "Selo/logo entra no início e no fechamento",
+      "sfx": "impact-bass-1",
+      "level": "loud"
+    },
+    {
+      "when": "Corte seco entre salas (preto, creme, azul)",
+      "sfx": "whoosh-short",
+      "level": "normal"
+    },
+    {
+      "when": "Palavra gigante entra em creme ou vermelho",
+      "sfx": "pop",
+      "level": "normal"
+    },
+    {
+      "when": "Palavra gigante de peso maior (fechamento)",
+      "sfx": "impact-bass-2",
+      "level": "loud"
+    },
+    {
+      "when": "Card de oferta ou cartão de ilustração cai na tela",
+      "sfx": "land",
+      "level": "normal"
+    },
+    {
+      "when": "Número de desconto termina a contagem",
+      "sfx": "ping",
+      "level": "subtle"
+    },
+    {
+      "when": "Pílula de aviso aparece",
+      "sfx": "click-soft",
+      "level": "subtle"
+    },
+    {
+      "when": "Punch-in de L para XL",
+      "sfx": "snap",
+      "level": "normal"
+    },
+    {
+      "when": "Botão de CTA entra e a seta acende",
+      "sfx": "click",
+      "level": "normal"
+    },
+    {
+      "when": "Troca de sala com movimento rápido",
+      "sfx": "swish",
+      "level": "subtle"
+    }
+  ],
+  "sfxGainDb": -8,
+  "sfxForbidden": [
+    "typing",
+    "riser",
+    "key-press",
+    "error"
+  ],
+  "sfxPerMinute": 40,
+  "motionRecipes": [
+    {
+      "name": "palavra-gigante-entra",
+      "use": "Entrada de palavra gigante creme ou vermelha no topo, junto à fala",
+      "gsap": "gsap.fromTo(SEL,{scale:1.25,opacity:0,filter:'blur(12px)'},{scale:1,opacity:1,filter:'blur(0px)',duration:0.35,ease:'power3.out'})"
+    },
+    {
+      "name": "card-oferta-cai",
+      "use": "Card de oferta escuro entra de cima com inclinação e overshoot",
+      "gsap": "gsap.fromTo(SEL,{y:-220,rotation:6,opacity:0},{y:0,rotation:-3,opacity:1,duration:0.5,ease:'back.out(1.6)'})"
+    },
+    {
+      "name": "contagem-numero",
+      "use": "Número de desconto sobe de 0 até o valor, em laranja",
+      "gsap": "const o={v:0};gsap.to(o,{v:50,duration:0.6,ease:'power2.out',onUpdate:()=>{SEL.textContent=Math.round(o.v)}})"
+    },
+    {
+      "name": "raios-giram",
+      "use": "Fundo de raios com rotação lenta e pulso, em loop durante toda a cena",
+      "gsap": "gsap.timeline({repeat:-1,yoyo:true}).to(SEL,{rotation:8,scale:1.04,duration:3.5,ease:'sine.inOut'})"
+    },
+    {
+      "name": "pilula-pop",
+      "use": "Pílula laranja de aviso ou subtítulo, entra logo depois da palavra",
+      "gsap": "gsap.fromTo(SEL,{scale:0.7,opacity:0,y:20},{scale:1,opacity:1,y:0,duration:0.4,ease:'back.out(2)',delay:0.2})"
+    },
+    {
+      "name": "botao-cta-glow",
+      "use": "Botão de CTA entra de baixo e o brilho laranja pulsa",
+      "gsap": "const t=gsap.timeline();t.fromTo(SEL,{y:60,opacity:0},{y:0,opacity:1,duration:0.45,ease:'back.out(1.8)'}).to(SEL,{boxShadow:'0 0 40px rgba(244,123,32,0.6)',duration:0.5,yoyo:true,repeat:3,ease:'sine.inOut'},'<0.2')"
+    }
+  ],
+  "clonedFrom": {
+    "urls": [],
+    "measured": [
+      {
+        "clip": "003 Black Rd.mp4",
+        "duration": 60,
+        "cuts": 15,
+        "secondsPerCut": 3.75,
+        "size": "1080x1920",
+        "sfxHits": [
+          0.2,
+          0.5,
+          1.18,
+          1.76,
+          2.32,
+          2.66,
+          3.24,
+          4.28,
+          5.08,
+          5.7,
+          7.88,
+          9.5,
+          9.8,
+          11.44,
+          11.72,
+          12.78,
+          13.2,
+          16.46,
+          17.94,
+          18.44,
+          19.62,
+          19.88,
+          21.56,
+          22.42,
+          23.02,
+          25.34,
+          25.72,
+          29.12,
+          30.08,
+          30.5,
+          31.58,
+          33.86,
+          34.94,
+          35.28,
+          36.18,
+          36.44,
+          37.26,
+          39.34,
+          40.2,
+          41.04
+        ]
+      }
+    ],
+    "note": "Estilo Black RD (oferta): fundos preto com raios, vermelho e creme alternando, cards de oferta (porcentagem OFF), palavras gigantes, cards de cursos em leque, barra de progresso de preco, CTA com botao no fim."
+  }
+}

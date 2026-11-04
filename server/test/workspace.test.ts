@@ -177,7 +177,7 @@ test('composerMode can be set at creation and toggled via setComposerMode', asyn
   assert.equal(res1.composerMode, 'card');
   const p1Updated = P.getProject(st1.id);
   assert.equal(p1Updated.composerMode, 'card');
-  assert.equal(p1Updated.composed, false);
+  assert.equal(p1Updated.composed, true);   // v8: the mode is kept in the state but every reel is composed by the agent
 });
 
 test('compose copies are gitignored at creation, and an old project drops its tracked copies from the index', async () => {

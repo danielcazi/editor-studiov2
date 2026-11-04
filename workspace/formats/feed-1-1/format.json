@@ -26,9 +26,13 @@
     "cardMaxDuration": 4.5,
     "punchIns": {
       "enabled": true,
-      "intervalSeconds": [4.0, 7.0],
+      "intervalSeconds": [
+        4.0,
+        7.0
+      ],
       "zoomScale": 1.2
     },
     "transitions": "cut"
-  }
+  },
+  "hidden": true
 }
