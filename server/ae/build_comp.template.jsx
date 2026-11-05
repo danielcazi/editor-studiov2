@@ -125,13 +125,13 @@ function opacityKeys(L, P, own) {
   var op = L.property('ADBE Transform Group').property('ADBE Opacity');
   if (ts.length > 1) op.setValuesAtTimes(ts, vs); else op.setValue(vs[0]);
 }
-// filter: blur(px) do CSS → Gaussian Blur; Blurriness = px / 0,3 (a conversão do lottie-web)
+// filter: blur(px) do CSS → Gaussian Blur; Blurriness = px × 3,6 (medido no After: 40 → σ 10,9 px, 73 → σ 20,3 px; o ÷0,3 do lottie dava 9% a mais de σ pedido)
 function blurKeys(L, P) {
   var ts = [], vs = [], any = false;
-  for (var k = 0; k < P.keys.length; k++) { ts.push(P.keys[k].t); vs.push((P.keys[k].bl || 0) / 0.3); if (P.keys[k].bl) any = true; }
+  for (var k = 0; k < P.keys.length; k++) { ts.push(P.keys[k].t); vs.push((P.keys[k].bl || 0) * 3.6); if (P.keys[k].bl) any = true; }
   if (!any) return;
   var fx = L.property('ADBE Effect Parade').addProperty('ADBE Gaussian Blur 2');
-  fx.property('ADBE Gaussian Blur 2-0003').setValue(true); // repeat edge pixels: o CSS não escurece a borda
+  fx.property('ADBE Gaussian Blur 2-0003').setValue(false); // com repetir bordas ligado a borda de sólido e imagem não esfuma, e o CSS esfuma
   setKeys(fx.property('ADBE Gaussian Blur 2-0001'), ts, vs);
 }
 var BM = { multiply: 'MULTIPLY', screen: 'SCREEN', overlay: 'OVERLAY', darken: 'DARKEN', lighten: 'LIGHTEN', 'color-dodge': 'COLOR_DODGE', 'color-burn': 'COLOR_BURN', 'hard-light': 'HARD_LIGHT', 'soft-light': 'SOFT_LIGHT', difference: 'DIFFERENCE', exclusion: 'EXCLUSION', hue: 'HUE', saturation: 'SATURATION', color: 'COLOR', luminosity: 'LUMINOSITY', 'plus-lighter': 'ADD' };
