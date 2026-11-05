@@ -18,7 +18,7 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   copyFileSync(join(ROOT, 'claude-reel-editor/skills/reel-editor/engine/gsap.min.js'), join(dir, 'gsap.min.js'));
   writeFileSync(join(dir, 'foto.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64'));   // 1×1 png
   const out = join(dir, 'after-effects');
-  execFileSync('node', [join(ROOT, 'server/ae/make_jsx.mjs'), '--html', join(dir, 'index.html'), '--out', out, '--aep', join(out, 'f.aep'), '--name', 'fixture', '--sem-clipes', '--step', '5'], { stdio: 'pipe', timeout: 180000 });
+  execFileSync('node', [join(ROOT, 'server/ae/make_jsx.mjs'), '--html', join(dir, 'index.html'), '--out', out, '--aep', join(out, 'f.aep'), '--name', 'fixture', '--step', '5'], { stdio: 'pipe', timeout: 180000 });
   const r = JSON.parse(readFileSync(join(out, 'ae_report.json'), 'utf8'));
   assert.deepEqual(r.avisos, []);
   assert.equal(r.camadas.grupos, 1, 'a cena dentro do #world é um grupo');
@@ -30,6 +30,11 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   const jsx = readFileSync(join(out, 'build_comp.jsx'), 'utf8');
   assert.match(jsx, /"depths":\[\{"id":"mid","z":-110,"s":1\.0611\}\]/, 'profundidade lida do translateZ e da escala');
   assert.ok(r.clipes.some((c: string) => c.includes('cena-')), 'a decoração do canvas continua em clipe');
+  // o clipe é recortado pelo alfa visível: o canvas tem 540×400, mas o retângulo roxo desenhado é 460×200 (484×210 com o push-in de 5%) e a caixa da peça tinha folga de 70 px
+  const mov = join(out, 'V/clips/cena-3.mov');
+  const [cw, ch] = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', mov], { encoding: 'utf8' }).trim().split(',').map(Number);
+  assert.ok(cw <= 490 && ch <= 220, `clipe recortado pelo alfa, não pela caixa da peça: ${cw}×${ch}`);
+  assert.match(r.clipes[0], new RegExp(`${cw}×${ch}`), 'o relatório e a posição usam o tamanho recortado');
   assert.equal(r.camadas.clipes_prores, 1, 'só o canvas vira clipe: a palavra com blur() é nativa');
   assert.match(jsx, /"bl":[1-9]/, 'blur medido por quadro nos keyframes da peça');
   assert.equal(r.camadas.degrades, 3, 'sombra (wipe), vinheta (vig) e fundo com luz (ramp) nativos');

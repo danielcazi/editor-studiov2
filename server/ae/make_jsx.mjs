@@ -672,7 +672,17 @@ if (!flag('sem-clipes')) {
       await page.screenshot({ path: path.join(tmp, String(n++).padStart(5, '0') + '.png'), clip: { x: c.x + MARGEM, y: c.y + MARGEM, width: c.w, height: c.h }, omitBackground: true });
       if (c.semTexto) await page.evaluate(() => window.__AE.restaurarTexto());
     }
-    const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'),
+    // caixa justa: a união do alfa visível (> ~1%) em todos os quadros; a folga de PAD/margem serviu só para não cortar a captura.
+    // cropdetect com reset=0 devolve a maior área vista; sem nenhum pixel visível mantém a caixa medida.
+    let corte = null;
+    const cd = spawnSync('ffmpeg', ['-hide_banner', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), '-vf', 'alphaextract,cropdetect=limit=3:round=2:skip=0:reset=0', '-f', 'null', '-'], { encoding: 'utf8' });
+    for (const m of (cd.stderr || '').matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)) corte = m.slice(1).map(Number);
+    let vf = [];
+    if (corte && corte[0] >= 2 && corte[1] >= 2 && (corte[0] < c.w || corte[1] < c.h)) {
+      vf = ['-vf', `crop=${corte.join(':')}`];
+      c.x += corte[2]; c.y += corte[3]; c.w = corte[0]; c.h = corte[1];
+    }
+    const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), ...vf,
       '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-qscale:v', '9', '-alpha_bits', '16', path.join(OUT, c.file)], { encoding: 'utf8' });
     if (r.status !== 0) { avisos.push(`clipe ${c.file}: ffmpeg falhou (${(r.stderr || '').slice(0, 160)})`); c.kind = 'erro'; }
     process.stdout.write(`\rclipe ${c.file} (${n} quadros)        `);
