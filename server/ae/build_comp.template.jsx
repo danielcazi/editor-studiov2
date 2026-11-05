@@ -211,6 +211,19 @@ function imgLayer(comp, S, P, N, folder) {
   span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); dropShadow(L, S.sh); blend(L, P);
   return L;
 }
+// traço que se desenha: Trim Paths no grupo do filho k, com o Fim (%) quadro a quadro. A conversão cria um grupo por filho do svg,
+// em ordem inversa (o último filho é o Group 1; medido no After 2026), então o filho k é o grupo n - k.
+function trimKeys(L, S, P) {
+  if (!S.trims || !S.trims.length) return;
+  var cont = L.property('ADBE Root Vectors Group');
+  if (cont.numProperties !== S.n) { log('trim: ' + cont.numProperties + ' grupos para ' + S.n + ' filhos em ' + S.file); return; }
+  for (var q = 0; q < S.trims.length; q++) {
+    var T = S.trims[q], g = cont.property(S.n - T.k), ts = [], vs = [];
+    for (var k = 0; k < P.keys.length; k++) if (P.keys[k].tr) { ts.push(P.keys[k].t); vs.push(P.keys[k].tr[T.j]); }
+    try { setKeys(g.property('ADBE Vectors Group').addProperty('ADBE Vector Filter - Trim').property('ADBE Vector Trim End'), ts, vs); }
+    catch (e) { log('trim ' + S.file + ' filho ' + T.k + ': ' + e); }
+  }
+}
 // <svg> estático: o arquivo importado como vetor, pendurado na null como a imagem, e convertido em camada de forma
 // (Create Shapes from Vector Layer mantém pai, keyframes e in/out; testado no After 2026). Sem o comando, fica o vetor importado.
 var SVGC = {}, CMD_FORMAS = 0;
@@ -232,7 +245,7 @@ function svgLayer(comp, S, P, N, folder) {
     V.selected = true;
     var n0 = comp.numLayers;
     app.executeCommand(CMD_FORMAS);
-    if (comp.numLayers > n0) { var L = comp.layer(V.index - 1); V.remove(); L.name = nome; L.selected = false; return L; }
+    if (comp.numLayers > n0) { var L = comp.layer(V.index - 1); V.remove(); L.name = nome; L.selected = false; trimKeys(L, S, P); return L; }
     log('svg sem conversão (comando ' + CMD_FORMAS + '): ' + S.file);
   } catch (e) { log('svg ' + S.file + ': ' + e); }
   V.selected = false;

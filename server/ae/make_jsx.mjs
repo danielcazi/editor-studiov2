@@ -179,7 +179,21 @@ const INPAGE = () => {
   // <svg> que o After importa e converte em formas sem perda: só formas e grupos, sem texto, imagem, filtro, máscara, gradiente ou <use>,
   // e sem conteúdo vazando da viewBox (o After corta na largura × altura do arquivo)
   const SVG_FORA = 'text, image, foreignObject, filter, mask, pattern, linearGradient, radialGradient, use, clipPath, style, animate, animateTransform';
-  const svgOk = (el) => el.tagName.toLowerCase() === 'svg' && !el.querySelector(SVG_FORA) && getComputedStyle(el).overflow !== 'visible' && el.getBoundingClientRect().width > 0.5;
+  const svgOk = (el) => el.tagName.toLowerCase() === 'svg' && !el.querySelector(SVG_FORA) && el.getBoundingClientRect().width > 0.5;
+  // traço que se desenha por dash (o padrão do kit: pathLength=1, dasharray "1 g", dashoffset de ~1 a 0) vira Trim Paths no After.
+  // Só filhos diretos de um svg cujos filhos são todos formas: cada filho vira um grupo na conversão.
+  const TRIM_TAGS = /^(path|line|polyline|polygon|circle|ellipse|rect)$/i;
+  const trimEls = (p) => [...(p.tagName.toLowerCase() === 'svg' ? [p] : []), ...p.querySelectorAll('svg')].filter((v) => svgOk(v) && [...v.children].every((c) => TRIM_TAGS.test(c.tagName)))
+    .flatMap((v) => [...v.children].filter((c) => getComputedStyle(c).strokeDasharray !== 'none' && getComputedStyle(c).stroke !== 'none'));
+  // fração visível (0..1) de um traço com um só dash começando no início do caminho; null quando o dash não é esse padrão
+  const trimFrac = (el) => {
+    const cs = getComputedStyle(el), da = cs.strokeDasharray.split(/[\s,]+/).map(num);
+    if (da.length > 2 && !(da.length === 4 && da[0] === da[2] && da[1] === da[3])) return null;
+    const L = da[0], G = da.length > 1 ? da[1] : da[0], d = num(cs.strokeDashoffset);
+    const P = el.hasAttribute('pathLength') ? +el.getAttribute('pathLength') : el.getTotalLength();
+    if (!(P > 0) || d < -1e-6 || L + G - d < P - 1e-6) return null;
+    return Math.max(0, Math.min(1, (L - d) / P));
+  };
   const BLEND = new Set(['multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity', 'plus-lighter']);
   const radOf = (cs, r) => { const v = cs.borderTopLeftRadius, rad = /%/.test(v) ? Math.min(r.width, r.height) * num(v) / 100 : num(v); return Math.min(rad, Math.min(r.width, r.height) / 2); };
 
@@ -292,11 +306,11 @@ const INPAGE = () => {
 
   // assinatura do conteúdo: muda quando algo anima por dentro (contador, digitação, barra)
   const assinatura = (p) => {
-    const r0 = p.getBoundingClientRect(), out = [];
+    const r0 = p.getBoundingClientRect(), out = [], trim = new Set(trimEls(p));
     for (const el of p.querySelectorAll('*')) {
       const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
-      // stroke-dashoffset: traço de svg que se desenha não muda a caixa, mas é conteúdo animado (não pode virar forma estática)
-      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color, cs.strokeDashoffset].join(','));
+      // stroke-dashoffset: traço que se desenha não muda a caixa, mas é conteúdo animado; o que vira Trim Paths sai da assinatura
+      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color, trim.has(el) ? '' : cs.strokeDashoffset].join(','));
     }
     out.push(p.textContent.replace(/\s+/g, ' ').trim(), Math.round(r0.width), Math.round(r0.height));
     return out.join('|');
@@ -372,7 +386,9 @@ const INPAGE = () => {
     const Lo = [r0.left + org[0], r0.top + org[1]], Ot = [rt.left + org[0] * k, rt.top + org[1] * k];
     const mt = m && [m[0] * k, m[1] * k, m[2] * k, m[3] * k, m[4] * k, m[5] * k];
     const nome = (p.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 28) || (typeof p.className === 'string' && p.className.split(/\s+/)[0]) || p.id || p.tagName.toLowerCase();
-    return { i, on: true, nome, op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct };
+    const tr = trimEls(p).map(trimFrac);
+    if (tr.some((v) => v === null)) why.push('traço tracejado');   // dash que não é um traço só desenhando: fica em clipe
+    return { i, on: true, nome, tr: tr.map((v) => +((v || 0) * 100).toFixed(2)), op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct };
   });
 
   // textos e formas nativos na pose de repouso
@@ -407,10 +423,14 @@ const INPAGE = () => {
     const PINTURA = ['fill', 'fill-opacity', 'fill-rule', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-miterlimit', 'opacity', 'display', 'visibility'];
     const svgOf = (el, o, cs) => {
       const r = el.getBoundingClientRect(), c = el.cloneNode(true), orig = [el, ...el.querySelectorAll('*')], copia = [c, ...c.querySelectorAll('*')];
+      const todos = trimEls(p), trims = [];
       orig.forEach((e, k) => {
         const q = getComputedStyle(e), d = copia[k];
         d.removeAttribute('class'); d.removeAttribute('style'); d.removeAttribute('id');
         for (const a of PINTURA) d.setAttribute(a, q.getPropertyValue(a));
+        const j = todos.indexOf(e);
+        // o traço sai inteiro no arquivo; o Trim Paths do After (Fim = fração visível por quadro) faz o desenho
+        if (j >= 0) { d.setAttribute('stroke-dasharray', 'none'); d.setAttribute('stroke-dashoffset', '0'); d.removeAttribute('pathLength'); trims.push({ k: [...el.children].indexOf(e), j }); }
       });
       // raiz nova só com tamanho e viewBox, width primeiro: o importador do After pega o primeiro 'width=' do arquivo,
       // e um stroke-width na raiz virava largura 1 (medido no After 2026). A pintura já está em cada filho.
@@ -419,7 +439,7 @@ const INPAGE = () => {
       raiz.setAttribute('viewBox', el.getAttribute('viewBox') || `0 0 ${r.width} ${r.height}`);
       if (el.getAttribute('preserveAspectRatio')) raiz.setAttribute('preserveAspectRatio', el.getAttribute('preserveAspectRatio'));
       while (c.firstChild) raiz.appendChild(c.firstChild);
-      out.shapes.push({ ord: ord++, kind: 'svg', ...R(r), svg: new XMLSerializer().serializeToString(raiz), o: +o.toFixed(3), cls: String(el.id || el.getAttribute('class') || 'svg').slice(0, 40) });
+      out.shapes.push({ ord: ord++, kind: 'svg', ...R(r), svg: new XMLSerializer().serializeToString(raiz), trims, n: el.children.length, o: +o.toFixed(3), cls: String(el.id || el.getAttribute('class') || 'svg').slice(0, 40) });
     };
 
     const textOf = (el, o, cs) => {
@@ -572,7 +592,7 @@ for (const g of grupos) {
   const keysOf = (s) => s.map((x) => {
     if (!x.on || !x.m) return { t: x.t, op: 0 };
     const [ma, mb, mc, md, me, mf] = x.m, sx = Math.hypot(ma, mb), sy = sx ? (ma * md - mb * mc) / sx : 0;
-    return { t: x.t, p: [+(x.O[0] + me).toFixed(2), +(x.O[1] + mf).toFixed(2)], r: +(Math.atan2(mb, ma) * 180 / Math.PI).toFixed(3), s: [+(sx * 100).toFixed(3), +(sy * 100).toFixed(3)], op: +(x.op * 100).toFixed(2), bl: +(x.bl || 0).toFixed(2) };
+    return { t: x.t, p: [+(x.O[0] + me).toFixed(2), +(x.O[1] + mf).toFixed(2)], r: +(Math.atan2(mb, ma) * 180 / Math.PI).toFixed(3), s: [+(sx * 100).toFixed(3), +(sy * 100).toFixed(3)], op: +(x.op * 100).toFixed(2), bl: +(x.bl || 0).toFixed(2), ...(x.tr && x.tr.length ? { tr: x.tr } : {}) };
   });
   for (const [i, s] of tracks) {
     const on = s.filter((x) => x.on && x.op > 0.004);

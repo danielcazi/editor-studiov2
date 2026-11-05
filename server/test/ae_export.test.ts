@@ -40,14 +40,21 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.ok(selo, r.clipes.join('\n'));
   const [, ta, tb] = /\(([\d.]+)–([\d.]+) s/.exec(selo)!.map(Number);
   assert.ok(ta >= 0.45 && ta <= 0.55 && tb >= 1.15 && tb <= 1.3, `clipe do selo no tempo em que aparece: ${ta}–${tb}`);
-  assert.equal(r.camadas.clipes_prores, 3, 'só o canvas, o selo inclinado e o traço de svg que se desenha viram clipe: a palavra com blur() é nativa');
+  assert.equal(r.camadas.clipes_prores, 2, 'só o canvas e o selo inclinado viram clipe: a palavra com blur() e o traço que se desenha são nativos');
   assert.match(jsx, /"bl":[1-9]/, 'blur medido por quadro nos keyframes da peça');
   assert.equal(r.camadas.degrades, 3, 'sombra (wipe), vinheta (vig) e fundo com luz (ramp) nativos');
   assert.equal(r.camadas.imagens, 1, 'a <img> entra como o próprio arquivo');
   // o ícone <svg> sai como arquivo .svg com a cor do CSS resolvida (currentColor) e o traço, e vira camada de forma no After
-  assert.equal(r.camadas.vetores, 1, 'o <svg> do ícone é nativo, não clipe');
-  assert.ok(r.clipes.some((c: string) => c.includes('-svg.mov') && /conteúdo muda/.test(c)), 'svg com stroke-dashoffset animado fica em clipe');
-  const svgArq = /"file":"(V\/svg\/[^"]+\.svg)"/.exec(jsx)![1], svg = readFileSync(join(out, svgArq), 'utf8');
+  assert.equal(r.camadas.vetores, 2, 'o <svg> do ícone e o do traço que se desenha são nativos, não clipe');
+  // traço que se desenha (pathLength=1, dasharray 1 1.2, offset 1,1 → 0 de 0,2 s a 1,2 s): Trim Paths no 2º filho, Fim de 0 a 100
+  const D = JSON.parse(/var DATA = (.*);\n/.exec(jsx)![1]);
+  const tr = D.pieces.flatMap((p: any) => (p.shapes || []).filter((x: any) => x.trims?.length).map((x: any) => ({ p, x })))[0];
+  assert.ok(tr, 'svg com traço animado vira forma com trims');
+  assert.deepEqual(tr.x.trims, [{ k: 1, j: 0 }], 'trim no 2º filho (o 1º é a linha fixa)');
+  const fins = tr.p.keys.filter((k: any) => k.tr).map((k: any) => k.tr[0]);
+  assert.ok(fins[0] === 0 && fins.at(-1) === 100 && fins.some((v: number) => v > 0 && v < 100), `Fim do Trim Paths anima de 0 a 100: ${fins.join(' ')}`);
+  assert.doesNotMatch(readFileSync(join(out, tr.x.file), 'utf8'), /stroke-dasharray="1/, 'o traço sai inteiro no arquivo');
+  const svg = [...jsx.matchAll(/"file":"(V\/svg\/[^"]+\.svg)"/g)].map((m) => readFileSync(join(out, m[1]), 'utf8')).find((x) => x.includes('M12 2s5'))!;
   assert.match(svg, /fill="rgb\(243, 152, 75\)"/, 'currentColor resolvido para a cor do CSS');
   assert.match(svg, /stroke-linecap="round"/, 'traço e ponta preservados');
   assert.match(svg, /<svg (xmlns="[^"]+" )?width="80" height="80" viewBox="0 0 24 24">/, 'raiz só com tamanho em px e viewBox');
@@ -55,7 +62,6 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   for (const k of ['"kind":"wipe"', '"kind":"vig"', '"kind":"ramp"', '"blend":"screen"', '"file":"V/img/0-foto.png"', '"fit":"cover"']) assert.ok(jsx.includes(k), k);
   assert.ok(existsSync(join(out, 'V/img/0-foto.png')), 'imagem copiada para o pacote');
   // push-in da cena (#cena 1 → 1,05): a null do título termina com escala ~105 e a origem medida no espaço local da cena
-  const D = JSON.parse(/var DATA = (.*);\n/.exec(jsx)![1]);
   const tit = D.pieces.find((p: any) => p.kind === 'native' && p.texts.some((t: any) => t.text === 'Texto em DOM'));
   const s1 = tit.keys.at(-1).s[0];
   assert.ok(tit.keys[0].s[0] < 100.1 && s1 > 104 && s1 < 105.1, `escala da cena na null: ${tit.keys[0].s[0]} → ${s1}`);
