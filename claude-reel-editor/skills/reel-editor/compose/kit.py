@@ -1,6 +1,6 @@
 # Biblioteca de composição do compositor "agent". O Claude escreve scenes.py (importa este módulo, chama scene(...) e render()).
 # Constantes vêm de compose.json (W, H, DUR, colors, faceX). Regras: GUIDE.md. Rode: python3 scenes.py
-import json, os, re, subprocess, sys, unicodedata
+import json, math, os, re, subprocess, sys, unicodedata
 
 CFG = json.load(open('compose.json'))
 W, H, DUR = CFG['W'], CFG['H'], CFG['DUR']
@@ -124,6 +124,25 @@ WORLD_KEYS = ('x', 'y', 'scale', 'rx', 'ry', 'rz')
 WORLD_KIND = {'x': 'pan', 'y': 'crane', 'rx': 'tilt', 'ry': 'orbit', 'rz': 'roll'}
 GSAP_KEY = {'x': 'x', 'y': 'y', 'scale': 'scale', 'rx': 'rotationX', 'ry': 'rotationY', 'rz': 'rotation'}
 
+def world_cover(t):
+    """menor escala do #world que ainda cobre o quadro W×H depois do deslocamento e da rotação (tilt/orbit com folga)."""
+    a = math.radians(abs(t['rz'])); c, s = math.cos(a), math.sin(a)
+    m = 2 * (abs(t['x']) + abs(t['y']))
+    need = max((W * c + H * s + m) / W, (W * s + H * c + m) / H)
+    return round(need + (abs(t['rx']) + abs(t['ry'])) * .012, 3)
+
+def world_fit(t):
+    """a pose cabe na própria escala (nunca abaixo de 1): o pan/crane/roll/tilt/orbit encolhe até o quadro ficar coberto.
+    Mais zoom cobriria também, mas empurraria os textos da borda para fora da zona segura."""
+    t = dict(t, scale=max(1, t['scale']))
+    if world_cover(t) <= t['scale']: return t
+    mv = lambda f: dict(t, **{k: t[k] * f for k in ('x', 'y', 'rx', 'ry', 'rz')})
+    lo, hi = 0.0, 1.0
+    for _ in range(20):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if world_cover(mv(mid)) <= t['scale'] else (lo, mid)
+    return {k: round(v, 3) + 0.0 for k, v in mv(lo if lo > .01 else 0).items()}   # resto de meio pixel não vira movimento
+
 def world_track():
     """Tweens do #world na linha do tempo principal e os tipos de movimento usados, cena a cena. Erros entram em ERROS."""
     cur = dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)
@@ -140,6 +159,7 @@ def world_track():
         for k, v in tgt.items():
             lo, hi = (WORLD_LIM['scale'] if k == 'scale' else (-WORLD_LIM[k], WORLD_LIM[k]))
             if not lo <= v <= hi: erro(f'cena {n}: world {k}={v} fora do limite [{lo}, {hi}]')
+        tgt = world_fit(tgt)   # pan, roll ou pull nunca mostram a borda preta do quadro
         moved = [k for k in WORLD_KEYS if abs(tgt[k] - cur[k]) > 1e-6]
         if 'scale' in moved: kinds.append('push' if tgt['scale'] > cur['scale'] else 'pull')
         kinds.extend(WORLD_KIND[k] for k in moved if k != 'scale')

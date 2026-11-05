@@ -2287,7 +2287,6 @@
   .ed-clip.off { background: transparent !important; border: 1px dashed var(--line-strong); color: var(--dim); }
   .ed-clip.hid { opacity: .35; }
   .ed-clip .nolic { position: absolute; top: 3px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 0 2px rgba(0,0,0,.45); pointer-events: none; }
-  .ed-kf { position: absolute; top: 1px; width: 8px; height: 8px; margin-left: -4px; background: #fff; border: 1px solid #000; transform: rotate(45deg); z-index: 3; cursor: help; }
   .ed-clip.sel { outline: 2px solid var(--yellow); outline-offset: -1px; z-index: 2; }
   .ed-clip::before, .ed-clip::after { content: ''; position: absolute; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
   .ed-clip::before { left: 0; } .ed-clip::after { right: 0; }
@@ -8319,7 +8318,7 @@ async function editStep(id, body, st) {
         <button id="ed-add-media" data-k="Importar" title="Importar imagem, vídeo, trilha, SFX ou modelo 3D (.glb)">＋<small>Importar</small></button>
         <button id="ed-add-title" data-k="Título dinâmico" title="Título dinâmico (animado) no ponto atual">Tt<small>Título</small></button>
         <button id="ed-add-caps" data-k="Legenda simples" title="Legenda simples a partir da transcrição">CC<small>Legenda</small></button>
-        <button id="ed-still-all" data-k="Locutor parado" title="Para (ou devolve) todas as animações que a IA fez no locutor">⏹<small>Parado</small></button>
+        <button id="ed-still-all" data-k="Tudo parado">⏹<small>Parado</small></button>
         <hr>
         <button id="ed-undo" data-k="Desfazer · ⌘Z" title="Desfazer (Cmd/Ctrl+Z)">↶<small>Desfazer</small></button>
         <button id="ed-redo" data-k="Refazer · ⇧⌘Z" title="Refazer (Shift+Cmd/Ctrl+Z)">↷<small>Refazer</small></button>
@@ -8410,6 +8409,18 @@ async function editStep(id, body, st) {
   const subGap = (e, a, b) => { e.gaps = (e.gaps || []).flatMap(([s, t]) => t <= a || s >= b ? [[s, t]] : [...(s < a ? [[s, a]] : []), ...(t > b ? [[b, t]] : [])]); };
   const addCut = (e, t) => { e.cuts = [...new Set([...(e.cuts || []), r2(t)])].sort((a, b) => a - b); };
   const isHidden = it => !!E.layers[it.id]?.hidden;
+  // text runs grouped into words: consecutive one-letter runs (kit.py writes a span per letter) form one word; an empty run (a &nbsp; span) ends it
+  function words(texts) {
+    const out = [];
+    let prev = null;
+    for (const t of texts) {
+      if (!t.text) { prev = null; continue; }
+      if ([...t.text].length === 1 && prev && t.i === prev.i + 1 && [...prev.text].length === 1) out[out.length - 1].push(t);
+      else out.push([t]);
+      prev = t;
+    }
+    return out;
+  }
   const label = it => it.a ? (it.a.name || it.a.text || ED_KIND[it.kind][0]).slice(0, 40) : (it.texts?.[0]?.text || it.id);
 
   // ---- history and saving ----
@@ -8458,10 +8469,10 @@ async function editStep(id, body, st) {
     P = el;
     if (keepT) seek(keepT);
     kfRead();
-    if (!E.kfSplit) {   // the speaker starts cut before each move of the AI, so the adjustments show on the timeline
-      E.kfSplit = true;
-      items().filter(i => i.ai && i.kind === 'cutout' && !E.layers[i.id]?.still).forEach(i => kfTimes(i.id).filter(t => t > i.start + 0.05 && t < i.end - 0.05).forEach(t => addCut(ed(i.id), t)));
-      save(false);
+    if (!(E.kfSplit >= 4)) {   // once per project: the AI's moves on every picture layer (camera included) are switched off, everything starts still
+      E.kfSplit = 4;
+      items().filter(i => i.ai && !ED_AUDIO.has(i.kind)).forEach(stillOn);   // also drops the razor cuts made at those moves
+      save(true);
     }
     paintTl();
     $('#ed-hit').onpointerdown = onStageDown;
@@ -8494,12 +8505,13 @@ async function editStep(id, body, st) {
     if (!el) return;
     if (el.tagName === 'AUDIO' || el.tagName === 'VIDEO') el.setAttribute('data-volume', String(e.hidden && el.tagName === 'AUDIO' ? 0 : e.volume ?? 1));
     if (el.tagName === 'AUDIO') return;
-    el.style.translate = e.x || e.y ? `${e.x || 0}px ${e.y || 0}px` : '';
-    el.style.scale = e.scale !== undefined && e.scale !== 100 ? String(e.scale / 100) : '';
-    el.style.rotate = e.rotation ? `${e.rotation}deg` : '';
+    // explicit defaults, never '': an empty inline value falls back to the saved #id rule, so a reset would not show until a reload
+    el.style.translate = `${e.x || 0}px ${e.y || 0}px`;
+    el.style.scale = String((e.scale ?? 100) / 100);
+    el.style.rotate = `${e.rotation || 0}deg`;
     const obj = (added(id) && added(id).kind !== 'video' && el.querySelector('.in')) || el;
-    obj.style.clipPath = e.crop?.some(n => n > 0) ? `inset(${e.crop.map(n => n + '%').join(' ')})` : '';
-    el.style.filter = (e.opacity ?? 100) !== 100 || e.gaps?.length ? `opacity(calc(var(--hfv,1)*${(e.opacity ?? 100) / 100}))` : '';
+    obj.style.clipPath = e.crop?.some(n => n > 0) ? `inset(${e.crop.map(n => n + '%').join(' ')})` : 'none';
+    el.style.filter = (e.opacity ?? 100) !== 100 || e.gaps?.length ? `opacity(calc(var(--hfv,1)*${(e.opacity ?? 100) / 100}))` : 'none';
   }
   const compW = () => Number(doc()?.querySelector('[data-composition-id]')?.getAttribute('data-width')) || 1080;
   // a click on the preview selects the layer under the pointer (play is only the button or the space bar)
@@ -8629,14 +8641,17 @@ async function editStep(id, body, st) {
     inner.innerHTML = `<div class="ed-ruler" id="ed-ruler">${ruler}</div>` + named.map(r => `<div class="ed-lane" data-row="${r.key}">${r.list.flatMap(it => segs(it).map((sg, k) => {
       const c = ED_KIND[it.kind]?.[1] || '#555', on = sel?.id === it.id && (sel.seg === undefined || sel.seg === k);
       return `<div class="ed-clip ${sg.off ? 'off' : ''} ${isHidden(it) ? 'hid' : ''} ${on ? 'sel' : ''}" data-id="${it.id}" data-seg="${k}" style="left:${sg.a * pps}px;width:${Math.max(3, (sg.b - sg.a) * pps)}px;background:${c}" title="${esc(label(it))}${it.lic ? ' · sem licença ainda' : ''}">${esc(label(it))}${it.lic ? '<b class="nolic" title="Sem licença ainda: o render continua liberado, troque o clipe depois"></b>' : ''}</div>`;
-    })).join('')}${r.list.flatMap(it => (KF[it.id] || []).filter((k, i, a) => i === 0 || k.t - a[i - 1].t > 0.1).map(k =>
-      `<i class="ed-kf" style="left:${k.t * pps}px" title="Ajuste da IA em ${r2(k.t)}s: ${esc(k.text)}"></i>`)).join('')}</div>`).join('') + `<div class="ed-ph" id="ed-ph"></div>`;
+    })).join('')}</div>`).join('') + `<div class="ed-ph" id="ed-ph"></div>`;
     $('#ed-heads').querySelectorAll('.ed-head.drag').forEach(h => h.onpointerdown = ev => { if (!ev.target.closest('.eye')) reorderDrag(ev, h, named.filter(r => !r.au).map(r => r.key)); });
     $('#ed-heads').querySelectorAll('.eye').forEach(b => b.onclick = () => {
       const list = R.find(([k]) => k === b.dataset.row)[1], off = list.every(isHidden);
       change(true, () => list.forEach(it => { ed(it.id).hidden = !off; }));
     });
     lanes.className = 'ed-lanes ' + tool;
+    const cs = items().filter(i => i.ai && !ED_AUDIO.has(i.kind)), on = cs.length && cs.every(i => E.layers[i.id]?.still), sb = $('#ed-still-all');
+    sb.classList.toggle('on', !!on);
+    sb.innerHTML = on ? '⏹<small>Parado ✓</small>' : '▶<small>Animado</small>';
+    sb.title = on ? 'Tudo parado: as animações da IA (câmera e locutor) estão desligadas. Clique para devolver.' : 'As animações da IA estão ligadas em alguma camada. Clique para parar tudo.';
   }
   // drag a picture track's name up or down: the new order is the stacking order (top track in front)
   function reorderDrag(ev, head, keys) {
@@ -8826,7 +8841,7 @@ async function editStep(id, body, st) {
     const cuts = it.ai && (nk || (e.gaps || []).length || (e.cuts || []).length) ? `<div class="sec col">${nk ? `<button data-act="splitkf" title="Corta a camada em cada ajuste de posição/escala que a IA fez (losangos na timeline)">Dividir nos ajustes da IA (${nk})</button>` : ''}
         ${(e.gaps || []).length || (e.cuts || []).length ? '<button data-act="uncut">Desfazer cortes desta camada</button>' : ''}</div>` : '';
     const motion = aud ? '' : `<h4>MOVIMENTO</h4><div class="sec">
-        Posição<div class="two">${numIn('x')}${numIn('y')}</div>
+        ${['x', 'y'].map(p => `${p === 'x' ? 'Posição X' : 'Posição Y'}<div style="display:grid;grid-template-columns:1fr 64px;gap:6px;align-items:center"><input type="range" min="${p === 'x' ? -1080 : -1920}" max="${p === 'x' ? 1080 : 1920}" data-p="${p}" value="${val(it, p)}">${numIn(p)}</div>`).join('')}
         Escala (%)<div style="display:grid;grid-template-columns:1fr 64px;gap:6px;align-items:center"><input type="range" min="0" max="400" data-p="scale" value="${val(it, 'scale')}">${numIn('scale', 1, 'min="0"')}</div>
         Rotação (°)${numIn('rotation')}
         Opacidade (%)<div style="display:grid;grid-template-columns:1fr 64px;gap:6px;align-items:center"><input type="range" min="0" max="100" data-p="opacity" value="${val(it, 'opacity')}">${numIn('opacity', 1, 'min="0" max="100"')}</div>
@@ -8834,9 +8849,9 @@ async function editStep(id, body, st) {
         ${it.ai && it.kind === 'cutout' ? `<span></span><button data-act="still" title="Mata os ajustes de posição/escala que a IA animou nesta camada (os cortes feitos neles somem; os seus ficam)">${e.still ? 'Devolver as animações da IA' : 'Parar as animações da IA'}</button>` : ''}</div>`;
     const sound = aud || it.kind === 'video' || it.kind === 'add:video' ? `<h4>ÁUDIO</h4><div class="sec">Volume (%)<input type="range" min="0" max="200" data-p="volume" value="${val(it, 'volume')}">
         <span></span><span class="muted" id="ed-vol">${val(it, 'volume')}%</span></div>` : '';
-    const aiTexts = it.ai && it.texts?.length ? `<h4>TEXTO</h4><div class="sec col">${it.texts.slice(0, 60).map(t => {
-      const cur = (e.texts || []).find(x => x.i === t.i);
-      return `<input data-text="${t.i}" data-from="${esc(t.text)}" value="${esc(cur ? cur.to : t.text)}">`;
+    const aiTexts = it.ai && it.texts?.length ? `<h4>TEXTO</h4><div class="sec col">${words(it.texts).slice(0, 60).map(g => {
+      const cur = g.map(t => (e.texts || []).find(x => x.i === t.i)?.to ?? t.text).join('');
+      return `<input data-text="${g.map(t => t.i).join(',')}" data-from="${esc(JSON.stringify(g.map(t => t.text)))}" value="${esc(cur)}">`;
     }).join('')}${fontRow(e.font || {}, true)}<button data-act="fontall" title="Copia esta fonte (peso, tamanho, família) para todas as camadas de texto da IA">Aplicar esta fonte a todos os textos</button></div>` : '';
     const addedText = a && (a.kind === 'text' || a.kind === 'title') ? `<h4>TEXTO</h4><div class="sec col"><textarea data-a="text" rows="2">${esc(a.text || '')}</textarea></div>
         <div class="sec col">${fontRow(a, false)}</div><div class="sec">Animação<select data-a="anim">${[['pop', 'Pop'], ['slide', 'Deslizar'], ['fade', 'Surgir'], ['type', 'Digitar'], ['none', 'Nenhuma']].map(([k, n]) => `<option value="${k}" ${k === (a.anim ?? (a.kind === 'title' ? 'pop' : 'none')) ? 'selected' : ''}>${n}</option>`).join('')}</select></div>` : '';
@@ -8881,10 +8896,14 @@ async function editStep(id, body, st) {
         setVal(it, p, n); save(!instant); paintTl();
       };
     });
+    // a word spread over letter runs: one character per run, the last run takes the rest (or they go empty when it got shorter)
     box.querySelectorAll('[data-text]').forEach(i => i.onchange = () => change(true, () => {
-      const l = ed(it.id), k = Number(i.dataset.text);
-      l.texts = (l.texts || []).filter(t => t.i !== k);
-      if (i.value !== i.dataset.from) l.texts.push({ i: k, from: i.dataset.from, to: i.value });
+      const l = ed(it.id), ks = i.dataset.text.split(',').map(Number), from = JSON.parse(i.dataset.from), v = [...i.value];
+      l.texts = (l.texts || []).filter(t => !ks.includes(t.i));
+      ks.forEach((k, n) => {
+        const to = ks.length === 1 ? i.value : n < ks.length - 1 ? v[n] || '' : v.slice(n).join('');
+        if (to !== from[n]) l.texts.push({ i: k, from: from[n], to });
+      });
     }));
     box.querySelectorAll('[data-ft]').forEach(i => {
       const k = i.dataset.ft, go = () => change(true, () => {
@@ -8977,7 +8996,7 @@ async function editStep(id, body, st) {
     if (l.cuts) { l.cuts = l.cuts.filter(t => !kf.some(k => Math.abs(k - t) < 0.01)); if (!l.cuts.length) delete l.cuts; }
   }
   $('#ed-still-all').onclick = () => change(true, () => {
-    const cs = items().filter(i => i.ai && i.kind === 'cutout');
+    const cs = items().filter(i => i.ai && !ED_AUDIO.has(i.kind));
     const on = cs.length && cs.every(i => ed(i.id).still);
     cs.forEach(i => on ? delete ed(i.id).still : stillOn(i));
   });
@@ -9015,15 +9034,18 @@ async function editStep(id, body, st) {
   };
   addEventListener('keydown', onKey);
 
-  (function loop() {
+  // per frame only what changed: measuring the selected layer forces a layout of the whole composition in the player,
+  // so while playing the outline follows at ~8 fps and the timecode is rewritten only when its text changes
+  let lastTc = '', lastBox = 0;
+  (function loop(ts) {
     if (!alive()) { document.body.classList.remove('editing'); if (typeof setSidebarOpen === 'function' && $('#projects-sidebar') && sidebarWas !== '0') setSidebarOpen(true); return; }
-    const t = now();
-    $('#ed-tc').innerHTML = `${tcode(t)} <small>/ ${tcode(dur())}</small>`;
-    $('#ed-play').textContent = P && !P.paused ? '❚❚' : '▶';
+    const t = now(), playing = P && !P.paused, tc = `${tcode(t)} <small>/ ${tcode(dur())}</small>`;
+    if (tc !== lastTc) { $('#ed-tc').innerHTML = tc; lastTc = tc; }
+    const pl = playing ? '❚❚' : '▶'; if ($('#ed-play').textContent !== pl) $('#ed-play').textContent = pl;
     const ph = $('#ed-ph'); if (ph) ph.style.left = t * pps + 'px';
-    paintBox();
+    if (!playing || ts - lastBox > 120) { paintBox(); lastBox = ts; }
     requestAnimationFrame(loop);
-  })();
+  })(0);
 
   warn();
   setTool('select');

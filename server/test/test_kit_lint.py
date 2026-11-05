@@ -28,9 +28,11 @@ kit.scene(2, 2, 4, 'black', None, world=dict(x=-80, ry=4))
 kit.scene(3, 4, 6, 'amber', None, world=dict(scale=1, y=40, snap=True), signature=True)
 kit.scene(4, 6, 10, 'cream', None)
 js, kinds = kit.world_track()
-assert kinds == ['push', 'pan', 'orbit', 'pull', 'crane'] and not kit.ERROS, (kinds, kit.ERROS)
+# a pose cabe na própria escala: pan de 80 px com orbit de 4° a 1.1 encolhe para 41 px e 2°; o snap para escala 1 volta ao repouso
+assert kinds == ['push', 'pan', 'orbit', 'pull', 'pan', 'orbit'] and not kit.ERROS, (kinds, kit.ERROS)
 assert js[1] == 'tl.to("#world",{x:0.000,y:0.000,scale:1.100,rotationX:0.000,rotationY:0.000,rotation:0.000,duration:2.00,ease:"sine.inOut"},0.00);', js[1]
-assert js[2].startswith('tl.to("#world",{x:-80.000,y:0.000,scale:1.100,rotationX:0.000,rotationY:4.000') and js[3].startswith('tl.set("#world",{x:-80.000,y:40.000,scale:1.000'), js[2:]
+assert js[2].startswith('tl.to("#world",{x:-40.989,y:0.000,scale:1.100,rotationX:0.000,rotationY:2.049') and js[3].startswith('tl.set("#world",{x:0.000,y:0.000,scale:1.000,rotationX:0.000,rotationY:0.000'), js[2:]
+assert kit.world_cover(dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)) == 1 and kit.world_fit(dict(x=-70, y=0, scale=.95, rx=0, ry=0, rz=4)) == dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)
 assert kit.lint_world(kinds) == [] and len(kit.lint_world(['push'])) == 1, kit.lint_world(['push'])
 kit.S[2]['signature'] = False
 assert len(kit.lint_world(['push', 'pan'])) == 2

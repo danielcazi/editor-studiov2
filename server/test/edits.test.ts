@@ -137,3 +137,5 @@ test('rights on an added clip are checked and never reach the composition HTML',
   assert.throws(() => checkLayers(add({ status: 'licensed', license: 'x'.repeat(301) })), /rights.license/);
   assert.ok(!applyEdits(HTML, ok).includes('Pexels License'));
 });
+
+test('kfSplit keeps its stage marker', () => assert.equal(checkLayers({ layers: {}, added: [], kfSplit: 3 }).kfSplit, 3));
