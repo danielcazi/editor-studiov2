@@ -7259,7 +7259,7 @@ async function project(id) {
     const runIdx = running ? (STEP_INFO[running.step]?.index ?? -1) : -1;
     const maxReachable = Math.max(at + 1, runIdx, at >= 3 ? 5 : -1);   // reviewed: edit and delivery open (the final itself still refuses open notes)
     const isMajorRunning = running && ['ingest', 'script', 'motion', 'final'].includes(running.step);
-    const activePipelineStep = isMajorRunning ? running.step : (st.step === 'brand' ? 'script' : st.step);
+    const activePipelineStep = isMajorRunning ? running.step : (st.step === 'brand' || st.step === 'ingest' ? 'script' : st.step);
 
     if (!viewStep || (STEPS.findIndex(s => s[0] === viewStep) > maxReachable && viewStep !== 'brand')) {
       viewStep = activePipelineStep;

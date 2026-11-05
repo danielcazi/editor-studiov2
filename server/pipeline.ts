@@ -1908,8 +1908,8 @@ export const listProjectsOverview = (): ProjectOverview[] => {
         requiresHumanConfirmation = true;
         humanConfirmationLabel = 'Iniciar Ingestão';
       } else if (st.step === 'ingest') {
-        requiresHumanConfirmation = true;
-        humanConfirmationLabel = 'Iniciar Roteiro';
+        requiresHumanConfirmation = false;   // the server chains ingest into the script suggestion
+        humanConfirmationLabel = '';
       } else if (st.step === 'brand') {
         requiresHumanConfirmation = true;
         humanConfirmationLabel = 'Configurar Marca';
