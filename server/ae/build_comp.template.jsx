@@ -125,6 +125,92 @@ function opacityKeys(L, P, own) {
   var op = L.property('ADBE Transform Group').property('ADBE Opacity');
   if (ts.length > 1) op.setValuesAtTimes(ts, vs); else op.setValue(vs[0]);
 }
+// filter: blur(px) do CSS → Gaussian Blur; Blurriness = px / 0,3 (a conversão do lottie-web)
+function blurKeys(L, P) {
+  var ts = [], vs = [], any = false;
+  for (var k = 0; k < P.keys.length; k++) { ts.push(P.keys[k].t); vs.push((P.keys[k].bl || 0) / 0.3); if (P.keys[k].bl) any = true; }
+  if (!any) return;
+  var fx = L.property('ADBE Effect Parade').addProperty('ADBE Gaussian Blur 2');
+  fx.property('ADBE Gaussian Blur 2-0003').setValue(true); // repeat edge pixels: o CSS não escurece a borda
+  setKeys(fx.property('ADBE Gaussian Blur 2-0001'), ts, vs);
+}
+var BM = { multiply: 'MULTIPLY', screen: 'SCREEN', overlay: 'OVERLAY', darken: 'DARKEN', lighten: 'LIGHTEN', 'color-dodge': 'COLOR_DODGE', 'color-burn': 'COLOR_BURN', 'hard-light': 'HARD_LIGHT', 'soft-light': 'SOFT_LIGHT', difference: 'DIFFERENCE', exclusion: 'EXCLUSION', hue: 'HUE', saturation: 'SATURATION', color: 'COLOR', luminosity: 'LUMINOSITY', 'plus-lighter': 'ADD' };
+// mix-blend-mode da peça → blending mode de cada camada dela (clipes também: o .mov é composto com o mesmo modo)
+function blend(L, P) { if (P.blend && BM[P.blend]) try { L.blendingMode = BlendingMode[BM[P.blend]]; } catch (e) { log('blend ' + P.blend + ': ' + e); } }
+var KAPPA = 0.5523;
+// retângulo com cantos redondos como Shape de máscara (espaço da camada); r = 0 dá um retângulo
+function rrShape(x0, y0, x1, y1, r) {
+  var s = new Shape(); r = Math.min(r, (x1 - x0) / 2, (y1 - y0) / 2); var k = r * KAPPA;
+  s.vertices = [[x0 + r, y0], [x1 - r, y0], [x1, y0 + r], [x1, y1 - r], [x1 - r, y1], [x0 + r, y1], [x0, y1 - r], [x0, y0 + r]];
+  s.inTangents = [[-k, 0], [0, 0], [0, -k], [0, 0], [k, 0], [0, 0], [0, k], [0, 0]];
+  s.outTangents = [[0, 0], [k, 0], [0, 0], [0, k], [0, 0], [-k, 0], [0, 0], [0, -k]];
+  s.closed = true; return s;
+}
+function ellShape(cx, cy, rx, ry) {
+  var s = new Shape(), kx = rx * KAPPA, ky = ry * KAPPA;
+  s.vertices = [[cx, cy - ry], [cx + rx, cy], [cx, cy + ry], [cx - rx, cy]];
+  s.inTangents = [[-kx, 0], [0, -ky], [kx, 0], [0, ky]]; s.outTangents = [[kx, 0], [0, ky], [-kx, 0], [0, -ky]];
+  s.closed = true; return s;
+}
+// máscaras seguintes cortam (interseção), não somam
+function addMask(L, shape, feather, inverted) {
+  var par = L.property('ADBE Mask Parade'), m = par.addProperty('ADBE Mask Atom');
+  m.property('ADBE Mask Shape').setValue(shape); m.property('ADBE Mask Feather').setValue([feather, feather]); m.inverted = !!inverted;
+  if (par.numProperties > 1) m.maskMode = MaskMode.INTERSECT;
+  return m;
+}
+// degradê de 2 cores num sólido do tamanho da caixa: Gradient Ramp (opaco), Linear Wipe (linear só de alfa) ou máscara elíptica
+// com pluma (radial só de alfa). Elipse: o sólido é esticado em Y e a camada leva escala Y = ry/rx, porque o Ramp radial é circular.
+function gradLayer(comp, S, P, N) {
+  var G = S.grad, op = G.c1, hid = G.c0;   // wipe/vig: 'op' é a ponta que aparece, 'hid' a transparente
+  if (G.c0.a > G.c1.a) { op = G.c0; hid = G.c1; }
+  var q = G.shape === 'radial' ? G.ry / G.rx : 1, hs = S.h / q, own = S.o;
+  var L = comp.layers.addSolid(c01(op.c), P.scene + ' · degradê · ' + S.cls, Math.max(1, Math.round(S.w)), Math.max(1, Math.round(hs)), 1, DUR);
+  var a = (G.ang || 0) * Math.PI / 180, dx = Math.sin(a), dy = -Math.cos(a), len = Math.abs(S.w * dx) + Math.abs(S.h * dy);
+  if (G.kind === 'ramp') {
+    var fx = L.property('ADBE Effect Parade').addProperty('ADBE Ramp'), p0, p1;
+    if (G.shape === 'linear') { p0 = [S.w / 2 + dx * len * (G.s0 - 0.5), S.h / 2 + dy * len * (G.s0 - 0.5)]; p1 = [S.w / 2 + dx * len * (G.s1 - 0.5), S.h / 2 + dy * len * (G.s1 - 0.5)]; }
+    else { p0 = [G.cx, G.cy / q]; p1 = [G.cx + G.rx * G.s1, G.cy / q]; fx.property('ADBE Ramp-0005').setValue(2); }   // shortcut: a parada inicial do radial fica no centro, o Ramp não tem raio interno
+    fx.property('ADBE Ramp-0001').setValue(p0); fx.property('ADBE Ramp-0002').setValue(c01(G.c0.c));
+    fx.property('ADBE Ramp-0003').setValue(p1); fx.property('ADBE Ramp-0004').setValue(c01(G.c1.c));
+  } else if (G.kind === 'wipe') {
+    own = S.o * op.a;
+    var ang = G.ang, m = (G.s0 + G.s1) / 2;
+    if (hid === G.c1) { ang += 180; m = 1 - m; }   // transparente no fim: o wipe vem do lado oposto
+    var w = L.property('ADBE Effect Parade').addProperty('ADBE Linear Wipe');
+    w.property('ADBE Linear Wipe-0001').setValue(m * 100); w.property('ADBE Linear Wipe-0002').setValue(ang); w.property('ADBE Linear Wipe-0003').setValue((G.s1 - G.s0) * len);
+  } else {
+    own = S.o * op.a;
+    var mm = (G.s0 + G.s1) / 2;
+    addMask(L, ellShape(G.cx, G.cy / q, G.rx * mm, G.rx * mm), (G.s1 - G.s0) * G.rx, hid === G.c0);   // no sólido esticado a elipse é um círculo
+  }
+  if (S.rad > 0) addMask(L, rrShape(0, 0, S.w, hs, S.rad), 0, false);   // shortcut: canto esticado junto com o sólido nas elipses
+  parentTo(L, N);
+  var tr = L.property('ADBE Transform Group');
+  tr.property('ADBE Scale').setValue([100, q * 100]);
+  tr.property('ADBE Position').setValue([S.x + S.w / 2 - P.O[0], S.y + S.h / 2 - P.O[1]]);
+  span(L, P.a, P.b); opacityKeys(L, P, own); blurKeys(L, P); blend(L, P);
+  return L;
+}
+// <img>: o próprio arquivo importado, com a escala do object-fit; cover e cantos redondos viram máscara no espaço da imagem
+var IMGC = {};
+function imgLayer(comp, S, P, N, folder) {
+  var f = ROOT + '/' + S.file;
+  if (!has(f)) { log('sem imagem ' + f); return null; }
+  if (!IMGC[f]) IMGC[f] = importOne(f, folder);
+  var L = comp.layers.add(IMGC[f]);
+  L.name = P.scene + ' · imagem · ' + S.file.replace(/^.*\//, '');
+  var kx = S.w / S.nw, ky = S.h / S.nh, sx = kx, sy = ky;
+  if (S.fit === 'cover') { sx = sy = Math.max(kx, ky); } else if (S.fit === 'contain') { sx = sy = Math.min(kx, ky); }
+  if (S.fit === 'cover' || S.rad > 0) { var mw = S.w / sx, mh = S.h / sy; addMask(L, rrShape(S.nw / 2 - mw / 2, S.nh / 2 - mh / 2, S.nw / 2 + mw / 2, S.nh / 2 + mh / 2, S.rad / sx), 0, false); }
+  parentTo(L, N);
+  var tr = L.property('ADBE Transform Group');
+  tr.property('ADBE Anchor Point').setValue([S.nw / 2, S.nh / 2]);
+  tr.property('ADBE Scale').setValue([sx * 100, sy * 100]);
+  tr.property('ADBE Position').setValue([S.x + S.w / 2 - P.O[0], S.y + S.h / 2 - P.O[1]]);
+  span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); dropShadow(L, S.sh); blend(L, P);
+  return L;
+}
 function parentTo(L, N) { if (L.setParentWithJump) L.setParentWithJump(N); else L.parent = N; }
 function shapeLayer(comp, S, P, N) {
   var L = comp.layers.addShape();
@@ -146,7 +232,7 @@ function shapeLayer(comp, S, P, N) {
   }
   parentTo(L, N);
   L.property('ADBE Transform Group').property('ADBE Position').setValue([S.x + S.w / 2 - P.O[0], S.y + S.h / 2 - P.O[1]]);
-  span(L, P.a, P.b); opacityKeys(L, P, S.o); dropShadow(L, S.sh);
+  span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); dropShadow(L, S.sh); blend(L, P);
   return L;
 }
 function textLayer(comp, T, P, N) {
@@ -168,16 +254,19 @@ function textLayer(comp, T, P, N) {
   var tr = L.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
   tr.property('ADBE Position').setValue([(umaLinha ? T.l : T.x) - P.O[0], T.base - P.O[1]]);
-  span(L, P.a, P.b); opacityKeys(L, P, T.o * T.alpha); dropShadow(L, T.sh);
+  span(L, P.a, P.b); opacityKeys(L, P, T.o * T.alpha); blurKeys(L, P); dropShadow(L, T.sh); blend(L, P);
   return L;
 }
 // peça nativa: null + camadas na ordem do HTML (a última fica por cima)
-function nativePiece(comp, P) {
+function nativePiece(comp, P, folder) {
   var N = pieceNull(comp, P), all = [], k;
   for (k = 0; k < P.shapes.length; k++) all.push({ ord: P.shapes[k].ord, s: P.shapes[k] });
   for (k = 0; k < P.texts.length; k++) all.push({ ord: P.texts[k].ord, t: P.texts[k] });
   all.sort(function (x, y) { return x.ord - y.ord; });
-  for (k = 0; k < all.length; k++) { if (all[k].s) shapeLayer(comp, all[k].s, P, N); else textLayer(comp, all[k].t, P, N); }
+  for (k = 0; k < all.length; k++) {
+    var S = all[k].s;
+    if (!S) textLayer(comp, all[k].t, P, N); else if (S.kind === 'img') imgLayer(comp, S, P, N, folder); else if (S.kind === 'grad') gradLayer(comp, S, P, N); else shapeLayer(comp, S, P, N);
+  }
   N.moveToBeginning();
 }
 // texto desenhado em canvas (ilustração do compose): camada de texto com a pose da frase quadro a quadro; o clipe leva só a decoração
@@ -193,7 +282,7 @@ function ctextLayer(comp, P) {
   var tr = L.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
   poseKeys(tr, P.keys, null);
-  span(L, P.a, P.b); opacityKeys(L, P, P.alpha); dropShadow(L, P.sh); pai(L, P.depth);
+  span(L, P.a, P.b); opacityKeys(L, P, P.alpha); dropShadow(L, P.sh); blend(L, P); pai(L, P.depth);
   return L;
 }
 // peça em clipe ProRes 4444 com alfa, idêntico ao HTML
@@ -206,10 +295,10 @@ function clipPiece(comp, P, folder) {
   var tr = L.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
   tr.property('ADBE Position').setValue([P.x, P.y]);
-  L.startTime = P.a; span(L, P.a, P.b); pai(L, P.depth);
+  L.startTime = P.a; span(L, P.a, P.b); blend(L, P); pai(L, P.depth);
   return L;
 }
-function piece(comp, P, folder) { if (P.kind === 'native') nativePiece(comp, P); else if (P.kind === 'ctext') ctextLayer(comp, P); else clipPiece(comp, P, folder); }
+function piece(comp, P, folder) { if (P.kind === 'native') nativePiece(comp, P, folder); else if (P.kind === 'ctext') ctextLayer(comp, P); else clipPiece(comp, P, folder); }
 // vídeo/áudio da composição: o arquivo original no trecho em que toca; vídeo com a câmera (posição/escala/opacidade) em keyframes
 var CACHE = {};
 function mediaLayer(comp, M, folder) {

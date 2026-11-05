@@ -1,7 +1,9 @@
 <!doctype html>
 <!-- Composição mínima para o teste do exportador do After (server/test/ae_export.test.ts): reproduz o que o compose/kit.py
      escreve e que já quebrou o export: câmera de mundo (#world preserve-3d + profundidade com translateZ), texto em DOM e
-     texto desenhado em canvas (fillText a cada seek). Toda estrutura nova do kit entra aqui também. -->
+     texto desenhado em canvas (fillText a cada seek), palavra que entra com filter: blur() animado (vira Gaussian Blur),
+     degradês de 2 cores (sombra inferior, vinheta, fundo com luz + mix-blend-mode) e <img> com object-fit e cantos (nativos).
+     Toda estrutura nova do kit entra aqui também. -->
 <html lang="pt-BR" data-resolution="portrait">
 <head>
 <meta charset="UTF-8">
@@ -14,6 +16,12 @@
   #cena { position:absolute; inset:0; }
   #cena .fundo { position:absolute; inset:-12%; background:#ECEBFA; }
   #cena .titulo { position:absolute; left:40px; top:120px; font:700 48px Arial, sans-serif; color:#111; }
+  #cena .sub { position:absolute; left:40px; top:200px; font:400 32px Arial, sans-serif; color:#333; }
+  #cena .shade { position:absolute; left:0; right:0; bottom:0; height:300px; background:linear-gradient(transparent 45%, rgba(0,0,0,.85)); }
+  #cena .vig { position:absolute; inset:0; background:radial-gradient(ellipse at 50% 45%, transparent 58%, rgba(0,0,0,.6)); }
+  #cena .ramp { position:absolute; left:40px; top:720px; width:200px; height:120px; border-radius:24px; mix-blend-mode:screen;
+    background:radial-gradient(110% 75% at 50% 35%, #ff5a36, color-mix(in srgb, #ff5a36 78%, #000)); }
+  #cena .foto { position:absolute; left:300px; top:720px; width:200px; height:120px; object-fit:cover; border-radius:16px; }
 </style>
 </head>
 <body>
@@ -23,7 +31,12 @@
       <div id="cena" data-start="0" data-duration="2">
         <div class="fundo"></div>
         <div class="titulo">Texto em DOM</div>
+        <div class="sub">Entra com desfoque</div>
         <canvas id="cena-cv" width="540" height="400" style="position:absolute;left:0;top:300px;width:540px;height:400px"></canvas>
+        <div class="ramp"></div>
+        <img class="foto" src="foto.png">
+        <div class="shade"></div>
+        <div class="vig"></div>
       </div>
     </div>
   </div>
@@ -32,6 +45,7 @@
   const tl = gsap.timeline({ paused: true });
   tl.set("#world", { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotation: 0 }, 0);
   tl.to("#world", { y: -40, rotationX: 3, duration: 1, ease: "sine.inOut" }, 0.5);
+  tl.fromTo(".sub", { filter: "blur(12px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.6 }, 0.2);
   const cv = document.getElementById('cena-cv'), ctx = cv.getContext('2d');
   const R = () => {
     const t = Math.max(0, Math.min(tl.time(), 2));
