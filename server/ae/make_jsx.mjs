@@ -295,7 +295,8 @@ const INPAGE = () => {
     const r0 = p.getBoundingClientRect(), out = [];
     for (const el of p.querySelectorAll('*')) {
       const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
-      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color].join(','));
+      // stroke-dashoffset: traço de svg que se desenha não muda a caixa, mas é conteúdo animado (não pode virar forma estática)
+      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color, cs.strokeDashoffset].join(','));
     }
     out.push(p.textContent.replace(/\s+/g, ' ').trim(), Math.round(r0.width), Math.round(r0.height));
     return out.join('|');

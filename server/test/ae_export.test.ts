@@ -40,12 +40,13 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.ok(selo, r.clipes.join('\n'));
   const [, ta, tb] = /\(([\d.]+)–([\d.]+) s/.exec(selo)!.map(Number);
   assert.ok(ta >= 0.45 && ta <= 0.55 && tb >= 1.15 && tb <= 1.3, `clipe do selo no tempo em que aparece: ${ta}–${tb}`);
-  assert.equal(r.camadas.clipes_prores, 2, 'só o canvas e o selo inclinado viram clipe: a palavra com blur() é nativa');
+  assert.equal(r.camadas.clipes_prores, 3, 'só o canvas, o selo inclinado e o traço de svg que se desenha viram clipe: a palavra com blur() é nativa');
   assert.match(jsx, /"bl":[1-9]/, 'blur medido por quadro nos keyframes da peça');
   assert.equal(r.camadas.degrades, 3, 'sombra (wipe), vinheta (vig) e fundo com luz (ramp) nativos');
   assert.equal(r.camadas.imagens, 1, 'a <img> entra como o próprio arquivo');
   // o ícone <svg> sai como arquivo .svg com a cor do CSS resolvida (currentColor) e o traço, e vira camada de forma no After
   assert.equal(r.camadas.vetores, 1, 'o <svg> do ícone é nativo, não clipe');
+  assert.ok(r.clipes.some((c: string) => c.includes('-svg.mov') && /conteúdo muda/.test(c)), 'svg com stroke-dashoffset animado fica em clipe');
   const svgArq = /"file":"(V\/svg\/[^"]+\.svg)"/.exec(jsx)![1], svg = readFileSync(join(out, svgArq), 'utf8');
   assert.match(svg, /fill="rgb\(243, 152, 75\)"/, 'currentColor resolvido para a cor do CSS');
   assert.match(svg, /stroke-linecap="round"/, 'traço e ponta preservados');
