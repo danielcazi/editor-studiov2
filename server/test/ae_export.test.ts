@@ -31,11 +31,16 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.match(jsx, /"depths":\[\{"id":"mid","z":-110,"s":1\.0611\}\]/, 'profundidade lida do translateZ e da escala');
   assert.ok(r.clipes.some((c: string) => c.includes('cena-')), 'a decoração do canvas continua em clipe');
   // o clipe é recortado pelo alfa visível: o canvas tem 540×400, mas o retângulo roxo desenhado é 460×200 (484×210 com o push-in de 5%) e a caixa da peça tinha folga de 70 px
-  const mov = join(out, 'V/clips/cena-3.mov');
+  const mov = join(out, r.clipes.find((c: string) => c.includes('cena-3-'))!.split(' ')[0]);
   const [cw, ch] = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', mov], { encoding: 'utf8' }).trim().split(',').map(Number);
   assert.ok(cw <= 490 && ch <= 220, `clipe recortado pelo alfa, não pela caixa da peça: ${cw}×${ch}`);
   assert.match(r.clipes[0], new RegExp(`${cw}×${ch}`), 'o relatório e a posição usam o tamanho recortado');
-  assert.equal(r.camadas.clipes_prores, 1, 'só o canvas vira clipe: a palavra com blur() é nativa');
+  // o selo só aparece de 0,5 s a 1,2 s: o clipe dele dura isso, não a cena, e o nome do arquivo diz qual peça é
+  const selo = r.clipes.find((c: string) => c.includes('selo'));
+  assert.ok(selo, r.clipes.join('\n'));
+  const [, ta, tb] = /\(([\d.]+)–([\d.]+) s/.exec(selo)!.map(Number);
+  assert.ok(ta >= 0.45 && ta <= 0.55 && tb >= 1.15 && tb <= 1.3, `clipe do selo no tempo em que aparece: ${ta}–${tb}`);
+  assert.equal(r.camadas.clipes_prores, 2, 'só o canvas e o selo inclinado viram clipe: a palavra com blur() é nativa');
   assert.match(jsx, /"bl":[1-9]/, 'blur medido por quadro nos keyframes da peça');
   assert.equal(r.camadas.degrades, 3, 'sombra (wipe), vinheta (vig) e fundo com luz (ramp) nativos');
   assert.equal(r.camadas.imagens, 1, 'a <img> entra como o próprio arquivo');

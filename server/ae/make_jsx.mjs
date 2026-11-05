@@ -364,7 +364,8 @@ const INPAGE = () => {
     if (r0.width > 0.5 && r0.height > 0.5 && Math.abs(rt.height / r0.height - k) > 0.003 * k) why.push('transformação no invólucro');
     const Lo = [r0.left + org[0], r0.top + org[1]], Ot = [rt.left + org[0] * k, rt.top + org[1] * k];
     const mt = m && [m[0] * k, m[1] * k, m[2] * k, m[3] * k, m[4] * k, m[5] * k];
-    return { i, on: true, op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct };
+    const nome = (p.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 28) || (typeof p.className === 'string' && p.className.split(/\s+/)[0]) || p.id || p.tagName.toLowerCase();
+    return { i, on: true, nome, op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct };
   });
 
   // textos e formas nativos na pose de repouso
@@ -597,7 +598,7 @@ for (const g of grupos) {
         pieces.push({ kind: 'ctext', ...base, a: ca, b: cb, sub: sup.length + 1, text: d0.text, fam: d0.fam, weight: d0.weight, size: d0.size, color: d0.color, alpha: d0.alpha, track: d0.track, sh: d0.sh, keys });
         sup.push(key);
       }
-      pieces.push({ kind: 'clip', ...base, x: x0, y: y0, w, h, file: `V/clips/${slug(g.id)}-${i}.mov`, ids: [i], why: [...why], semTexto: comTexto, sup });
+      pieces.push({ kind: 'clip', ...base, x: x0, y: y0, w, h, file: `V/clips/${slug(g.id)}-${i}-${slug(rest.nome).slice(0, 32) || 'peca'}.mov`, ids: [i], why: [...why], semTexto: comTexto, sup });
     }
     n++;
   }
@@ -665,7 +666,8 @@ if (!flag('sem-clipes')) {
     fs.readdirSync(tmp).forEach((f) => fs.unlinkSync(path.join(tmp, f)));
     let n = 0;
     await page.evaluate((keys) => window.__AE.suprimir(keys), c.sup || []);   // antes do seek: o canvas desenha durante o seek
-    for (let f = Math.round(c.a * FPS); f < Math.round(c.b * FPS); f++) {
+    const a0 = Math.max(0, Math.round(c.a * FPS) - STEP), b0 = Math.min(Math.round(DUR * FPS), Math.round(c.b * FPS) + STEP);
+    for (let f = a0; f < b0; f++) {
       await seek(f / FPS);
       await page.evaluate((id, ids) => window.__AE.isolar(id, ids), c.scene, c.ids);
       if (c.semTexto) await page.evaluate((id, ids) => window.__AE.ocultarTexto(id, ids), c.scene, c.ids);
@@ -675,14 +677,21 @@ if (!flag('sem-clipes')) {
     // caixa justa: a união do alfa visível (> ~1%) em todos os quadros; a folga de PAD/margem serviu só para não cortar a captura.
     // cropdetect com reset=0 devolve a maior área vista; sem nenhum pixel visível mantém a caixa medida.
     let corte = null;
-    const cd = spawnSync('ffmpeg', ['-hide_banner', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), '-vf', 'alphaextract,cropdetect=limit=3:round=2:skip=0:reset=0', '-f', 'null', '-'], { encoding: 'utf8' });
+    const cd = spawnSync('ffmpeg', ['-hide_banner', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), '-vf', 'alphaextract,blackframe=amount=100:threshold=3,cropdetect=limit=3:round=2:skip=0:reset=0', '-f', 'null', '-'], { encoding: 'utf8' });
     for (const m of (cd.stderr || '').matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)) corte = m.slice(1).map(Number);
+    // quadros 100% transparentes no começo e no fim saem do clipe: a camada dura só o tempo em que algo aparece
+    const vazio = new Set([...(cd.stderr || '').matchAll(/frame:(\d+) pblack:100/g)].map((m) => +m[1]));
+    let f0 = 0, f1 = n - 1;
+    while (f0 < n && vazio.has(f0)) f0++;
+    while (f1 > f0 && vazio.has(f1)) f1--;
+    if (f0 >= n) { c.kind = 'erro'; continue; }   // nada visível no trecho inteiro
+    c.a = r3((a0 + f0) / FPS); c.b = r3(Math.min(DUR, (a0 + f1 + 1) / FPS));
     let vf = [];
     if (corte && corte[0] >= 2 && corte[1] >= 2 && (corte[0] < c.w || corte[1] < c.h)) {
       vf = ['-vf', `crop=${corte.join(':')}`];
       c.x += corte[2]; c.y += corte[3]; c.w = corte[0]; c.h = corte[1];
     }
-    const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), ...vf,
+    const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-start_number', String(f0), '-i', path.join(tmp, '%05d.png'), '-frames:v', String(f1 - f0 + 1), ...vf,
       '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-qscale:v', '9', '-alpha_bits', '16', path.join(OUT, c.file)], { encoding: 'utf8' });
     if (r.status !== 0) { avisos.push(`clipe ${c.file}: ffmpeg falhou (${(r.stderr || '').slice(0, 160)})`); c.kind = 'erro'; }
     process.stdout.write(`\rclipe ${c.file} (${n} quadros)        `);

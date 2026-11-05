@@ -38,6 +38,7 @@
         <img class="foto" src="foto.png">
         <div class="shade"></div>
         <div class="vig"></div>
+        <div class="selo" style="position:absolute;left:200px;top:880px;width:60px;height:60px;transform:skewX(-12deg)"><div id="selo-in" style="width:60px;height:60px;background:#5B4BFF;opacity:0"></div></div>
       </div>
     </div>
   </div>
@@ -46,6 +47,7 @@
   const tl = gsap.timeline({ paused: true });
   tl.set("#world", { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotation: 0 }, 0);
   tl.to("#world", { y: -40, rotationX: 3, duration: 1, ease: "sine.inOut" }, 0.5);
+  tl.to("#selo-in", { opacity: 1, duration: 0.01 }, 0.5); tl.to("#selo-in", { opacity: 0, duration: 0.01 }, 1.2);   // clipe com quadros vazios nas pontas
   tl.fromTo("#cena", { scale: 1 }, { scale: 1.05, duration: 2, ease: "sine.inOut" }, 0);   // push-in da cena (move do kit.py): não é conteúdo mudando
   tl.fromTo(".sub", { filter: "blur(12px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.6 }, 0.2);
   const cv = document.getElementById('cena-cv'), ctx = cv.getContext('2d');
