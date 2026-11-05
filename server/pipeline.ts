@@ -3135,9 +3135,13 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   for (const d of [HF, join(HF, 'components')]) for (const f of readdirSync(d).filter(f => f.endsWith('.html'))) copyFileSync(join(d, f), join(C, 'motions', f));
   for (const f of readdirSync(join(K, 'sfx'))) copyFileSync(join(K, 'sfx', f), join(A, 'sfx', f));
   for (const [from, to] of [['cutout.webm', 'cut.webm'], ['master.mp4', 'raw.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json'], ['talk.mp4', 'talk.mp4']].filter(([f]) => (!noSpeaker || f === 'voice.m4a' || f === 'transcript.json') && (f !== 'talk.mp4' || existsSync(join(P, f))))) if (media || (existsSync(join(P, from)) && !cutoutJobs.has(id))) { const src = join(P, from), dst = join(A, to); if (!existsSync(dst) || statSync(dst).size !== statSync(src).size || statSync(dst).mtimeMs < statSync(src).mtimeMs) copyFileSync(src, dst); }   // deferred: RVM writes cutout.webm in place, so a running job means a partial file
-  const brand = existsSync(join(P, 'brand.json')) ? readJSON(join(P, 'brand.json')) : getBrand(st.brand);
+  // the brand as it is now (global + this project's override): the copy in the project folder goes stale when the brand gains a font or colour
+  const brand = writeBrand(st);
   const fontFile = brandFontFile(st, brand);
   if (fontFile) copyFileSync(fontFile, join(A, 'fonts/font.otf'));
+  // a Black weight for the giant type (brand.fonts.giant.file): kit.py declares it as weight 900 when the file is there
+  const giantFile = brand.fonts?.giant?.file && existsSync(expandHome(brand.fonts.giant.file)) ? expandHome(brand.fonts.giant.file) : '';
+  if (giantFile) copyFileSync(giantFile, join(A, 'fonts/giant.otf')); else rmSync(join(A, 'fonts/giant.otf'), { force: true });
   const { duration, width, height } = await probeMedia(join(P, 'master.mp4'));
   const c = brand.colors ?? {}, faceX = faceXOf(P, width, height);
 
@@ -3195,6 +3199,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     right: Math.round(targetW * 0.065),
   };
 
+  // the motion style (workspace/styles/<id>/style.json): read here because compose.json takes giantCase and speakerShadow from it
+  let style: any = null;
+  if (st.styleId) try { style = getStyle(st.styleId); } catch { style = null; }
   // join times of the cut on the master clock: kit.py snaps the cutout to an alternating zoom there, so a jump cut reads as a change of shot
   const edl = existsSync(join(P, 'edl.json')) ? readJSON(join(P, 'edl.json')) : null, speed = edl?.speed ?? (edl ? (await pacing(id)).speed : 1);
   const cuts: number[] = []; let acc = 0;
@@ -3212,6 +3219,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     ...(!noSpeaker && fmt.cutWindows ? { cutWindows: cutWindows(fmt.cutWindows, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
     colors,
     fonte: { w: width, h: height },
+    // from the motion style (set by hand in style.json): giantCase 'lower' and speakerShadow true for product styles like Insula Build
+    ...(style?.giantCase ? { giantCase: style.giantCase } : {}),
+    ...(style?.speakerShadow ? { speakerShadow: true } : {}),
     layoutCheck: join(ROOT, 'server/layout_check.mjs')
   });
   writeJSON(join(C, 'hyperframes.json'), { $schema: 'https://hyperframes.heygen.com/schema/hyperframes.json', registry: 'https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry',
@@ -3232,8 +3242,6 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const refFile = join(P, 'reference.json'), refAnalysis = existsSync(refFile) ? Object.entries(readJSON(refFile)).map(([k, v]) => `- ${k}: ${v}`).join('\n') : '';
   const imgFiles = existsSync(join(A, 'img')) ? readdirSync(join(A, 'img')).filter(f => !f.startsWith('.')) : [];
   // the noSpeaker style: chosen (followed to the letter, with the frames it came from) or, if none, the list the director picks from
-  let style: any = null;
-  if (st.styleId) try { style = getStyle(st.styleId); } catch { style = null; }
   const styleList = style ? [] : listMotionStyles().map(sid => { try { return getStyle(sid); } catch { return null; } }).filter(Boolean);
   const imgDesc = imgFiles.length ? `img/ (${imgFiles.length} imagens da referência disponíveis: ${imgFiles.join(', ')}; olhe cada uma com Read antes de usar, e mostre com <img src="assets/img/..."> em back/front)` : 'img/ (vazio)';
 
@@ -3258,8 +3266,8 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     script.accentWords?.length ? `## Palavras-chave sugeridas\n${script.accentWords.join(', ')}` : '',
     srt ? `## Roteiro e tempos (.srt)\n${srt}` : '',
     `## Transcript por palavra\nassets/transcript.json (${words.length} palavras).`,
-    noSpeaker ? `## Assets\nvoice.m4a (narração), fonts/font.otf (peso 600), ${imgDesc}, sfx/ (ver sfx/manifest.json). Sem locutor.`
-      : `## Assets\ncut.webm (locutor, alfa), raw.mp4 (o vídeo original inteiro, escondido na camada 1 como backup: nunca o mostre nem o use como fundo), voice.m4a, fonts/font.otf (peso 600), ${imgDesc}, sfx/ (ver sfx/manifest.json).`,
+    noSpeaker ? `## Assets\nvoice.m4a (narração), fonts/font.otf (peso 600)${giantFile ? ' e fonts/giant.otf (peso 900, a tipografia gigante já usa)' : ''}, ${imgDesc}, sfx/ (ver sfx/manifest.json). Sem locutor.`
+      : `## Assets\ncut.webm (locutor, alfa), raw.mp4 (o vídeo original inteiro, escondido na camada 1 como backup: nunca o mostre nem o use como fundo), voice.m4a, fonts/font.otf (peso 600)${giantFile ? ' e fonts/giant.otf (peso 900, a tipografia gigante já usa)' : ''}, ${imgDesc}, sfx/ (ver sfx/manifest.json).`,
     `Siga GUIDE.md. Escreva scenes.py, valide, olhe os snapshots e corrija antes de renderizar.`].filter(Boolean).join('\n\n'));
   return { dir: C };
 }

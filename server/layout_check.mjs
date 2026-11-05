@@ -106,6 +106,7 @@ function coletaNaPagina(ids) {
     while ((n = w.nextNode())) {
       const t = n.textContent.trim();
       if (!t || /^(STYLE|SCRIPT)$/.test(n.parentElement.tagName)) continue;
+      if (n.parentElement.closest('[data-layout-decor]')) continue;   // decoração de editor (régua numerada): não é texto para ler
       if (opac(n.parentElement) < 0.05) continue;
       const cs = getComputedStyle(n.parentElement);
       ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
