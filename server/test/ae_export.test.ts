@@ -36,4 +36,10 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.equal(r.camadas.imagens, 1, 'a <img> entra como o próprio arquivo');
   for (const k of ['"kind":"wipe"', '"kind":"vig"', '"kind":"ramp"', '"blend":"screen"', '"file":"V/img/0-foto.png"', '"fit":"cover"']) assert.ok(jsx.includes(k), k);
   assert.ok(existsSync(join(out, 'V/img/0-foto.png')), 'imagem copiada para o pacote');
+  // push-in da cena (#cena 1 → 1,05): a null do título termina com escala ~105 e a origem medida no espaço local da cena
+  const D = JSON.parse(/var DATA = (.*);\n/.exec(jsx)![1]);
+  const tit = D.pieces.find((p: any) => p.kind === 'native' && p.texts.some((t: any) => t.text === 'Texto em DOM'));
+  const s1 = tit.keys.at(-1).s[0];
+  assert.ok(tit.keys[0].s[0] < 100.1 && s1 > 104 && s1 < 105.1, `escala da cena na null: ${tit.keys[0].s[0]} → ${s1}`);
+  assert.equal(tit.texts[0].size, 48, 'texto medido sem a escala da cena');
 });

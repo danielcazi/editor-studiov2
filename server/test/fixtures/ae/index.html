@@ -2,7 +2,8 @@
 <!-- Composição mínima para o teste do exportador do After (server/test/ae_export.test.ts): reproduz o que o compose/kit.py
      escreve e que já quebrou o export: câmera de mundo (#world preserve-3d + profundidade com translateZ), texto em DOM e
      texto desenhado em canvas (fillText a cada seek), palavra que entra com filter: blur() animado (vira Gaussian Blur),
-     degradês de 2 cores (sombra inferior, vinheta, fundo com luz + mix-blend-mode) e <img> com object-fit e cantos (nativos).
+     degradês de 2 cores (sombra inferior, vinheta, fundo com luz + mix-blend-mode), <img> com object-fit e cantos (nativos)
+     e o push-in de 5% na cena inteira, que entra na escala das nulls e não manda nada para clipe.
      Toda estrutura nova do kit entra aqui também. -->
 <html lang="pt-BR" data-resolution="portrait">
 <head>
@@ -45,6 +46,7 @@
   const tl = gsap.timeline({ paused: true });
   tl.set("#world", { x: 0, y: 0, scale: 1, rotationX: 0, rotationY: 0, rotation: 0 }, 0);
   tl.to("#world", { y: -40, rotationX: 3, duration: 1, ease: "sine.inOut" }, 0.5);
+  tl.fromTo("#cena", { scale: 1 }, { scale: 1.05, duration: 2, ease: "sine.inOut" }, 0);   // push-in da cena (move do kit.py): não é conteúdo mudando
   tl.fromTo(".sub", { filter: "blur(12px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.6 }, 0.2);
   const cv = document.getElementById('cena-cv'), ctx = cv.getContext('2d');
   const R = () => {

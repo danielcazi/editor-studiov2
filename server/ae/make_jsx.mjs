@@ -252,13 +252,20 @@ const INPAGE = () => {
     return out;
   };
 
+  // invólucros acima da peça sem transform: medimos no espaço local da cena; a escala/translação deles entra na pose da null
+  const semInvolucros = (p, fn) => {
+    const anc = [];
+    for (let a = p.parentElement; a && a !== document.body; a = a.parentElement) { anc.push([a, a.style.transform]); a.style.transform = 'none'; }
+    try { return fn(); } finally { for (const [a, t] of anc) a.style.transform = t; }
+  };
+
   // motivos para a peça virar clipe (lista vazia = pode ser nativa)
   const complexo = (p) => {
     const why = new Set();
     // a translação de um invólucro já entra na posição medida; escala/rotação dele não, então vira clipe
     for (let a = p.parentElement; a && !a.matches('[data-hf-inner-root], [data-ae-group]'); a = a.parentElement) {
-      const t = getComputedStyle(a).transform;
-      if (t !== 'none' && !/^matrix\(1, 0, 0, 1,/.test(t)) why.add('transformação no invólucro');
+      const t = getComputedStyle(a).transform, q = /^matrix\(([^)]*)\)/.exec(t);
+      if (t !== 'none' && (!q || ((v) => Math.abs(v[1]) > 1e-4 || Math.abs(v[2]) > 1e-4 || Math.abs(v[0] - v[3]) > 1e-4)(q[1].split(',').map(Number)))) why.add('transformação no invólucro');
     }
     for (const el of [p, ...p.querySelectorAll('*')]) {
       const cs = getComputedStyle(el), tag = el.tagName.toLowerCase();
@@ -350,9 +357,14 @@ const INPAGE = () => {
     const why = complexo(p), ct = ctexts(p);
     const salvo = p.style.transform;
     p.style.transform = 'none';
-    const r0 = p.getBoundingClientRect(), org = cs.transformOrigin.split(' ').map(num), sig = assinatura(p);
+    // a mesma caixa com e sem os invólucros dá a transformação deles (escala k + translação); assinatura e origem no espaço local
+    const rt = p.getBoundingClientRect(), [r0, sig] = semInvolucros(p, () => [p.getBoundingClientRect(), assinatura(p)]);
     p.style.transform = salvo;
-    return { i, on: true, op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m, O: [r0.left + org[0], r0.top + org[1]], sig, why, box: [L, T, Rr, B], ct };
+    const org = cs.transformOrigin.split(' ').map(num), k = r0.width > 0.5 ? rt.width / r0.width : r0.height > 0.5 ? rt.height / r0.height : 1;
+    if (r0.width > 0.5 && r0.height > 0.5 && Math.abs(rt.height / r0.height - k) > 0.003 * k) why.push('transformação no invólucro');
+    const Lo = [r0.left + org[0], r0.top + org[1]], Ot = [rt.left + org[0] * k, rt.top + org[1] * k];
+    const mt = m && [m[0] * k, m[1] * k, m[2] * k, m[3] * k, m[4] * k, m[5] * k];
+    return { i, on: true, op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct };
   });
 
   // textos e formas nativos na pose de repouso
@@ -361,6 +373,7 @@ const INPAGE = () => {
     let ord = 0;
     const salvoT = p.style.transform, salvoO = p.style.opacity;
     p.style.transform = 'none'; p.style.opacity = '1';
+    try { return semInvolucros(p, () => {
     const stop = p.parentElement;
 
     const shapeOf = (el, o, cs) => {
@@ -436,9 +449,8 @@ const INPAGE = () => {
     };
 
     walk(p);
-    p.style.transform = salvoT;
-    p.style.opacity = salvoO;
     return out;
+    }); } finally { p.style.transform = salvoT; p.style.opacity = salvoO; }
   };
 
   const isolar = (g, ids) => {
@@ -551,11 +563,11 @@ for (const g of grupos) {
     }
     if (ex && !decor.length) {
       if (!ex.shapes.length && !ex.texts.length) continue;
-      pieces.push({ kind: 'native', ...base, O: [+rest.O[0].toFixed(2), +rest.O[1].toFixed(2)], keys: keysOf(s), shapes: ex.shapes, texts: ex.texts });
+      pieces.push({ kind: 'native', ...base, O: [+rest.Lo[0].toFixed(2), +rest.Lo[1].toFixed(2)], keys: keysOf(s), shapes: ex.shapes, texts: ex.texts });
     } else {
       // decoração (gradiente, filtro, máscara, imagem) fica em clipe; quando há texto estático, o texto vai nativo e sai do clipe
       const comTexto = !!(ex && ex.texts.length);
-      if (comTexto) pieces.push({ kind: 'native', ...base, O: [+rest.O[0].toFixed(2), +rest.O[1].toFixed(2)], keys: keysOf(s), shapes: [], texts: ex.texts });
+      if (comTexto) pieces.push({ kind: 'native', ...base, O: [+rest.Lo[0].toFixed(2), +rest.Lo[1].toFixed(2)], keys: keysOf(s), shapes: [], texts: ex.texts });
       const PAD = 70;
       let L = 1e9, T = 1e9, Rr = -1e9, B = -1e9;
       for (const x of on) { L = Math.min(L, x.box[0]); T = Math.min(T, x.box[1]); Rr = Math.max(Rr, x.box[2]); B = Math.max(B, x.box[3]); }
