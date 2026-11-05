@@ -44,6 +44,13 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.match(jsx, /"bl":[1-9]/, 'blur medido por quadro nos keyframes da peça');
   assert.equal(r.camadas.degrades, 3, 'sombra (wipe), vinheta (vig) e fundo com luz (ramp) nativos');
   assert.equal(r.camadas.imagens, 1, 'a <img> entra como o próprio arquivo');
+  // o ícone <svg> sai como arquivo .svg com a cor do CSS resolvida (currentColor) e o traço, e vira camada de forma no After
+  assert.equal(r.camadas.vetores, 1, 'o <svg> do ícone é nativo, não clipe');
+  const svgArq = /"file":"(V\/svg\/[^"]+\.svg)"/.exec(jsx)![1], svg = readFileSync(join(out, svgArq), 'utf8');
+  assert.match(svg, /fill="rgb\(243, 152, 75\)"/, 'currentColor resolvido para a cor do CSS');
+  assert.match(svg, /stroke-linecap="round"/, 'traço e ponta preservados');
+  assert.match(svg, /<svg (xmlns="[^"]+" )?width="80" height="80" viewBox="0 0 24 24">/, 'raiz só com tamanho em px e viewBox');
+  assert.match(svg.slice(svg.indexOf('width=') - 1), /^ width="80"/, 'o primeiro width= do arquivo é o da raiz (o After lê esse, e stroke-width virava largura 1)');
   for (const k of ['"kind":"wipe"', '"kind":"vig"', '"kind":"ramp"', '"blend":"screen"', '"file":"V/img/0-foto.png"', '"fit":"cover"']) assert.ok(jsx.includes(k), k);
   assert.ok(existsSync(join(out, 'V/img/0-foto.png')), 'imagem copiada para o pacote');
   // push-in da cena (#cena 1 → 1,05): a null do título termina com escala ~105 e a origem medida no espaço local da cena

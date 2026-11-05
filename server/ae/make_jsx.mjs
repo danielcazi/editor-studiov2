@@ -49,7 +49,7 @@ const FPS = +opt('fps', 30);
 const CHROME = findChrome();
 if (!CHROME) { console.error('ERRO: Chrome não encontrado. Instale o Google Chrome ou defina CHROME_PATH.'); process.exit(1); }
 
-for (const d of ['V/clips', 'V/media', 'V/img']) fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
+for (const d of ['V/clips', 'V/media', 'V/img', 'V/svg']) fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, 'V/clips'), { recursive: true });
 fs.mkdirSync(path.join(OUT, 'V/media'), { recursive: true });
 
@@ -176,6 +176,10 @@ const INPAGE = () => {
   const gradOf = (el, cs) => cs.backgroundImage !== 'none' && cs.backgroundSize === 'auto' ? grad(cs.backgroundImage, el.offsetWidth, el.offsetHeight) : null;
   // <img> que o After importa como está: raster, object-fit simples, centrada (svg e data: ficam em clipe)
   const imgOk = (el, cs) => /\.(png|jpe?g|webp)(\?|$)/i.test(el.currentSrc || '') && el.naturalWidth > 0 && /^(fill|contain|cover)$/.test(cs.objectFit) && cs.objectPosition === '50% 50%';
+  // <svg> que o After importa e converte em formas sem perda: só formas e grupos, sem texto, imagem, filtro, máscara, gradiente ou <use>,
+  // e sem conteúdo vazando da viewBox (o After corta na largura × altura do arquivo)
+  const SVG_FORA = 'text, image, foreignObject, filter, mask, pattern, linearGradient, radialGradient, use, clipPath, style, animate, animateTransform';
+  const svgOk = (el) => el.tagName.toLowerCase() === 'svg' && !el.querySelector(SVG_FORA) && getComputedStyle(el).overflow !== 'visible' && el.getBoundingClientRect().width > 0.5;
   const BLEND = new Set(['multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity', 'plus-lighter']);
   const radOf = (cs, r) => { const v = cs.borderTopLeftRadius, rad = /%/.test(v) ? Math.min(r.width, r.height) * num(v) / 100 : num(v); return Math.min(rad, Math.min(r.width, r.height) / 2); };
 
@@ -268,9 +272,11 @@ const INPAGE = () => {
       if (t !== 'none' && (!q || ((v) => Math.abs(v[1]) > 1e-4 || Math.abs(v[2]) > 1e-4 || Math.abs(v[0] - v[3]) > 1e-4)(q[1].split(',').map(Number)))) why.add('transformação no invólucro');
     }
     for (const el of [p, ...p.querySelectorAll('*')]) {
+      const sv = el.closest && el.closest('svg');
+      if (sv && sv !== el && svgOk(sv)) continue;   // o que está dentro de um svg aceito vai junto no arquivo .svg
       const cs = getComputedStyle(el), tag = el.tagName.toLowerCase();
       if (direct(el) && semGlifo(el, cs)) why.add('emoji/símbolo fora da fonte');
-      if (/^(svg|canvas|video)$/.test(tag) || (tag === 'img' && !imgOk(el, cs))) why.add('ilustração/imagem');
+      if (/^(canvas|video)$/.test(tag) || (tag === 'svg' && !svgOk(el)) || (tag === 'img' && !imgOk(el, cs))) why.add('ilustração/imagem');
       if (cs.mixBlendMode !== 'normal' && (el !== p || !BLEND.has(cs.mixBlendMode))) why.add('blend sem equivalente');
       if (/matrix3d/.test(cs.transform) || cs.perspective !== 'none' || cs.transformStyle === 'preserve-3d') why.add('3D/perspectiva');
       if (el !== p && cs.transform !== 'none' && !/^matrix\(1, 0, 0, 1,/.test(cs.transform)) why.add('transformação interna');
@@ -397,6 +403,24 @@ const INPAGE = () => {
       out.shapes.push({ ord: ord++, kind: 'img', ...R(r), rad: radOf(cs, r), src: el.currentSrc, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, o: +o.toFixed(3), sh: shadow(cs.boxShadow), cls: String(el.id || el.className || el.tagName).slice(0, 40) });
     };
 
+    const PINTURA = ['fill', 'fill-opacity', 'fill-rule', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-miterlimit', 'opacity', 'display', 'visibility'];
+    const svgOf = (el, o, cs) => {
+      const r = el.getBoundingClientRect(), c = el.cloneNode(true), orig = [el, ...el.querySelectorAll('*')], copia = [c, ...c.querySelectorAll('*')];
+      orig.forEach((e, k) => {
+        const q = getComputedStyle(e), d = copia[k];
+        d.removeAttribute('class'); d.removeAttribute('style'); d.removeAttribute('id');
+        for (const a of PINTURA) d.setAttribute(a, q.getPropertyValue(a));
+      });
+      // raiz nova só com tamanho e viewBox, width primeiro: o importador do After pega o primeiro 'width=' do arquivo,
+      // e um stroke-width na raiz virava largura 1 (medido no After 2026). A pintura já está em cada filho.
+      const raiz = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      raiz.setAttribute('width', String(+r.width.toFixed(2))); raiz.setAttribute('height', String(+r.height.toFixed(2)));
+      raiz.setAttribute('viewBox', el.getAttribute('viewBox') || `0 0 ${r.width} ${r.height}`);
+      if (el.getAttribute('preserveAspectRatio')) raiz.setAttribute('preserveAspectRatio', el.getAttribute('preserveAspectRatio'));
+      while (c.firstChild) raiz.appendChild(c.firstChild);
+      out.shapes.push({ ord: ord++, kind: 'svg', ...R(r), svg: new XMLSerializer().serializeToString(raiz), o: +o.toFixed(3), cls: String(el.id || el.getAttribute('class') || 'svg').slice(0, 40) });
+    };
+
     const textOf = (el, o, cs) => {
       const size = num(cs.fontSize), pre = /^pre/.test(cs.whiteSpace), up = cs.textTransform === 'uppercase';
       const rg = document.createRange();
@@ -439,6 +463,7 @@ const INPAGE = () => {
       if (!o) return;
       const cs = getComputedStyle(el);
       if (el.tagName === 'IMG') { imgOf(el, o, cs); return; }
+      if (svgOk(el)) { svgOf(el, o, cs); return; }
       shapeOf(el, o, cs);
       if (direct(el) && inlineKids(el)) {
         textOf(el, o, cs);
@@ -505,6 +530,15 @@ if (mundo) {
 
 // ---- Peças de cada grupo, quadro a quadro ----
 // ---- <img> nativa: o arquivo copiado para V/img (webp vira png, que o After abre) ----
+const SVGS = new Map();
+const svgFile = (svg, base) => {
+  if (SVGS.has(svg)) return SVGS.get(svg);
+  fs.mkdirSync(path.join(OUT, 'V/svg'), { recursive: true });
+  const f = `V/svg/${base}-${SVGS.size}.svg`;
+  fs.writeFileSync(path.join(OUT, f), '<?xml version="1.0" encoding="UTF-8"?>\n' + svg);
+  SVGS.set(svg, f);
+  return f;
+};
 const IMGS = new Map();
 const imgFile = (src) => {
   let u; try { u = new URL(src); } catch { return null; }
@@ -559,6 +593,7 @@ for (const g of grupos) {
       if (ex) {
         ex.avisos.forEach((x) => avisos.push(`${g.id}: ${x}`));
         ex.texts.forEach((x) => fontsUsed.add(`${x.fam} ${x.weight}`));
+        for (const x of ex.shapes.filter((y) => y.kind === 'svg')) { x.file = svgFile(x.svg, `${slug(g.id)}-${i}`); delete x.svg; }
         for (const x of ex.shapes.filter((y) => y.kind === 'img')) { x.file = imgFile(x.src); if (!x.file) { why.add('ilustração/imagem'); decor.push('ilustração/imagem'); } }
       }
     }
@@ -747,6 +782,7 @@ const report = {
     textos: nat.reduce((n, p) => n + p.texts.length, 0) + ctexts.length, textos_canvas: ctexts.length,
     formas: nat.reduce((n, p) => n + p.shapes.filter((x) => !x.kind).length, 0), degrades: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'grad').length, 0),
     imagens: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'img').length, 0),
+    vetores: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'svg').length, 0),
     clipes_prores: clips.length, camera_mundo: mundo ? mundo.keys.length : 0, textos_na_composicao: textosNaComposicao
   },
   midias: media.map((m) => `${m.id} (${m.tag}, ${m.a.toFixed(2)}–${m.b.toFixed(2)} s): ${m.file.startsWith(OUT) ? path.relative(OUT, m.file) : m.file}`),

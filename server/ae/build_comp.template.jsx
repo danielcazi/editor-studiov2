@@ -211,6 +211,33 @@ function imgLayer(comp, S, P, N, folder) {
   span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); dropShadow(L, S.sh); blend(L, P);
   return L;
 }
+// <svg> estático: o arquivo importado como vetor, pendurado na null como a imagem, e convertido em camada de forma
+// (Create Shapes from Vector Layer mantém pai, keyframes e in/out; testado no After 2026). Sem o comando, fica o vetor importado.
+var SVGC = {}, CMD_FORMAS = 0;
+function svgLayer(comp, S, P, N, folder) {
+  var f = ROOT + '/' + S.file;
+  if (!has(f)) { log('sem svg ' + f); return null; }
+  if (!SVGC[f]) SVGC[f] = importOne(f, folder);
+  var V = comp.layers.add(SVGC[f]), nome = P.scene + ' · vetor · ' + S.cls;
+  V.name = nome;
+  parentTo(V, N);
+  var tr = V.property('ADBE Transform Group');
+  tr.property('ADBE Anchor Point').setValue([SVGC[f].width / 2, SVGC[f].height / 2]);
+  tr.property('ADBE Scale').setValue([S.w / SVGC[f].width * 100, S.h / SVGC[f].height * 100]);
+  tr.property('ADBE Position').setValue([S.x + S.w / 2 - P.O[0], S.y + S.h / 2 - P.O[1]]);
+  span(V, P.a, P.b); opacityKeys(V, P, S.o); blurKeys(V, P); blend(V, P);
+  try {
+    if (!CMD_FORMAS) { CMD_FORMAS = app.findMenuCommandId('Create Shapes from Vector Layer') || 3973; comp.openInViewer(); }
+    var sel = comp.selectedLayers; for (var k = 0; k < sel.length; k++) sel[k].selected = false;
+    V.selected = true;
+    var n0 = comp.numLayers;
+    app.executeCommand(CMD_FORMAS);
+    if (comp.numLayers > n0) { var L = comp.layer(V.index - 1); V.remove(); L.name = nome; L.selected = false; return L; }
+    log('svg sem conversão (comando ' + CMD_FORMAS + '): ' + S.file);
+  } catch (e) { log('svg ' + S.file + ': ' + e); }
+  V.selected = false;
+  return V;
+}
 function parentTo(L, N) { if (L.setParentWithJump) L.setParentWithJump(N); else L.parent = N; }
 function shapeLayer(comp, S, P, N) {
   var L = comp.layers.addShape();
@@ -265,7 +292,7 @@ function nativePiece(comp, P, folder) {
   all.sort(function (x, y) { return x.ord - y.ord; });
   for (k = 0; k < all.length; k++) {
     var S = all[k].s;
-    if (!S) textLayer(comp, all[k].t, P, N); else if (S.kind === 'img') imgLayer(comp, S, P, N, folder); else if (S.kind === 'grad') gradLayer(comp, S, P, N); else shapeLayer(comp, S, P, N);
+    if (!S) textLayer(comp, all[k].t, P, N); else if (S.kind === 'svg') svgLayer(comp, S, P, N, folder); else if (S.kind === 'img') imgLayer(comp, S, P, N, folder); else if (S.kind === 'grad') gradLayer(comp, S, P, N); else shapeLayer(comp, S, P, N);
   }
   N.moveToBeginning();
 }
