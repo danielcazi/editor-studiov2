@@ -28,8 +28,8 @@ test('setFormats updates project formats and persists to state.json', async () =
   assert.deepEqual(updated.formats, ['16:9', '1:1']);
 });
 
-test('pace toggle: dinamico is the default, setPace persists it, anything else is refused', async () => {
-  const { PACE, paceOf, checkPace, setPace } = await import('../pipeline.ts');
+test('pace toggle: dinamico is the default, setChoices persists it, anything else is refused', async () => {
+  const { PACE, paceOf, checkPace } = await import('../pipeline.ts');
   assert.deepEqual(paceOf({}), { every: 1.5, scene: [1.2, 3], framing: [2, 4], hold: 4 });   // the pace every reel had before the toggle
   assert.ok(PACE.lento.every > PACE.normal.every && PACE.normal.every > PACE.dinamico.every);
   assert.throws(() => checkPace('rapido'));
@@ -37,9 +37,9 @@ test('pace toggle: dinamico is the default, setPace persists it, anything else i
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
   const p = await createProject({ name: 'test-pace', video: clip, preEdited: true, brand: 'padrao', pace: 'lento' });
   assert.equal(getProject(p.id).pace, 'lento');
-  setPace(p.id, 'normal');
+  setChoices(p.id, { pace: 'normal' });
   assert.equal(getProject(p.id).pace, 'normal');
-  assert.throws(() => setPace(p.id, 'rapido'));
+  assert.throws(() => setChoices(p.id, { pace: 'rapido' }));
 });
 
 test('choices: setChoices validates each selector, and a style that became a skill still opens as that skill', async () => {

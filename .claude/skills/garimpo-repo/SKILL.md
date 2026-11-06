@@ -52,5 +52,5 @@ Não altere `kit.py` nesta etapa. Implementar é outro passo, só com o ok do us
 
 - Adicione o helper em `compose/kit.py` no padrão existente: retorna `(html, js)`, cores do `compose.json`, texto ≥ 28 px.
 - Só transform/opacity/clip-path no GSAP (nada de `left`, `right`, `letterSpacing`, `backgroundColor` animados): o `hyperframes check` reprova.
-- Documente uma linha por estilo em `GUIDE.md` e `GUIDE-motion.md`.
+- Documente uma linha por estilo em `GUIDE.md` (ele já cobre o reel sem locutor).
 - Valide: demo no scratchpad com `npx hyperframes check --json` (0 erros) e `snapshot`; `cd server && npm test`; rebuild de um `scenes.py` real para garantir que nada quebrou.

@@ -195,8 +195,8 @@ export function rightsOf(c: Candidate): Rights {
 
 // shortcut: a fixed band (86% of the width, 27% of the height) sitting just above the format's bottom safe zone; upgrade to read each beat's own layout
 /** Width and vertical offset (from the frame centre) for a clip in the lower band. */
-export function band(fmt: { width?: number; height?: number; visualAssets?: { safeZones?: { bottom?: number } } }, c: Candidate) {
-  const W = fmt.width || 1080, H = fmt.height || 1920, bottom = fmt.visualAssets?.safeZones?.bottom ?? 380;
+export function band(fmt: { width?: number; height?: number; safeZones?: { bottom?: number } }, c: Candidate) {
+  const W = fmt.width || 1080, H = fmt.height || 1920, bottom = fmt.safeZones?.bottom ?? 380;
   const boxW = Math.round(W * 0.86), boxH = Math.round(H * 0.27), aspect = c.width && c.height ? c.width / c.height : 16 / 9;
   return { w: Math.max(10, Math.min(boxW, Math.round(boxH * aspect))), y: Math.max(0, Math.round(H - bottom - boxH / 2 - H / 2)) };
 }

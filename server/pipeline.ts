@@ -1744,12 +1744,6 @@ export async function renameProject(id: string, name: unknown) {
 export { PACE };   // the table lives in lib.ts (resolveChoices needs it)
 export const checkPace = (p: unknown): Pace => (p === 'lento' || p === 'normal' || p === 'dinamico') ? p : fail('ritmo: lento, normal ou dinamico');
 export const paceOf = (st: { pace?: Pace }) => PACE[st.pace ?? 'dinamico'];
-export const setPace = (id: string, pace: unknown) => {
-  const st = load(id);
-  st.pace = checkPace(pace);
-  save(st);
-  return { ok: true, pace: st.pace };
-};
 // the pace the reel is made at: the skill's measured seconds per cut when it has one, otherwise the toggle
 export const effectivePace = (st: State) => { if (st.skillId) try { const p = paceFromSkill(getSkill(st.skillId)); if (p) return p; } catch {} return paceOf(st); };
 // one call for the four selectors (SPEC-v9 §5); a field left out is left alone, null clears the optional ones
@@ -1762,12 +1756,6 @@ export function setChoices(id: string, b: { formatId?: string; styleId?: string 
   save(st);
   return { ok: true, formatId: st.formatId, styleId: st.styleId ?? null, skillId: st.skillId ?? null, pace: st.pace ?? 'dinamico' };
 }
-export const setStyle = (id: string, styleId?: string | null) => {
-  const st = load(id);
-  st.styleId = styleId ? getStyle(styleId).id : undefined;
-  save(st);
-  return { ok: true, styleId: st.styleId ?? null };
-};
 export const listProjects = () => existsSync(join(WS, 'projects')) ? readdirSync(join(WS, 'projects')).filter(p => safeId(p) && existsSync(join(projDir(p), 'state.json'))).sort().reverse() : [];
 
 export interface ProjectOverview {
@@ -2701,7 +2689,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   for (const d of ['fonts', 'img', 'sfx', 'video', 'music']) mkdirSync(join(A, d), { recursive: true });
   const K = join(SKILL, 'compose');
   copyFileSync(join(K, 'kit.py'), join(C, 'kit.py'));
-  copyFileSync(join(K, noSpeaker ? 'GUIDE-motion.md' : 'GUIDE.md'), join(C, 'GUIDE.md'));
+  copyFileSync(join(K, 'GUIDE.md'), join(C, 'GUIDE.md'));
   copyFileSync(join(K, 'DIRETOR.md'), join(C, 'DIRETOR.md'));
   mkdirSync(join(C, 'engines'), { recursive: true });
   for (const f of readdirSync(join(K, 'engines')).filter(f => f.endsWith('.js'))) copyFileSync(join(K, 'engines', f), join(C, 'engines', f));

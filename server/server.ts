@@ -84,8 +84,6 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/projects\/([^/]+)\/brand$/, (m, b) => P.brandStep(m[1], b)],
   ['POST', /^\/projects\/([^/]+)\/brand\/save-default$/, m => P.saveBrandDefault(m[1])],
   ['POST', /^\/projects\/([^/]+)\/motion$/, m => P.motion(m[1])],
-  ['PUT', /^\/projects\/([^/]+)\/style$/, (m, b) => P.setStyle(m[1], b?.styleId)],
-  ['PUT', /^\/projects\/([^/]+)\/pace$/, (m, b) => P.setPace(m[1], b?.pace)],
   ['PUT', /^\/projects\/([^/]+)\/choices$/, (m, b) => P.setChoices(m[1], b)],
   ['POST', /^\/projects\/([^/]+)\/final$/, (m, b) => P.final(m[1], b?.formats)],
   ['POST', /^\/projects\/([^/]+)\/formats$/, (m, b) => P.setFormats(m[1], b?.formats)],
