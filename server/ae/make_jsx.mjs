@@ -49,7 +49,7 @@ const FPS = +opt('fps', 30);
 const CHROME = findChrome();
 if (!CHROME) { console.error('ERRO: Chrome não encontrado. Instale o Google Chrome ou defina CHROME_PATH.'); process.exit(1); }
 
-for (const d of ['V/clips', 'V/media']) fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
+for (const d of ['V/clips', 'V/media', 'V/img', 'V/svg']) fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, 'V/clips'), { recursive: true });
 fs.mkdirSync(path.join(OUT, 'V/media'), { recursive: true });
 
@@ -98,6 +98,8 @@ const INPAGE = () => {
   const num = (v) => parseFloat(v) || 0;
   // rgb()/rgba() do computed style, ou hex (#rgb, #rrggbb, #rrggbbaa: o canvas devolve fillStyle/shadowColor opacos em hex)
   const col = (s) => {
+    const sr = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\)/.exec(String(s).trim());
+    if (sr) return { c: [Math.round(+sr[1] * 255), Math.round(+sr[2] * 255), Math.round(+sr[3] * 255)], a: sr[4] == null ? 1 : /%/.test(sr[4]) ? parseFloat(sr[4]) / 100 : +sr[4] };
     const h = /^#([0-9a-f]{3,8})$/i.exec(String(s).trim());
     if (h) { let x = h[1]; if (x.length < 6) x = [...x].map((c) => c + c).join(''); const n = (i) => parseInt(x.slice(i, i + 2), 16); return { c: [n(0), n(2), n(4)], a: x.length === 8 ? n(6) / 255 : 1 }; }
     const m = String(s).match(/[\d.]+/g) || []; return { c: [+m[0] || 0, +m[1] || 0, +m[2] || 0], a: m.length > 3 ? +m[3] : 1 };
@@ -116,7 +118,7 @@ const INPAGE = () => {
   const direct = (el) => [...el.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim());
   const inlineKids = (el) => [...el.children].every((c) => /^inline/.test(getComputedStyle(c).display) || c.tagName === 'BR');
   const ctx = document.createElement('canvas').getContext('2d');
-  const SKIP = /^(STYLE|SCRIPT|TEMPLATE|LINK|META)$/;
+  const SKIP = /^(STYLE|SCRIPT|TEMPLATE|LINK|META)$/, BLUR = /^blur\(([\d.]+)px\)$/;
   const root = document.querySelector('[data-composition-id]');
   const host = (el) => el.parentElement && el.parentElement.closest('[data-composition-src]');
   const startOf = (el) => num(el.getAttribute('data-start')) + (host(el) ? startOf(host(el)) : 0);
@@ -132,6 +134,68 @@ const INPAGE = () => {
     }
     return null;
   };
+  // degradê de 2 cores do computed style → o que o After recria: 'ramp' (Gradient Ramp, as duas opacas), 'wipe' (sólido + Linear
+  // Wipe: linear com uma ponta transparente) ou 'vig' (sólido + máscara elíptica com pluma: radial com uma ponta transparente).
+  // Qualquer outro (3+ cores, repeating, canto, circle, duas pontas semitransparentes) → null, e a peça segue em clipe.
+  const grad = (bg, w, h) => {
+    const m = /^(linear|radial)-gradient\((.*)\)$/.exec(bg);
+    if (!m || (bg.match(/gradient\(/g) || []).length > 1) return null;
+    const parts = m[2].split(/,(?![^(]*\))/).map((x) => x.trim());
+    const head = /^(rgba?\(|color\(|#)/.test(parts[0]) ? null : parts.shift();
+    if (parts.length !== 2) return null;
+    const stops = [];
+    for (const x of parts) { const cm = /^(rgba?\([^)]*\)|color\([^)]*\)|#[0-9a-f]+)\s*(.*)$/i.exec(x); if (!cm) return null; stops.push({ ...col(cm[1]), pos: cm[2] }); }
+    const pos = (q, len, def) => q === '' ? def : /%$/.test(q) ? num(q) / 100 : /px$/.test(q) ? num(q) / len : NaN;
+    const opaque = stops[0].a > 0.99 && stops[1].a > 0.99, alpha = (stops[0].a < 0.01) !== (stops[1].a < 0.01);
+    if (!opaque && !alpha) return null;
+    if (m[1] === 'linear') {
+      let ang = 180;
+      if (head) { if (/deg$/.test(head)) ang = num(head); else if (head === 'to top') ang = 0; else if (head === 'to right') ang = 90; else if (head === 'to bottom') ang = 180; else if (head === 'to left') ang = 270; else return null; }
+      const rad = ang * Math.PI / 180, len = Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad));
+      const s0 = pos(stops[0].pos, len, 0), s1 = pos(stops[1].pos, len, 1);
+      if (!(s0 >= 0 && s1 <= 1 && s1 > s0)) return null;
+      return { kind: opaque ? 'ramp' : 'wipe', shape: 'linear', ang, s0, s1, c0: stops[0], c1: stops[1] };
+    }
+    // radial: "rx% ry% at x% y%" (tamanho explícito), "at x y" ou nada (farthest-corner: a proporção da elipse closest-side)
+    let cx = w / 2, cy = h / 2, rx = null, ry = null;
+    if (head) {
+      const hm = /^(?:(ellipse|circle)\s*)?(?:([\d.]+)(%|px)\s+([\d.]+)(%|px)\s*)?(?:at\s+([\d.]+)(%|px)\s+([\d.]+)(%|px))?$/.exec(head);
+      if (!hm || hm[1] === 'circle') return null;
+      if (hm[2]) { rx = hm[3] === '%' ? w * num(hm[2]) / 100 : num(hm[2]); ry = hm[5] === '%' ? h * num(hm[4]) / 100 : num(hm[4]); }
+      if (hm[6]) { cx = hm[7] === '%' ? w * num(hm[6]) / 100 : num(hm[6]); cy = hm[9] === '%' ? h * num(hm[8]) / 100 : num(hm[8]); }
+    }
+    if (rx === null) {
+      const ax = Math.min(cx, w - cx), ay = Math.min(cy, h - cy), dx = Math.max(cx, w - cx), dy = Math.max(cy, h - cy);
+      if (ax < 1 || ay < 1) return null;
+      const k = Math.hypot(dx / ax, dy / ay); rx = k * ax; ry = k * ay;
+    }
+    const s0 = pos(stops[0].pos, rx, 0), s1 = pos(stops[1].pos, rx, 1);
+    if (!(s0 >= 0 && s1 <= 1 && s1 > s0) || rx < 1 || ry < 1) return null;
+    return { kind: opaque ? 'ramp' : 'vig', shape: 'radial', cx: +cx.toFixed(1), cy: +cy.toFixed(1), rx: +rx.toFixed(1), ry: +ry.toFixed(1), s0, s1, c0: stops[0], c1: stops[1] };
+  };
+  const gradOf = (el, cs) => cs.backgroundImage !== 'none' && cs.backgroundSize === 'auto' ? grad(cs.backgroundImage, el.offsetWidth, el.offsetHeight) : null;
+  // <img> que o After importa como está: raster, object-fit simples, centrada (svg e data: ficam em clipe)
+  const imgOk = (el, cs) => /\.(png|jpe?g|webp)(\?|$)/i.test(el.currentSrc || '') && el.naturalWidth > 0 && /^(fill|contain|cover)$/.test(cs.objectFit) && cs.objectPosition === '50% 50%';
+  // <svg> que o After importa e converte em formas sem perda: só formas e grupos, sem texto, imagem, filtro, máscara, gradiente ou <use>,
+  // e sem conteúdo vazando da viewBox (o After corta na largura × altura do arquivo)
+  const SVG_FORA = 'text, image, foreignObject, filter, mask, pattern, linearGradient, radialGradient, use, clipPath, style, animate, animateTransform';
+  const svgOk = (el) => el.tagName.toLowerCase() === 'svg' && !el.querySelector(SVG_FORA) && el.getBoundingClientRect().width > 0.5;
+  // traço que se desenha por dash (o padrão do kit: pathLength=1, dasharray "1 g", dashoffset de ~1 a 0) vira Trim Paths no After.
+  // Só filhos diretos de um svg cujos filhos são todos formas: cada filho vira um grupo na conversão.
+  const TRIM_TAGS = /^(path|line|polyline|polygon|circle|ellipse|rect)$/i;
+  const trimEls = (p) => [...(p.tagName.toLowerCase() === 'svg' ? [p] : []), ...p.querySelectorAll('svg')].filter((v) => svgOk(v) && [...v.children].every((c) => TRIM_TAGS.test(c.tagName)))
+    .flatMap((v) => [...v.children].filter((c) => getComputedStyle(c).strokeDasharray !== 'none' && getComputedStyle(c).stroke !== 'none'));
+  // fração visível (0..1) de um traço com um só dash começando no início do caminho; null quando o dash não é esse padrão
+  const trimFrac = (el) => {
+    const cs = getComputedStyle(el), da = cs.strokeDasharray.split(/[\s,]+/).map(num);
+    if (da.length > 2 && !(da.length === 4 && da[0] === da[2] && da[1] === da[3])) return null;
+    const L = da[0], G = da.length > 1 ? da[1] : da[0], d = num(cs.strokeDashoffset);
+    const P = el.hasAttribute('pathLength') ? +el.getAttribute('pathLength') : el.getTotalLength();
+    if (!(P > 0) || d < -1e-6 || L + G - d < P - 1e-6) return null;
+    return Math.max(0, Math.min(1, (L - d) / P));
+  };
+  const BLEND = new Set(['multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity', 'plus-lighter']);
+  const radOf = (cs, r) => { const v = cs.borderTopLeftRadius, rad = /%/.test(v) ? Math.min(r.width, r.height) * num(v) / 100 : num(v); return Math.min(rad, Math.min(r.width, r.height) / 2); };
 
   // caractere que a fonte principal não tem (emoji, ✦): o navegador desenha com outra fonte, o After não.
   // Se a largura muda conforme a fonte reserva, quem desenhou foi a reserva.
@@ -206,22 +270,33 @@ const INPAGE = () => {
     return out;
   };
 
+  // invólucros acima da peça sem transform: medimos no espaço local da cena; a escala/translação deles entra na pose da null
+  const semInvolucros = (p, fn) => {
+    const anc = [];
+    for (let a = p.parentElement; a && a !== document.body; a = a.parentElement) { anc.push([a, a.style.transform]); a.style.transform = 'none'; }
+    try { return fn(); } finally { for (const [a, t] of anc) a.style.transform = t; }
+  };
+
   // motivos para a peça virar clipe (lista vazia = pode ser nativa)
   const complexo = (p) => {
     const why = new Set();
     // a translação de um invólucro já entra na posição medida; escala/rotação dele não, então vira clipe
     for (let a = p.parentElement; a && !a.matches('[data-hf-inner-root], [data-ae-group]'); a = a.parentElement) {
-      const t = getComputedStyle(a).transform;
-      if (t !== 'none' && !/^matrix\(1, 0, 0, 1,/.test(t)) why.add('transformação no invólucro');
+      const t = getComputedStyle(a).transform, q = /^matrix\(([^)]*)\)/.exec(t);
+      if (t !== 'none' && (!q || ((v) => Math.abs(v[1]) > 1e-4 || Math.abs(v[2]) > 1e-4 || Math.abs(v[0] - v[3]) > 1e-4)(q[1].split(',').map(Number)))) why.add('transformação no invólucro');
     }
     for (const el of [p, ...p.querySelectorAll('*')]) {
+      const sv = el.closest && el.closest('svg');
+      if (sv && sv !== el && svgOk(sv)) continue;   // o que está dentro de um svg aceito vai junto no arquivo .svg
       const cs = getComputedStyle(el), tag = el.tagName.toLowerCase();
       if (direct(el) && semGlifo(el, cs)) why.add('emoji/símbolo fora da fonte');
-      if (/^(svg|img|canvas|video)$/.test(tag)) why.add('ilustração/imagem');
+      if (/^(canvas|video)$/.test(tag) || (tag === 'svg' && !svgOk(el)) || (tag === 'img' && !imgOk(el, cs))) why.add('ilustração/imagem');
+      if (cs.mixBlendMode !== 'normal' && (el !== p || !BLEND.has(cs.mixBlendMode))) why.add('blend sem equivalente');
       if (/matrix3d/.test(cs.transform) || cs.perspective !== 'none' || cs.transformStyle === 'preserve-3d') why.add('3D/perspectiva');
       if (el !== p && cs.transform !== 'none' && !/^matrix\(1, 0, 0, 1,/.test(cs.transform)) why.add('transformação interna');
-      if (cs.filter !== 'none' || cs.backdropFilter !== 'none') why.add('filtro');
-      if (/gradient|url\(/.test(cs.backgroundImage)) why.add('gradiente/imagem de fundo');
+      // blur() na própria peça vira Gaussian Blur com keyframes; outros filtros (e blur em filhos) continuam em clipe
+      if (cs.backdropFilter !== 'none' || (cs.filter !== 'none' && !(el === p && BLUR.test(cs.filter)))) why.add('filtro');
+      if (/url\(/.test(cs.backgroundImage) || (cs.backgroundImage !== 'none' && !gradOf(el, cs))) why.add('gradiente/imagem de fundo');
       if (cs.clipPath !== 'none' || (cs.webkitMaskImage || 'none') !== 'none') why.add('máscara');
       if (cs.borderTopStyle === 'dashed' || cs.borderTopStyle === 'dotted') why.add('borda tracejada');
       if (el !== p && cs.overflow === 'hidden' && el.children.length) why.add('recorte (overflow)');
@@ -231,10 +306,11 @@ const INPAGE = () => {
 
   // assinatura do conteúdo: muda quando algo anima por dentro (contador, digitação, barra)
   const assinatura = (p) => {
-    const r0 = p.getBoundingClientRect(), out = [];
+    const r0 = p.getBoundingClientRect(), out = [], trim = new Set(trimEls(p));
     for (const el of p.querySelectorAll('*')) {
       const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
-      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color].join(','));
+      // stroke-dashoffset: traço que se desenha não muda a caixa, mas é conteúdo animado; o que vira Trim Paths sai da assinatura
+      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color, trim.has(el) ? '' : cs.strokeDashoffset].join(','));
     }
     out.push(p.textContent.replace(/\s+/g, ' ').trim(), Math.round(r0.width), Math.round(r0.height));
     return out.join('|');
@@ -302,9 +378,17 @@ const INPAGE = () => {
     const why = complexo(p), ct = ctexts(p);
     const salvo = p.style.transform;
     p.style.transform = 'none';
-    const r0 = p.getBoundingClientRect(), org = cs.transformOrigin.split(' ').map(num), sig = assinatura(p);
+    // a mesma caixa com e sem os invólucros dá a transformação deles (escala k + translação); assinatura e origem no espaço local
+    const rt = p.getBoundingClientRect(), [r0, sig] = semInvolucros(p, () => [p.getBoundingClientRect(), assinatura(p)]);
     p.style.transform = salvo;
-    return { i, on: true, op: +op.toFixed(4), m, O: [r0.left + org[0], r0.top + org[1]], sig, why, box: [L, T, Rr, B], ct };
+    const org = cs.transformOrigin.split(' ').map(num), k = r0.width > 0.5 ? rt.width / r0.width : r0.height > 0.5 ? rt.height / r0.height : 1;
+    if (r0.width > 0.5 && r0.height > 0.5 && Math.abs(rt.height / r0.height - k) > 0.003 * k) why.push('transformação no invólucro');
+    const Lo = [r0.left + org[0], r0.top + org[1]], Ot = [rt.left + org[0] * k, rt.top + org[1] * k];
+    const mt = m && [m[0] * k, m[1] * k, m[2] * k, m[3] * k, m[4] * k, m[5] * k];
+    const nome = (p.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 28) || (typeof p.className === 'string' && p.className.split(/\s+/)[0]) || p.id || p.tagName.toLowerCase();
+    const tr = trimEls(p).map(trimFrac);
+    if (tr.some((v) => v === null)) why.push('traço tracejado');   // dash que não é um traço só desenhando: fica em clipe
+    return { i, on: true, nome, tr: tr.map((v) => +((v || 0) * 100).toFixed(2)), op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct };
   });
 
   // textos e formas nativos na pose de repouso
@@ -313,6 +397,7 @@ const INPAGE = () => {
     let ord = 0;
     const salvoT = p.style.transform, salvoO = p.style.opacity;
     p.style.transform = 'none'; p.style.opacity = '1';
+    try { return semInvolucros(p, () => {
     const stop = p.parentElement;
 
     const shapeOf = (el, o, cs) => {
@@ -320,14 +405,41 @@ const INPAGE = () => {
       const fill = bg.a > 0.01 ? bg : null;
       const bw = num(cs.borderTopWidth), bc = col(cs.borderTopColor);
       const stroke = bw > 0 && cs.borderTopStyle !== 'none' && bc.a > 0.01 ? { c: bc.c, a: bc.a, w: bw } : null;
-      if (!fill && !stroke) return;
+      const g = gradOf(el, cs);
+      if (!fill && !stroke && !g) return;
       const rects = el.getClientRects().length > 1 ? [...el.getClientRects()] : [el.getBoundingClientRect()];
+      const cls = String(el.id || el.className || el.tagName).slice(0, 40);
       for (const r of rects) {
         if (r.width < 2 || r.height < 2) continue;
-        let rad = cs.borderTopLeftRadius;
-        rad = /%/.test(rad) ? Math.min(r.width, r.height) * num(rad) / 100 : num(rad);
-        out.shapes.push({ ord: ord++, ...R(r), rad: Math.min(rad, Math.min(r.width, r.height) / 2), fill, stroke, o: +o.toFixed(3), sh: shadow(cs.boxShadow), cls: String(el.id || el.className || el.tagName).slice(0, 40) });
+        if (fill || stroke) out.shapes.push({ ord: ord++, ...R(r), rad: radOf(cs, r), fill, stroke, o: +o.toFixed(3), sh: shadow(cs.boxShadow), cls });
+        if (g) out.shapes.push({ ord: ord++, kind: 'grad', ...R(r), rad: radOf(cs, r), grad: g, o: +o.toFixed(3), cls });   // a cor de fundo fica por baixo, como no CSS
       }
+    };
+    const imgOf = (el, o, cs) => {
+      const r = el.getBoundingClientRect();
+      out.shapes.push({ ord: ord++, kind: 'img', ...R(r), rad: radOf(cs, r), src: el.currentSrc, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, o: +o.toFixed(3), sh: shadow(cs.boxShadow), cls: String(el.id || el.className || el.tagName).slice(0, 40) });
+    };
+
+    const PINTURA = ['fill', 'fill-opacity', 'fill-rule', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-miterlimit', 'opacity', 'display', 'visibility'];
+    const svgOf = (el, o, cs) => {
+      const r = el.getBoundingClientRect(), c = el.cloneNode(true), orig = [el, ...el.querySelectorAll('*')], copia = [c, ...c.querySelectorAll('*')];
+      const todos = trimEls(p), trims = [];
+      orig.forEach((e, k) => {
+        const q = getComputedStyle(e), d = copia[k];
+        d.removeAttribute('class'); d.removeAttribute('style'); d.removeAttribute('id');
+        for (const a of PINTURA) d.setAttribute(a, q.getPropertyValue(a));
+        const j = todos.indexOf(e);
+        // o traço sai inteiro no arquivo; o Trim Paths do After (Fim = fração visível por quadro) faz o desenho
+        if (j >= 0) { d.setAttribute('stroke-dasharray', 'none'); d.setAttribute('stroke-dashoffset', '0'); d.removeAttribute('pathLength'); trims.push({ k: [...el.children].indexOf(e), j }); }
+      });
+      // raiz nova só com tamanho e viewBox, width primeiro: o importador do After pega o primeiro 'width=' do arquivo,
+      // e um stroke-width na raiz virava largura 1 (medido no After 2026). A pintura já está em cada filho.
+      const raiz = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      raiz.setAttribute('width', String(+r.width.toFixed(2))); raiz.setAttribute('height', String(+r.height.toFixed(2)));
+      raiz.setAttribute('viewBox', el.getAttribute('viewBox') || `0 0 ${r.width} ${r.height}`);
+      if (el.getAttribute('preserveAspectRatio')) raiz.setAttribute('preserveAspectRatio', el.getAttribute('preserveAspectRatio'));
+      while (c.firstChild) raiz.appendChild(c.firstChild);
+      out.shapes.push({ ord: ord++, kind: 'svg', ...R(r), svg: new XMLSerializer().serializeToString(raiz), trims, n: el.children.length, o: +o.toFixed(3), cls: String(el.id || el.getAttribute('class') || 'svg').slice(0, 40) });
     };
 
     const textOf = (el, o, cs) => {
@@ -371,6 +483,8 @@ const INPAGE = () => {
       const o = vis(el, stop);
       if (!o) return;
       const cs = getComputedStyle(el);
+      if (el.tagName === 'IMG') { imgOf(el, o, cs); return; }
+      if (svgOk(el)) { svgOf(el, o, cs); return; }
       shapeOf(el, o, cs);
       if (direct(el) && inlineKids(el)) {
         textOf(el, o, cs);
@@ -382,9 +496,8 @@ const INPAGE = () => {
     };
 
     walk(p);
-    p.style.transform = salvoT;
-    p.style.opacity = salvoO;
     return out;
+    }); } finally { p.style.transform = salvoT; p.style.opacity = salvoO; }
   };
 
   const isolar = (g, ids) => {
@@ -437,6 +550,30 @@ if (mundo) {
 }
 
 // ---- Peças de cada grupo, quadro a quadro ----
+// ---- <img> nativa: o arquivo copiado para V/img (webp vira png, que o After abre) ----
+const SVGS = new Map();
+const svgFile = (svg, base) => {
+  if (SVGS.has(svg)) return SVGS.get(svg);
+  fs.mkdirSync(path.join(OUT, 'V/svg'), { recursive: true });
+  const f = `V/svg/${base}-${SVGS.size}.svg`;
+  fs.writeFileSync(path.join(OUT, f), '<?xml version="1.0" encoding="UTF-8"?>\n' + svg);
+  SVGS.set(svg, f);
+  return f;
+};
+const IMGS = new Map();
+const imgFile = (src) => {
+  let u; try { u = new URL(src); } catch { return null; }
+  const f = path.resolve(FILM_DIR, '.' + decodeURIComponent(u.pathname));
+  if (u.hostname !== '127.0.0.1' || !f.startsWith(FILM_DIR + path.sep) || !fs.existsSync(f)) return null;
+  if (IMGS.has(f)) return IMGS.get(f);
+  fs.mkdirSync(path.join(OUT, 'V/img'), { recursive: true });
+  const name = `${IMGS.size}-${path.basename(f).replace(/\.webp$/i, '.png')}`, dst = path.join(OUT, 'V/img', name);
+  let ok = true;
+  if (/\.webp$/i.test(f)) ok = spawnSync('ffmpeg', ['-v', 'error', '-y', '-i', f, dst]).status === 0; else fs.copyFileSync(f, dst);
+  IMGS.set(f, ok ? 'V/img/' + name : null);
+  return IMGS.get(f);
+};
+
 const pieces = [];
 const fontsUsed = new Set();
 for (const g of grupos) {
@@ -455,7 +592,7 @@ for (const g of grupos) {
   const keysOf = (s) => s.map((x) => {
     if (!x.on || !x.m) return { t: x.t, op: 0 };
     const [ma, mb, mc, md, me, mf] = x.m, sx = Math.hypot(ma, mb), sy = sx ? (ma * md - mb * mc) / sx : 0;
-    return { t: x.t, p: [+(x.O[0] + me).toFixed(2), +(x.O[1] + mf).toFixed(2)], r: +(Math.atan2(mb, ma) * 180 / Math.PI).toFixed(3), s: [+(sx * 100).toFixed(3), +(sy * 100).toFixed(3)], op: +(x.op * 100).toFixed(2) };
+    return { t: x.t, p: [+(x.O[0] + me).toFixed(2), +(x.O[1] + mf).toFixed(2)], r: +(Math.atan2(mb, ma) * 180 / Math.PI).toFixed(3), s: [+(sx * 100).toFixed(3), +(sy * 100).toFixed(3)], op: +(x.op * 100).toFixed(2), bl: +(x.bl || 0).toFixed(2), ...(x.tr && x.tr.length ? { tr: x.tr } : {}) };
   });
   for (const [i, s] of tracks) {
     const on = s.filter((x) => x.on && x.op > 0.004);
@@ -469,6 +606,7 @@ for (const g of grupos) {
     const animacao = [...why].filter((w) => /^(transformação|3D|conteúdo muda|emoji)/.test(w));
     const decor = [...why].filter((w) => !animacao.includes(w));
     const maxOp = Math.max(...on.map((x) => x.op)), tops = on.filter((x) => x.op >= maxOp - 0.01), rest = tops[Math.floor(tops.length / 2)];
+    base.blend = rest.blend;
     let ex = null;
     if (!animacao.length) {
       await seek(rest.t);
@@ -476,15 +614,17 @@ for (const g of grupos) {
       if (ex) {
         ex.avisos.forEach((x) => avisos.push(`${g.id}: ${x}`));
         ex.texts.forEach((x) => fontsUsed.add(`${x.fam} ${x.weight}`));
+        for (const x of ex.shapes.filter((y) => y.kind === 'svg')) { x.file = svgFile(x.svg, `${slug(g.id)}-${i}`); delete x.svg; }
+        for (const x of ex.shapes.filter((y) => y.kind === 'img')) { x.file = imgFile(x.src); if (!x.file) { why.add('ilustração/imagem'); decor.push('ilustração/imagem'); } }
       }
     }
     if (ex && !decor.length) {
       if (!ex.shapes.length && !ex.texts.length) continue;
-      pieces.push({ kind: 'native', ...base, O: [+rest.O[0].toFixed(2), +rest.O[1].toFixed(2)], keys: keysOf(s), shapes: ex.shapes, texts: ex.texts });
+      pieces.push({ kind: 'native', ...base, O: [+rest.Lo[0].toFixed(2), +rest.Lo[1].toFixed(2)], keys: keysOf(s), shapes: ex.shapes, texts: ex.texts });
     } else {
       // decoração (gradiente, filtro, máscara, imagem) fica em clipe; quando há texto estático, o texto vai nativo e sai do clipe
       const comTexto = !!(ex && ex.texts.length);
-      if (comTexto) pieces.push({ kind: 'native', ...base, O: [+rest.O[0].toFixed(2), +rest.O[1].toFixed(2)], keys: keysOf(s), shapes: [], texts: ex.texts });
+      if (comTexto) pieces.push({ kind: 'native', ...base, O: [+rest.Lo[0].toFixed(2), +rest.Lo[1].toFixed(2)], keys: keysOf(s), shapes: [], texts: ex.texts });
       const PAD = 70;
       let L = 1e9, T = 1e9, Rr = -1e9, B = -1e9;
       for (const x of on) { L = Math.min(L, x.box[0]); T = Math.min(T, x.box[1]); Rr = Math.max(Rr, x.box[2]); B = Math.max(B, x.box[3]); }
@@ -514,7 +654,7 @@ for (const g of grupos) {
         pieces.push({ kind: 'ctext', ...base, a: ca, b: cb, sub: sup.length + 1, text: d0.text, fam: d0.fam, weight: d0.weight, size: d0.size, color: d0.color, alpha: d0.alpha, track: d0.track, sh: d0.sh, keys });
         sup.push(key);
       }
-      pieces.push({ kind: 'clip', ...base, x: x0, y: y0, w, h, file: `V/clips/${slug(g.id)}-${i}.mov`, ids: [i], why: [...why], semTexto: comTexto, sup });
+      pieces.push({ kind: 'clip', ...base, x: x0, y: y0, w, h, file: `V/clips/${slug(g.id)}-${i}-${slug(rest.nome).slice(0, 32) || 'peca'}.mov`, ids: [i], why: [...why], semTexto: comTexto, sup });
     }
     n++;
   }
@@ -582,14 +722,32 @@ if (!flag('sem-clipes')) {
     fs.readdirSync(tmp).forEach((f) => fs.unlinkSync(path.join(tmp, f)));
     let n = 0;
     await page.evaluate((keys) => window.__AE.suprimir(keys), c.sup || []);   // antes do seek: o canvas desenha durante o seek
-    for (let f = Math.round(c.a * FPS); f < Math.round(c.b * FPS); f++) {
+    const a0 = Math.max(0, Math.round(c.a * FPS) - STEP), b0 = Math.min(Math.round(DUR * FPS), Math.round(c.b * FPS) + STEP);
+    for (let f = a0; f < b0; f++) {
       await seek(f / FPS);
       await page.evaluate((id, ids) => window.__AE.isolar(id, ids), c.scene, c.ids);
       if (c.semTexto) await page.evaluate((id, ids) => window.__AE.ocultarTexto(id, ids), c.scene, c.ids);
       await page.screenshot({ path: path.join(tmp, String(n++).padStart(5, '0') + '.png'), clip: { x: c.x + MARGEM, y: c.y + MARGEM, width: c.w, height: c.h }, omitBackground: true });
       if (c.semTexto) await page.evaluate(() => window.__AE.restaurarTexto());
     }
-    const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'),
+    // caixa justa: a união do alfa visível (> ~1%) em todos os quadros; a folga de PAD/margem serviu só para não cortar a captura.
+    // cropdetect com reset=0 devolve a maior área vista; sem nenhum pixel visível mantém a caixa medida.
+    let corte = null;
+    const cd = spawnSync('ffmpeg', ['-hide_banner', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), '-vf', 'alphaextract,blackframe=amount=100:threshold=3,cropdetect=limit=3:round=2:skip=0:reset=0', '-f', 'null', '-'], { encoding: 'utf8' });
+    for (const m of (cd.stderr || '').matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)) corte = m.slice(1).map(Number);
+    // quadros 100% transparentes no começo e no fim saem do clipe: a camada dura só o tempo em que algo aparece
+    const vazio = new Set([...(cd.stderr || '').matchAll(/frame:(\d+) pblack:100/g)].map((m) => +m[1]));
+    let f0 = 0, f1 = n - 1;
+    while (f0 < n && vazio.has(f0)) f0++;
+    while (f1 > f0 && vazio.has(f1)) f1--;
+    if (f0 >= n) { c.kind = 'erro'; continue; }   // nada visível no trecho inteiro
+    c.a = r3((a0 + f0) / FPS); c.b = r3(Math.min(DUR, (a0 + f1 + 1) / FPS));
+    let vf = [];
+    if (corte && corte[0] >= 2 && corte[1] >= 2 && (corte[0] < c.w || corte[1] < c.h)) {
+      vf = ['-vf', `crop=${corte.join(':')}`];
+      c.x += corte[2]; c.y += corte[3]; c.w = corte[0]; c.h = corte[1];
+    }
+    const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-start_number', String(f0), '-i', path.join(tmp, '%05d.png'), '-frames:v', String(f1 - f0 + 1), ...vf,
       '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-qscale:v', '9', '-alpha_bits', '16', path.join(OUT, c.file)], { encoding: 'utf8' });
     if (r.status !== 0) { avisos.push(`clipe ${c.file}: ffmpeg falhou (${(r.stderr || '').slice(0, 160)})`); c.kind = 'erro'; }
     process.stdout.write(`\rclipe ${c.file} (${n} quadros)        `);
@@ -642,7 +800,10 @@ const report = {
   camadas: {
     videos: media.filter((m) => m.tag === 'video').length, audios: media.filter((m) => m.tag === 'audio').length,
     grupos: grupos.length, pecas_nativas: nat.length + ctexts.length,
-    textos: nat.reduce((n, p) => n + p.texts.length, 0) + ctexts.length, textos_canvas: ctexts.length, formas: nat.reduce((n, p) => n + p.shapes.length, 0),
+    textos: nat.reduce((n, p) => n + p.texts.length, 0) + ctexts.length, textos_canvas: ctexts.length,
+    formas: nat.reduce((n, p) => n + p.shapes.filter((x) => !x.kind).length, 0), degrades: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'grad').length, 0),
+    imagens: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'img').length, 0),
+    vetores: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'svg').length, 0),
     clipes_prores: clips.length, camera_mundo: mundo ? mundo.keys.length : 0, textos_na_composicao: textosNaComposicao
   },
   midias: media.map((m) => `${m.id} (${m.tag}, ${m.a.toFixed(2)}–${m.b.toFixed(2)} s): ${m.file.startsWith(OUT) ? path.relative(OUT, m.file) : m.file}`),

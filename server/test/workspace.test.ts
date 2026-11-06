@@ -128,6 +128,9 @@ test('review notes are checked, live files stay inside proj/, and an open note b
   assert.throws(() => P.putReviewNotes(st.id, [{ id: '../a', t: 1, text: 'x' }]), /short word/);
   const r = P.putReviewNotes(st.id, [{ id: 'a', t: 1.5, x: 40, y: 60, text: '  troca o texto  ' }]);
   assert.deepEqual(r.notes, [{ id: 'a', t: 1.5, x: 40, y: 60, text: 'troca o texto', status: 'open' }]);
+  const g = P.putReviewNotes(st.id, [...r.notes, { id: 'g', t: 0, all: true, text: 'tire o grão' }], r.version);   // a whole-video note keeps its flag
+  assert.deepEqual(g.notes[1], { id: 'g', t: 0, all: true, text: 'tire o grão', status: 'open' });
+  P.putReviewNotes(st.id, r.notes, g.version);
   mkdirSync(join(P.WS, 'projects', st.id, 'proj'));
   writeFileSync(join(P.WS, 'projects', st.id, 'proj', 'index.html'), '<html></html>');
   assert.ok(P.liveFile(st.id, 'index.html').endsWith('/proj/index.html'));
@@ -136,7 +139,7 @@ test('review notes are checked, live files stay inside proj/, and an open note b
   // approval: refused with an open note; final refuses without it; a stale version (another tab) cannot overwrite the notes
   assert.throws(() => P.approveReview(st.id), /1 anotação/);
   assert.throws(() => P.putReviewNotes(st.id, [], 0), /outra aba/);
-  P.putReviewNotes(st.id, [], r.version);
+  P.putReviewNotes(st.id, [], P.getReview(st.id).version);
   await assert.rejects(P.final(st.id, ['9:16']), /não foi aprovado/);
   assert.ok((P.approveReview(st.id).approvedAt ?? 0) > 0);
   await assert.rejects(P.final(st.id, ['9:16']), /master\.mp4|ffprobe/);   // past the approval, failed on the missing master
@@ -177,7 +180,7 @@ test('composerMode can be set at creation and toggled via setComposerMode', asyn
   assert.equal(res1.composerMode, 'card');
   const p1Updated = P.getProject(st1.id);
   assert.equal(p1Updated.composerMode, 'card');
-  assert.equal(p1Updated.composed, false);
+  assert.equal(p1Updated.composed, true);   // v8: the mode is kept in the state but every reel is composed by the agent
 });
 
 test('compose copies are gitignored at creation, and an old project drops its tracked copies from the index', async () => {

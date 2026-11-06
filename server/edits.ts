@@ -13,7 +13,7 @@ export type LayerEdit = {
   cuts?: number[]; gaps?: [number, number][];                  // razor points (UI only) and the stretches cut out of the layer
   texts?: Text[];
   font?: { size?: number; weight?: number; italic?: boolean; family?: string };   // the AI's text, restyled
-  still?: boolean;   // the AI's moves (timed tweens) on this layer and on the wrappers that hold only it (the speaker's #ccam, not the scene's #world) are killed; zero-duration sets (show/hide) stay
+  still?: boolean;   // the AI's moves on this layer are killed; on its wrappers (the speaker's #ccam, the world camera #world) those that touch the layer's time window, and the wrapper is put back at rest there. Show/hide sets stay. shortcut: the world camera holds every layer, so it also stops for a moving layer that overlaps a still one
 };
 export const ADDED_KINDS = ['text', 'title', 'captions', 'image', 'video', 'audio', 'model'] as const;
 export type Added = {
@@ -30,7 +30,7 @@ export function checkRights(r: any, who: string): Rights | undefined {
   const s = (k: string) => r[k] === undefined ? [] : typeof r[k] === 'string' && r[k].length <= 300 ? [[k, r[k]]] : bad(`${who}: rights.${k} is text up to 300 characters`);
   return { status: r.status, ...Object.fromEntries(['source', 'license', 'author', 'url'].flatMap(s)) };
 }
-export type Layers = { layers: Record<string, LayerEdit>; added: Added[]; order?: string[]; kfSplit?: boolean };   // kfSplit: the editor already cut the speaker at the AI's moves once; order: the editor's track order, top first
+export type Layers = { layers: Record<string, LayerEdit>; added: Added[]; order?: string[]; kfSplit?: boolean | number };   // kfSplit: the editor already cut the speaker (true) and the footage too (2) at the AI's moves once; order: the editor's track order, top first
 export type Layer = { id: string; kind: string; start: number; end: number; track: number; clip: boolean; src?: string; comp?: string; volume?: number; texts: { i: number; text: string }[]; colors: string[] };
 
 const MARK = '<!--hf-edits-->', ORIGINAL = 'media/_original.mp4';
@@ -95,7 +95,7 @@ export function checkLayers(doc: any): Layers {
     }).filter(([, v]) => v !== undefined)) as Added;
   });
   const order = doc.order === undefined ? undefined : Array.isArray(doc.order) && doc.order.every((k: any) => typeof k === 'string' && /^[\w-]{1,20}$/.test(k)) ? doc.order.slice(0, 200) : bad('order must be track keys');
-  return { layers, added, ...(order ? { order } : {}), ...(doc.kfSplit ? { kfSplit: true } : {}) };
+  return { layers, added, ...(order ? { order } : {}), ...(doc.kfSplit ? { kfSplit: Number.isInteger(doc.kfSplit) && doc.kfSplit >= 2 && doc.kfSplit <= 9 ? doc.kfSplit as number : true } : {}) };
 }
 
 // ---- HTML text runs: the visible text between tags (not in <script>/<style>), with the ids of the elements around it ----
@@ -248,8 +248,15 @@ function editScript(d: Layers, visual: (id: string) => boolean) {
   const data = JSON.stringify({ gaps, anims, caps, models, stills }).replace(/</g, '\\u003c');
   return `<script>(function(){var tl=window.__timelines&&window.__timelines.main;if(!tl||!window.gsap)return;var D=${data};
 D.stills.forEach(function(id){var el=document.getElementById(id);if(!el)return;var t=[el].concat(Array.prototype.slice.call(el.querySelectorAll('*')));
-for(var p=el.parentElement;p&&p!==document.body&&p.children.length===1;p=p.parentElement)t.push(p);
-tl.getTweensOf(t).forEach(function(w){if(w.duration()>0){w.progress(0);w.kill();}});});
+var s=parseFloat(el.getAttribute('data-start')),e=s+parseFloat(el.getAttribute('data-duration'));if(!(e>s)){s=0;e=1e9;}
+var R={x:0,y:0,xPercent:0,yPercent:0,scale:1,rotation:0,rotationX:0,rotationY:0},K=['x','y','scale','scaleX','scaleY','rotation','rotationX','rotationY','xPercent','yPercent'];
+/* only the moves are killed: opacity/visibility tweens are the layer's show/hide and keep running (killing them left every fade-in scene at opacity 0: a black reel). A tween that starts with the layer settles at its end pose; later ones go back to their start. */
+tl.getTweensOf(t).forEach(function(w){if(w.duration()>0){var a=w.startTime();for(var q=w.parent;q&&q!==tl;q=q.parent)a+=q.startTime();w.progress(a<=s+.05?1:0);w.kill(null,K.join(','));}});
+for(var p=el.parentElement;p&&p!==document.body&&!p.hasAttribute('data-composition-id');p=p.parentElement){var at=[];
+tl.getTweensOf(p).forEach(function(w){var a=w.startTime();for(var q=w.parent;q&&q!==tl;q=q.parent)a+=q.startTime();var d=w.duration(),v=w.vars||{};
+if(d>0?(a>=e-.001||a+d<=s+.001):(a<s-.001||a>=e-.001))return;if(!K.some(function(k){return k in v;}))return;
+if(d>0){w.progress(0);w.kill();if(at.indexOf(s)<0)at.push(s);}else at.push(a);});
+at.forEach(function(a){tl.set(p,R,a+.002);});}});
 D.gaps.forEach(function(g){var el=document.getElementById(g[0]);if(!el)return;tl.set(el,{'--hfv':1},0);g[1].forEach(function(p){tl.set(el,{'--hfv':0},p[0]);tl.set(el,{'--hfv':1},p[1]);});});
 D.anims.forEach(function(a){var el=document.querySelector('#'+a[0]+' .in');if(!el)return;var t=a[1]+0.001;
 if(a[2]==='pop')tl.fromTo(el,{scale:.4,y:40,opacity:0},{scale:1,y:0,opacity:1,duration:.45,ease:'back.out(1.8)'},t);

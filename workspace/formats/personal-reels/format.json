@@ -42,5 +42,6 @@
       "zoomScale": 1.25
     },
     "transitions": "cut"
-  }
+  },
+  "hidden": true
 }

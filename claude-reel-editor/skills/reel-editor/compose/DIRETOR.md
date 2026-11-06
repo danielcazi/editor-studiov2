@@ -15,9 +15,9 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
 - **Corte o excesso.** Uma ideia lida em miniatura vale mais que três que ninguém entende. Se um beat precisa de explicação, remova.
 
 ## 3. Câmera: todo plano tem um motivo
-- A câmera de mundo (`scene(..., world=)`) move as quatro camadas juntas, com parallax. Use **pelo menos quatro movimentos distintos** no reel: `push` (aproxima), `pull` (afasta), `pan` (lateral), `crane` (vertical), `tilt` (rotação X), `orbit` (rotação Y), `roll`. Um reel de câmera parada ou de só push-in falhou.
+- A câmera de mundo (`scene(..., world=)`) move as quatro camadas juntas, com parallax: `push` (aproxima), `pull` (afasta), `pan` (lateral), `crane` (vertical), `tilt` (rotação X), `orbit` (rotação Y), `roll`. Varie: um reel de câmera parada ou de só push-in falhou; quantos movimentos e quais, a fala decide.
 - **Um plano-assinatura** (`signature=True`) que a pessoa lembra: um oner atravessando dois ou três beats sem corte, uma revelação de escala, uma transição feita do próprio meio.
-- **Transição desenhada no meio**, não fade padrão: pelo menos quatro passagens entre cenas em que algo da cena anterior vira a próxima (a cor inunda, o card cresce até preencher, a palavra sobe por máscara e vira título). O `tr=` de `scene()` é o fallback, não o padrão.
+- **Transição desenhada no meio**, não fade padrão: passagens entre cenas em que algo da cena anterior vira a próxima (a cor inunda, o card cresce até preencher, a palavra sobe por máscara e vira título). O `tr=` de `scene()` é o fallback, não o padrão.
 - Enquadramento do locutor muda a cada 2 a 4 s (M, L, XL, XXL), e a mudança de enquadramento combina com o movimento de mundo, nunca contra ele.
 - Nos momentos-chave o destaque ocupa pelo menos um terço da altura do quadro, com silhueta legível.
 
@@ -42,11 +42,11 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
 
 ## 6. O treatment.md (o compositor escreve antes do scenes.py)
 0. **Estilo de motion:** se o brief traz "Estilo de motion escolhido", é o que o usuário quer: tipografia, câmera de mundo, beats, sons e receitas vêm dele, sem inventar movimento que ele não tem. Se traz "Estilos de motion disponíveis", escolha o que serve ao assunto e à marca, diga qual e por quê no treatment, leia o `style.json` dele e siga-o.
-0. **Estilo de ilustração:** se existe `ESTILO.md`, é o que o usuário escolheu: siga-o. Senão, leia `estilos/README.md`, liste três candidatos que servem ao assunto e à marca (`ILUSTRACAO.md`), escolha um com o motivo e leia o pacote inteiro (`estilos/<slug>.md`) antes de escrever a shot list. A paleta e os motivos são da marca; a técnica é do estilo.
+0. **Peças:** leia `assets/manifest.json` (a biblioteca do reel) e olhe as imagens: a shot list diz qual peça cada cena usa e o que ela demonstra da fala; o que falta, o compositor desenha.
 1. **Benchmark:** aprender / não levar.
 2. **Três estruturas** e a escolhida.
 3. **Logline e arco:** uma frase, depois setup → virada → final.
-4. **Shot list:** para cada cena, o tempo, a fala, o enquadramento do locutor, o movimento de mundo (`world=`) e o motivo, o destaque único e a transição para a próxima. Marque o plano-assinatura. Se o brief traz janelas de recorte (Speech Screen), diga por cena se é recorte (dentro da janela), painel (`cam='panel'`, animação em cima) ou tela cheia. Em toda cena, um elemento tipográfico animado e, sempre que a fala permitir, uma imagem do site flutuando (`floatimg`).
+4. **Shot list:** para cada cena, o tempo, a fala, o enquadramento do locutor, o movimento de mundo (`world=`) e o motivo, o destaque único e a transição para a próxima. Marque o plano-assinatura. Se o brief traz janelas de recorte (Speech Screen), diga por cena se é recorte (dentro da janela), painel (`cam='panel'`, animação em cima) ou tela cheia. Tipografia animada e imagens flutuando (`floatimg`) onde a fala pede, não por cota.
    Mais duas linhas por cena, sem as quais a cena não está planejada:
    - **Na batida:** cada palavra tônica da fala → o que entra ou muda nela (um evento por palavra tônica, a cada 0,4–0,8 s), escrito como `T('palavra')` (kit.py: o tempo vem da fala, nunca de um segundo digitado). O pouso, o corte e o carimbo caem **na** palavra, nunca antes.
    - **Vivo:** a vida ociosa de cada elemento enquanto fica em cena (deriva, tique, piscar, digitar, balanço): nada parado por mais de 1 s; o `pace.py` mede isso no vídeo e reprova.

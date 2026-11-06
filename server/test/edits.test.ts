@@ -51,6 +51,7 @@ test('still: the layer is listed for the script that kills its timed tweens', ()
   const out = applyEdits(HTML, checkLayers({ layers: { b01: { still: true } } }));
   assert.match(out, /"stills":\["b01"\]/);
   assert.match(out, /w\.duration\(\)>0/);
+  assert.match(out, /w\.kill\(null,K\.join/);   // moves only: killing the whole tween left fade-in scenes at opacity 0
   assert.ok(!applyEdits(HTML, checkLayers({ layers: { b01: { still: false } } })).includes('"stills":["b01"]'));
 });
 
@@ -137,3 +138,5 @@ test('rights on an added clip are checked and never reach the composition HTML',
   assert.throws(() => checkLayers(add({ status: 'licensed', license: 'x'.repeat(301) })), /rights.license/);
   assert.ok(!applyEdits(HTML, ok).includes('Pexels License'));
 });
+
+test('kfSplit keeps its stage marker', () => assert.equal(checkLayers({ layers: {}, added: [], kfSplit: 3 }).kfSplit, 3));

@@ -40,5 +40,6 @@
     },
     "transitions": "Sem cortes: a câmera passeia por um mundo de papel pontilhado. A passagem entre cenas dura o respiro da fala (mínimo 0,8 s), com desfoque de movimento por velocidade, e chega logo depois da 1ª palavra da frase nova. Dentro da cena, push-in lento de 1.03 a 1.1. Na versão A, o painel do rosto sobe e sai junto com a 1ª passagem."
   },
-  "id": "darkrd-clone"
+  "id": "darkrd-clone",
+  "hidden": true
 }

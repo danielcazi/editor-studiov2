@@ -1,0 +1,281 @@
+{
+  "id": "textos-dinamicos-flat",
+  "name": "Textos Dinâmicos Flat",
+  "description": "Tipografia cinética editorial que alterna papel claro e preto fosco, com sans geométrica bold, ícones em pixel art que entram com glitch de pixelização, rabiscos vermelhos desenhados à mão, contador 01/03 em mono e cortes secos a cada ~1,1 s. A câmera faz giro com motion blur, órbita de ícones e travelling lateral seguindo o texto.",
+  "guide": "TIPOGRAFIA: uma família sans geométrica (tipo Satoshi/General Sans/Manrope) em 3 papéis que se alternam a cada cena, e essa troca de fonte é o recurso central. (a) Palavra-gigante black minúscula, 18–22% da altura, com linhas-guia tracejadas na altura x e na linha de base. A palavra falada fica em #111 e as seguintes em cinza #A9A6A2, e a frase corre na horizontal. (b) Frase inteira em uma linha, bold e pequena (4%). (c) Palavra-chave isolada em bold minúscula com ponto final (6%), com contador mono em cima (tag vermelha 'NN' + '/NN' cinza a 2%). (d) Palavra em MAIÚSCULA com tracking enorme, letras espalhadas pela largura. O texto entra digitado letra a letra (35 ms por letra) com cursor fino ou bloco piscando, ou acende de cinza para preto no instante da fala. Nunca entra em bloco com fade.\n\nCOR: alterne um fundo papel claro (#E6E5E1, vinheta) com um preto fosco (#141313, nuvem de grão), mais ou menos uma vez a cada 2–3 cenas. O único acento é o vermelho #D42020 (rabiscos, feixes, tag, partículas). O azul elétrico e o filtro térmico só aparecem uma vez cada, como surpresa.\n\nGRÁFICOS: ícones em pixel art (32×32 escalado com nearest-neighbor, 80–120px, cores chapadas com contorno escuro). O ícone fica a 30% x e a palavra a 58% x, os dois a 48% y. Um rabisco vermelho feito à mão (SVG stroke 3px, linecap round) circula, sublinha ou aponta a palavra enfatizada. Feixe vermelho em cunha sai do ícone. Partículas de 3–5px flutuam.\n\nÊNFASE: a palavra-chave da fala ganha uma cena só para ela (fundo escuro + ícone + contador), ou um círculo ou balão vermelho desenhado à mão, ou letras separadas por toda a largura.\n\nENTRADA E SAÍDA: os ícones entram pixelizados (mosaico 8→1px) em 0,25 s, escalonados 0,08 s. Os rabiscos se desenham em 0,4 s. As cenas saem por corte seco (média de 1,08 s). Entre itens de lista, giro com blur de 0,25 s. As palavras podem se desmanchar em traços tracejados antes do corte.\n\nPRESENTER: aparece raramente, em plano M à direita, com filtro negativo/duotone, e o texto fica no terço esquerdo.\n\nDENSIDADE: 1 ideia por cena, no máximo 1 palavra-chave + 1 ícone. A exceção é a cena-assinatura com um anel de 12–16 ícones orbitando um personagem central.\n\nCÂMERA: push lento contínuo (1→1.06) em toda cena, pan horizontal na frase gigante, órbita no anel. Sem shake.",
+  "motif": "Uma palavra-chave isolada em sans geométrica bold minúscula com ponto final, ao lado de um ícone em pixel art. Os dois ficam sobre fundo chapado (papel #E6E5E1 ou preto fosco #141313) e um rabisco vermelho #D42020 à mão (círculo, onda ou feixe) aponta a ênfase. O ícone entra com glitch de pixelização e o texto entra digitado, com cursor fino piscando.",
+  "palette": [
+    {
+      "hex": "#E6E5E1",
+      "role": "fundo papel claro com vinheta suave nas bordas (#BDBBB6)"
+    },
+    {
+      "hex": "#141313",
+      "role": "fundo preto fosco com nuvens de grão (#1E1D1D)"
+    },
+    {
+      "hex": "#111111",
+      "role": "tinta principal no fundo claro (palavra ativa)"
+    },
+    {
+      "hex": "#A9A6A2",
+      "role": "tinta fantasma: próxima palavra ainda não falada"
+    },
+    {
+      "hex": "#F2F0EC",
+      "role": "tinta principal no fundo escuro"
+    },
+    {
+      "hex": "#D42020",
+      "role": "acento: rabiscos, feixes, tag do contador, partículas, linhas-guia tracejadas (a 40%)"
+    },
+    {
+      "hex": "#1E5BFF",
+      "role": "glow azul elétrico vindo da borda, com halo ciano #4FC3FF"
+    },
+    {
+      "hex": "#FF5A1F",
+      "role": "glow térmico laranja→magenta #8A2BE2 em imagem filtrada"
+    }
+  ],
+  "camera": {
+    "world": [
+      {
+        "kind": "pan",
+        "when": "frase longa: a câmera corre na horizontal seguindo a palavra ativa",
+        "amount": -120
+      },
+      {
+        "kind": "push",
+        "when": "entrada de palavra-chave isolada no fundo escuro",
+        "amount": 1.08
+      },
+      {
+        "kind": "roll",
+        "when": "transição giratória entre itens numerados (01→02→03) com motion blur",
+        "amount": 6
+      },
+      {
+        "kind": "orbit",
+        "when": "anel de ícones girando em torno do personagem central",
+        "amount": 8
+      },
+      {
+        "kind": "pull",
+        "when": "revelação do anel de ícones / da palavra espaçada",
+        "amount": 0.92
+      }
+    ],
+    "framing": "Sem apresentador fixo: o vídeo é quase todo gráfico. Quando há pessoa, ela aparece em plano M à direita (2/3 do quadro, filtro negativo/duotone azul-lilás) e o texto fica no terço esquerdo. O quadro troca por corte seco a cada ~1,08 s (18 cortes em 20,4 s). Dentro do plano há push lento contínuo (1.0→1.06) e nada de shake.",
+    "transitions": "Corte seco dominante, em 18 de ~20 trocas. Também aparecem: um giro (roll + blur direcional de ~0,25 s) entre itens da lista, uma pixelização/glitch quando os ícones entram e saem, e a palavra que vira traços tracejados (dashes) antes de sumir. Não há fade longo.",
+    "depth": "Duas camadas: fundo chapado com nuvem de grão desfocada e texto+ícone nítidos na frente. Partículas vermelhas pequenas (3–5 px) ficam no meio e fazem parallax leve de ~10 px. Ícones fora de foco entram desfocados (blur 6 px) e ficam nítidos ao pousar. O foco fica no centro óptico: ícone a ~30% x e palavra a ~58% x, os dois na linha central a 48% y.",
+    "signature": "O anel de ~16 ícones pixel art (fone, câmera, vinil, tênis, planta, monitor...) girando em órbita elíptica em volta de um blob preto com olhos, que se acende com raios amarelos. O conjunto desfocado ganha nitidez enquanto gira."
+  },
+  "beats": [
+    {
+      "from": 0,
+      "to": 1.5,
+      "composition": "Fundo papel claro com vinheta. Duas linhas-guia tracejadas finas vermelho-acinzentadas (altura x e linha de base) atravessam o quadro em 36% e 52% y. A palavra fica centrada e a próxima já aparece cortada na borda direita.",
+      "elements": "Linhas-guia tracejadas (dash 8px, gap 6px, 1px, #C9A9A6)",
+      "typography": "Sans geométrica black, minúscula, gigante (~22% da altura do quadro). A palavra ativa vem em #111 e a próxima em cinza fantasma #A9A6A2. A palavra acende para preto exatamente quando é falada.",
+      "motion": "Travelling horizontal contínuo da esquerda para a direita acompanhando a fala: a frase desliza ~-120px por palavra com ease power2.inOut de 0,35 s.",
+      "transitionOut": "As letras viram traços tracejados no lugar (as palavras se desmancham em dashes) e o corte vem seco.",
+      "sfx": "nenhum (fala)"
+    },
+    {
+      "from": 1.5,
+      "to": 2.3,
+      "composition": "Fundo claro vazio. Uma linha de traços pretos grossos (dashes de 6–20px) no centro, a 48% y, ocupa 60% da largura, com um cursor de seleção à direita (alça com pontos).",
+      "elements": "Dashes que substituem as letras e cursor-alça vertical tracejado",
+      "typography": "Nenhuma: só a 'silhueta' da frase em traços",
+      "motion": "Os dashes ficam parados e o cursor pisca a 2 Hz",
+      "transitionOut": "Corte seco",
+      "sfx": "nenhum"
+    },
+    {
+      "from": 2.3,
+      "to": 3.9,
+      "composition": "Fundo claro. Um glow azul elétrico em forma de leque côncavo entra pela borda esquerda (0–25% x). Uma frase inteira em uma linha atravessa a 48% y e ícones pixel art ficam espalhados acima e abaixo à direita.",
+      "elements": "4–5 ícones pixel art (óculos, relógio, bola, tênis) com ~40–60px. Rabiscos vermelhos à mão e uma linha preta fina saem pela direita.",
+      "typography": "Troca de fonte: agora sans bold condensada pequena (~4% da altura), minúscula, preta, com espaçamento negativo. A frase inteira aparece de uma vez.",
+      "motion": "Os ícones entram pixelizados (mosaico 8px→1px) em 0,25 s, escalonados 0,08 s entre si. Os rabiscos se desenham e somem (stroke-dashoffset) em 0,4 s.",
+      "transitionOut": "Glitch de pixelização nos ícones e corte seco",
+      "sfx": "glitch-1 aos 3.22 (ícones pixelizam)"
+    },
+    {
+      "from": 3.9,
+      "to": 6,
+      "composition": "Fundo preto. Presenter em plano M à direita (40–95% x) com filtro negativo duotone lilás→ciano. Texto no terço esquerdo a 48% y.",
+      "elements": "Rabisco vermelho neon com glow: primeiro um traço, depois uma onda senoidal apontando para a cabeça e por fim um balão de fala à mão envolvendo a palavra",
+      "typography": "Sans bold branca minúscula (~4,5% da altura), digitada com cursor fino branco à direita",
+      "motion": "O rabisco é redesenhado a cada hit (4.5, 4.86, 5.36), mudando de forma. A cor do duotone desliza de lilás para ciano. Push lento de 1.0 para 1.05.",
+      "transitionOut": "Corte seco",
+      "sfx": "swish aos 4.5, click-soft aos 4.86, pop aos 5.36 (balão fecha na palavra)"
+    },
+    {
+      "from": 6,
+      "to": 8.9,
+      "composition": "Fundo claro. Anel elíptico de ~16 ícones pixel art (70–110px) ocupa 15–90% x e 25–80% y, com um blob preto de olhos no centro-topo.",
+      "elements": "Ícones pixel art coloridos com contorno escuro e o personagem blob. Raios amarelos curtos saem do blob quando ele 'acorda'.",
+      "typography": "Nenhuma",
+      "motion": "O anel orbita (gira ~40° na elipse) em 2,5 s com ease sine.inOut. Começa com blur 6px e fica nítido. O blob desce ao centro e pulsa com raios (scale 1→1.15 yoyo).",
+      "transitionOut": "Corte seco para o fundo escuro",
+      "sfx": "sparkle aos 8.2 (blob acende / anel fecha)"
+    },
+    {
+      "from": 8.9,
+      "to": 10.3,
+      "composition": "Fundo preto fosco. Ícone pixel grande (~120px) a 30% x e a palavra-chave a 58% x, os dois a 48% y. Contador mono acima da palavra: tag vermelha '01' + '/03' cinza.",
+      "elements": "Ícone pixel (tênis) com faísca vermelha em losango. Traços vermelhos radiais curtos de impacto, rabisco cinza em zigue-zague e partículas vermelhas flutuando.",
+      "typography": "Sans geométrica bold minúscula com ponto final (~6% da altura), em #F2F0EC. O contador vai em mono 2% e a tag em fundo vermelho. A palavra é digitada letra a letra com cursor bloco.",
+      "motion": "Os traços radiais explodem para fora e somem em 0,3 s. O ícone gira e entra em perspectiva. Push 1.0 para 1.08.",
+      "transitionOut": "Giro com motion blur (roll + blur horizontal 0,25 s) para o próximo item",
+      "sfx": "whoosh-short aos 9.9 (giro de transição)"
+    },
+    {
+      "from": 10.3,
+      "to": 11.5,
+      "composition": "Mesma grade do item anterior, agora com o contador 02/03. Ícone (relógio) a 30% x.",
+      "elements": "Feixe vermelho chapado em forma de cunha que sai do ícone, cruza o quadro até o canto superior direito e segue até o inferior esquerdo, mais um rabisco branco curto",
+      "typography": "Mesmo estilo, com cursor fino piscando após o ponto",
+      "motion": "O feixe vermelho cresce do ícone para fora (scaleX 0→1, origin no ícone) em 0,3 s com expo.out",
+      "transitionOut": "Corte seco",
+      "sfx": "click aos 10.24 (troca do número)"
+    },
+    {
+      "from": 11.5,
+      "to": 12.4,
+      "composition": "Mesma grade, com o contador 03/03. O ícone é uma câmera.",
+      "elements": "Partículas brancas e vermelhas",
+      "typography": "Mesmo estilo, digitada com cursor",
+      "motion": "O ícone entra com pixelização e a palavra é digitada",
+      "transitionOut": "Corte seco",
+      "sfx": "nenhum"
+    },
+    {
+      "from": 12.4,
+      "to": 13.9,
+      "composition": "Fundo preto. Uma imagem térmica (mão) em gradiente laranja→vermelho→violeta ocupa o centro-direita e o texto pequeno fica a 15–40% x.",
+      "elements": "Contorno branco à mão envolvendo a imagem, desenhado ao vivo, mais pontinhos brancos",
+      "typography": "Sans medium cinza-claro pequena (~3,5%)",
+      "motion": "O contorno se desenha (drawSVG 0→100%) em 0,5 s",
+      "transitionOut": "Corte seco",
+      "sfx": "swish aos 13.58, pop aos 13.86"
+    },
+    {
+      "from": 13.9,
+      "to": 16.5,
+      "composition": "Fundo preto. As letras maiúsculas de uma palavra ficam espaçadas pela largura toda a 48% y (12%, 36%, 64%, 90% x). Um ícone pixel ocupa o lugar entre letras e depois o centro, dentro de um círculo fino cinza de ~45% da altura.",
+      "elements": "Ícones pixel (óculos, depois vinil girando com blur) e um círculo-guia de 1px #6E6C6A",
+      "typography": "Troca de fonte: sans geométrica medium MAIÚSCULA pequena (~3,5%), tracking enorme, branca",
+      "motion": "As letras surgem uma a uma nas posições fixas. O ícone desliza entre elas e troca de identidade. O vinil gira 360° em 0,6 s com blur.",
+      "transitionOut": "Corte seco para o fundo claro",
+      "sfx": "click-soft aos 15.3, whoosh-short aos 15.82"
+    },
+    {
+      "from": 16.5,
+      "to": 20.4,
+      "composition": "Fundo claro. As mesmas letras, agora pretas e bold, estão espalhadas em cacho no centro e levemente rotacionadas (±15°).",
+      "elements": "Círculos vermelhos à mão em volta de cada letra e pontos pretos soltos",
+      "typography": "Sans geométrica bold MAIÚSCULA (~6%), preta",
+      "motion": "As letras caem e se agrupam com ease back.out e rotação aleatória. Os círculos vermelhos se desenham escalonados em 0,1 s.",
+      "transitionOut": "Fim (hold)",
+      "sfx": "pop aos 16.28 (letras assentam)"
+    }
+  ],
+  "pace": 1.08,
+  "sfxRules": [
+    {
+      "when": "ícones pixel entram/saem com glitch de pixelização",
+      "sfx": "glitch-1",
+      "level": "subtle"
+    },
+    {
+      "when": "rabisco vermelho se desenha ao redor/ao lado da palavra",
+      "sfx": "swish",
+      "level": "subtle"
+    },
+    {
+      "when": "balão/círculo à mão fecha na palavra ou letras assentam",
+      "sfx": "pop",
+      "level": "normal"
+    },
+    {
+      "when": "troca do contador 01/03 → 02/03 ou letra surge",
+      "sfx": "click-soft",
+      "level": "subtle"
+    },
+    {
+      "when": "giro com motion blur entre itens",
+      "sfx": "whoosh-short",
+      "level": "normal"
+    },
+    {
+      "when": "personagem central acende no anel de ícones",
+      "sfx": "sparkle",
+      "level": "normal"
+    }
+  ],
+  "sfxPerMinute": 35,
+  "motionRecipes": [
+    {
+      "name": "palavra-digitada",
+      "use": "palavra-chave isolada com cursor",
+      "gsap": "const tl=gsap.timeline(); tl.from(SEL+' .ch',{opacity:0,duration:0.01,stagger:0.035,ease:'none'}).fromTo(SEL+' .cursor',{opacity:1},{opacity:0,duration:0.25,repeat:5,yoyo:true,ease:'steps(1)'},'<');"
+    },
+    {
+      "name": "frase-acende-e-corre",
+      "use": "frase gigante com palavra ativa e pan horizontal",
+      "gsap": "gsap.to(SEL+' .w.active',{color:'#111111',duration:0.12,ease:'none'}); gsap.to(SEL+' .line',{x:'-=120',duration:0.35,ease:'power2.inOut'});"
+    },
+    {
+      "name": "icone-pixel-glitch",
+      "use": "entrada de ícone pixel art",
+      "gsap": "gsap.fromTo(SEL,{scale:0.6,opacity:0,filter:'blur(6px)'},{scale:1,opacity:1,filter:'blur(0px)',duration:0.25,ease:'steps(4)',stagger:0.08});"
+    },
+    {
+      "name": "rabisco-desenhado",
+      "use": "círculo/onda vermelha de ênfase",
+      "gsap": "gsap.fromTo(SEL,{strokeDashoffset:(i,el)=>el.getTotalLength(),strokeDasharray:(i,el)=>el.getTotalLength()},{strokeDashoffset:0,duration:0.4,ease:'power2.out'});"
+    },
+    {
+      "name": "giro-blur",
+      "use": "transição entre itens numerados",
+      "gsap": "gsap.timeline().to(SEL,{rotation:6,scale:1.1,filter:'blur(12px)',duration:0.12,ease:'power2.in'}).set(SEL,{rotation:-6}).to(SEL,{rotation:0,scale:1,filter:'blur(0px)',duration:0.13,ease:'power2.out'});"
+    },
+    {
+      "name": "orbita-icones",
+      "use": "anel de ícones em volta do personagem",
+      "gsap": "gsap.fromTo(SEL,{rotation:-20,scale:0.92,filter:'blur(6px)'},{rotation:20,scale:1,filter:'blur(0px)',duration:2.5,ease:'sine.inOut'}); gsap.to(SEL+' .icon',{rotation:'-=40',duration:2.5,ease:'sine.inOut'});"
+    }
+  ],
+  "clonedFrom": {
+    "urls": [
+      "https://www.instagram.com/p/De9NM0QSf6f/"
+    ],
+    "measured": [
+      {
+        "clip": "dl0.mp4",
+        "duration": 20.4,
+        "cuts": 18,
+        "secondsPerCut": 1.08,
+        "size": "960x720",
+        "sfxHits": [
+          3.22,
+          4.5,
+          4.86,
+          5.36,
+          8.2,
+          9.9,
+          10.24,
+          13.58,
+          13.86,
+          15.3,
+          15.82,
+          16.28
+        ]
+      }
+    ],
+    "note": "Dinamica de amostragem dos textos de forma fluida, movimento de câmera, troca de fontes, ícones em pixel art, ênfase em falas específicas"
+  }
+}

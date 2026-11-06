@@ -1,12 +1,16 @@
 # Biblioteca de composição do compositor "agent". O Claude escreve scenes.py (importa este módulo, chama scene(...) e render()).
 # Constantes vêm de compose.json (W, H, DUR, colors, faceX). Regras: GUIDE.md. Rode: python3 scenes.py
-import json, os, re, subprocess, sys, unicodedata
+import json, math, os, re, subprocess, sys, unicodedata
 
 CFG = json.load(open('compose.json'))
 W, H, DUR = CFG['W'], CFG['H'], CFG['DUR']
 u = lambda n: f"{n * (W / 100):.0f}px"          # 1cqw = 1% da largura do canvas (ex: 10.8px no 1080)
 RED, RED2, AMB, BLK, CRM = (CFG['colors'][k] for k in ('RED', 'RED2', 'AMB', 'BLK', 'CRM'))
 FONT = "@font-face{font-family:Aspekta;src:url('assets/fonts/font.otf');font-weight:600}"
+GIANT_FONT = os.path.exists('assets/fonts/giant.otf')   # peso Black da marca: a tipografia gigante usa 900 em vez de 600
+if GIANT_FONT: FONT += "@font-face{font-family:Aspekta;src:url('assets/fonts/giant.otf');font-weight:900}"
+GIANT_CASE = CFG.get('giantCase', 'upper')   # 'lower': tipografia gigante em minúsculas (estilos como o Insula Build)
+SPEAKER_SHADOW = CFG.get('speakerShadow', False)   # sombra deslocada no recorte do locutor (estilo)
 # enquadramentos fixos do recorte (escala sobre a fonte 1920x1080, base colada no rodapé)
 FR = {'M': .95, 'L': 1.2, 'XL': 1.5, 'XXL': 1.8} if H >= W else {'M': .65, 'L': .85, 'XL': 1.05, 'XXL': 1.25}
 FACE_X = CFG.get('faceX', 980)
@@ -120,6 +124,25 @@ WORLD_KEYS = ('x', 'y', 'scale', 'rx', 'ry', 'rz')
 WORLD_KIND = {'x': 'pan', 'y': 'crane', 'rx': 'tilt', 'ry': 'orbit', 'rz': 'roll'}
 GSAP_KEY = {'x': 'x', 'y': 'y', 'scale': 'scale', 'rx': 'rotationX', 'ry': 'rotationY', 'rz': 'rotation'}
 
+def world_cover(t):
+    """menor escala do #world que ainda cobre o quadro W×H depois do deslocamento e da rotação (tilt/orbit com folga)."""
+    a = math.radians(abs(t['rz'])); c, s = math.cos(a), math.sin(a)
+    m = 2 * (abs(t['x']) + abs(t['y']))
+    need = max((W * c + H * s + m) / W, (W * s + H * c + m) / H)
+    return round(need + (abs(t['rx']) + abs(t['ry'])) * .012, 3)
+
+def world_fit(t):
+    """a pose cabe na própria escala (nunca abaixo de 1): o pan/crane/roll/tilt/orbit encolhe até o quadro ficar coberto.
+    Mais zoom cobriria também, mas empurraria os textos da borda para fora da zona segura."""
+    t = dict(t, scale=max(1, t['scale']))
+    if world_cover(t) <= t['scale']: return t
+    mv = lambda f: dict(t, **{k: t[k] * f for k in ('x', 'y', 'rx', 'ry', 'rz')})
+    lo, hi = 0.0, 1.0
+    for _ in range(20):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if world_cover(mv(mid)) <= t['scale'] else (lo, mid)
+    return {k: round(v, 3) + 0.0 for k, v in mv(lo if lo > .01 else 0).items()}   # resto de meio pixel não vira movimento
+
 def world_track():
     """Tweens do #world na linha do tempo principal e os tipos de movimento usados, cena a cena. Erros entram em ERROS."""
     cur = dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)
@@ -136,6 +159,7 @@ def world_track():
         for k, v in tgt.items():
             lo, hi = (WORLD_LIM['scale'] if k == 'scale' else (-WORLD_LIM[k], WORLD_LIM[k]))
             if not lo <= v <= hi: erro(f'cena {n}: world {k}={v} fora do limite [{lo}, {hi}]')
+        tgt = world_fit(tgt)   # pan, roll ou pull nunca mostram a borda preta do quadro
         moved = [k for k in WORLD_KEYS if abs(tgt[k] - cur[k]) > 1e-6]
         if 'scale' in moved: kinds.append('push' if tgt['scale'] > cur['scale'] else 'pull')
         kinds.extend(WORLD_KIND[k] for k in moved if k != 'scale')
@@ -150,14 +174,8 @@ def world_track():
     return js, kinds
 
 def lint_world(kinds):
-    """Avisos de direção (DIRETOR.md §3): quatro gramáticas de câmera e um plano-assinatura."""
-    out = []
-    used = sorted(set(kinds))
-    if len(used) < 4:
-        out.append(f'câmera: {len(used)} movimento(s) de mundo distinto(s) ({", ".join(used) or "nenhum: nenhuma cena usa world="}); use pelo menos 4 entre push, pull, pan, crane, tilt, orbit, roll (DIRETOR.md §3)')
-    if not any(s['signature'] for s in S):
-        out.append('câmera: nenhuma cena marcada signature=True; escolha o plano-assinatura (oner, revelação de escala ou transição feita do meio)')
-    return out
+    """Sem cotas de câmera (v8): quantos movimentos e se há plano-assinatura é decisão do diretor, não aviso do lint."""
+    return []
 
 GRAIN = ("url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E"
          "%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E"
@@ -222,9 +240,6 @@ def lint_variety(src, html, js):
     short = sum(1 for x in durs if x <= .3)
     if durs and short / len(durs) > .5:
         out.append(f'fluidez: {short} de {len(durs)} tweens duram ≤ 0,3 s (animação travada); entradas de .4–.7 s com power3.out/expo.out, saídas de .25–.4 s com power2.in, e movimento sustentado (> 1 s) em cada cena')
-    plain = sum(1 for t in tweens if set(re.findall(r'(?<![\w"\'])([A-Za-z]\w*)\s*:', t)) - NOT_PROPS <= PLAIN)
-    if tweens and plain / len(tweens) > MAX_PLAIN:
-        out.append(f'variedade: {plain} de {len(tweens)} tweens só animam opacity/x/y/scale (entrada e saída); use rotation, clipPath, filter, skew, stagger, morph ou movimento sustentado (>1 s) em parte deles')
     return out
 
 def lint_static():
@@ -267,7 +282,7 @@ def render():
     #root{position:absolute;inset:0;font-family:Aspekta,Montserrat,sans-serif;font-weight:600;overflow:hidden}
     #root *{box-sizing:border-box}
     .bgfill{position:absolute;inset:-12%}   /* sobra para a câmera de mundo: pan e orbit não revelam o plate atrás do fundo */
-    .giant{position:absolute;left:-2%;right:-2%;text-align:center;line-height:.84;letter-spacing:-.045em;text-transform:uppercase}
+    .giant{position:absolute;left:-2%;right:-2%;text-align:center;line-height:.84;letter-spacing:-.045em;text-transform:""" + ('none' if GIANT_CASE == 'lower' else 'uppercase') + ('; font-weight:900' if GIANT_FONT else '') + """}
     .ln{display:block}
     .cn{line-height:.84;height:.84em}
     .hl{position:absolute;left:4%;right:4%;text-align:center;line-height:.9;letter-spacing:-.03em;text-transform:uppercase;text-shadow:0 9px 32px rgba(0,0,0,.7)}
@@ -297,6 +312,7 @@ def render():
     <script>
     {EASES}
     {eng}
+    gsap.defaults({{ autoRound: false }});   // sem isso o GSAP arredonda strokeDashoffset para px inteiro: o traço com pathLength=1 pula em vez de desenhar
     const tl = gsap.timeline({{ paused: true }});
     {js}
     window.__timelines = window.__timelines || {{}}; window.__timelines["{cid}"] = tl;
@@ -400,7 +416,7 @@ def render():
     #pcam video {{ position:absolute; left:0; top:0; width:{W}px; height:{H}px; object-fit:cover; }}
     /* recorte em largura inteira (1920x1080): rosto (x={FACE_X}) no centro da tela, base no rodapé; escala a partir desse ponto */
     #ccam {{ position:absolute; left:{W // 2 - FACE_X}px; top:{H - 1080}px; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
-    #ccam video {{ position:absolute; inset:0; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
+    #ccam video {{ position:absolute; inset:0; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; {'filter:drop-shadow(26px 34px 28px rgba(0,0,0,.26));' if SPEAKER_SHADOW else ''} }}
     /* painel do Speech Screen: fora do #world, a câmera de mundo não o move */
     #tcam {{ position:absolute; left:0; top:{PANEL_TOP or 0}px; width:{W}px; height:{H - (PANEL_TOP or 0)}px; overflow:hidden; opacity:0; }}
     #tcam video {{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }}
@@ -421,6 +437,7 @@ def render():
       {(chr(10) + '  ').join(sfx_tags)}
     </div>
     <script>
+    gsap.defaults({{ autoRound: false }});
     const tl = gsap.timeline({{ paused: true }});
     {pcam_js}
     {chr(10).join(world_js)}
@@ -872,15 +889,27 @@ window.__hfThree=window.__hfThree||import('https://cdn.jsdelivr.net/npm/three@0.
 const rr=(T,w,h,r)=>{const s=new T.Shape(),x=-w/2,y=-h/2;s.moveTo(x+r,y);s.lineTo(x+w-r,y);s.quadraticCurveTo(x+w,y,x+w,y+r);s.lineTo(x+w,y+h-r);s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);s.lineTo(x+r,y+h);s.quadraticCurveTo(x,y+h,x,y+h-r);s.lineTo(x,y+r);s.quadraticCurveTo(x,y,x+r,y);return s};
 const poly=(T,pts)=>{const s=new T.Shape();pts.forEach((q,i)=>i?s.lineTo(q[0],q[1]):s.moveTo(q[0],q[1]));s.closePath();return s};
 const ext=(T,sh,depth,bev)=>{const g=new T.ExtrudeGeometry(sh,{depth,bevelEnabled:true,bevelSize:bev,bevelThickness:bev,bevelSegments:6,curveSegments:14});g.center();return g};
-const build=T=>{const c=new T.Color('@COLOR@'),mat=l=>new T.MeshPhysicalMaterial({color:c.clone().offsetHSL(0,0,l),roughness:.32,clearcoat:1,clearcoatRoughness:.18}),g=new T.Group(),kind='@KIND@';
-  if(kind==='cursor')g.add(new T.Mesh(ext(T,poly(T,[[0,1.2],[0,-.9],[.3,-.6],[.52,-1.1],[.78,-1],[.56,-.5],[.95,-.48]]),.22,.07),mat(0)));
-  else if(kind==='bolt')g.add(new T.Mesh(ext(T,poly(T,[[.25,1.2],[-.65,-.1],[-.08,-.1],[-.3,-1.2],[.7,.25],[.12,.25]]),.25,.07),mat(0)));
-  else if(kind==='layers')[-.5,0,.5].forEach((y,i)=>{const m=new T.Mesh(ext(T,rr(T,1.5,1,.2),.1,.05),mat(i*.06-.06));m.position.set(0,y,i*.18);m.rotation.x=-.9;g.add(m)});
-  else g.add(new T.Mesh(ext(T,rr(T,1.7,1.1,.22),.16,.06),mat(0)));
+const build=T=>{const c=new T.Color('@COLOR@'),c2=new T.Color('@COLOR2@'),mk=(col,l)=>new T.MeshPhysicalMaterial({color:col.clone().offsetHSL(0,0,l),roughness:.3,metalness:.05,clearcoat:1,clearcoatRoughness:.15}),mat=l=>mk(c,l),mat2=l=>mk(c2,l),g=new T.Group(),kind='@KIND@';
+  const M=(sh,depth,bev,m)=>new T.Mesh(ext(T,sh,depth,bev),m);
+  if(kind==='cursor')g.add(M(poly(T,[[0,1.2],[0,-.9],[.3,-.6],[.52,-1.1],[.78,-1],[.56,-.5],[.95,-.48]]),.26,.09,mat(0)));
+  else if(kind==='bolt')g.add(M(poly(T,[[.25,1.2],[-.65,-.1],[-.08,-.1],[-.3,-1.2],[.7,.25],[.12,.25]]),.3,.09,mat(0)));
+  else if(kind==='layers')[-.5,0,.5].forEach((y,i)=>{const m=M(rr(T,1.5,1,.2),.1,.05,mat(i*.06-.06));m.position.set(0,y,i*.18);m.rotation.x=-.9;g.add(m)});
+  else if(kind==='pen'){g.add(M(poly(T,[[0,1.3],[.5,.35],[.36,-.95],[0,-1.3],[-.36,-.95],[-.5,.35]]),.34,.1,mat2(0)));const b=M(rr(T,1.2,.34,.12),.5,.08,mat(0));b.position.set(0,.1,0);g.add(b);const tip=new T.Mesh(new T.SphereGeometry(.1,16,16),mat(.1));tip.position.set(0,-1.2,.2);g.add(tip)}
+  else if(kind==='puzzle'){g.add(M(rr(T,1.4,1.4,.16),.3,.09,mat(0)));const k1=new T.Mesh(new T.CylinderGeometry(.26,.26,.3,24),mat(0));k1.rotation.x=Math.PI/2;k1.position.set(0,.82,0);g.add(k1);const k2=k1.clone();k2.rotation.set(0,0,Math.PI/2);k2.rotation.x=Math.PI/2;k2.position.set(.82,0,0);g.add(k2)}
+  else if(kind==='calendar'){g.add(M(rr(T,1.6,1.5,.18),.3,.09,mat(.38)));const top=M(rr(T,1.6,.5,.14),.34,.06,mat2(0));top.position.set(0,.5,.02);g.add(top);[-.45,.45].forEach(x=>{const r=new T.Mesh(new T.CylinderGeometry(.07,.07,.6,12),mat(.1));r.position.set(x,.8,.12);g.add(r)});const dot=M(rr(T,.55,.55,.1),.14,.04,mat(0));dot.position.set(0,-.2,.18);g.add(dot)}
+  else if(kind==='pages')[-.22,0,.22].forEach((o,i)=>{const m=M(rr(T,1.3,1.7,.1),.08,.04,i==2?mat(.3):mat2(.08+i*.06));m.position.set(o,-o*.6,i*.2);m.rotation.z=-.12+i*.1;g.add(m)});
+  else if(kind==='squircle')g.add(M(rr(T,1.6,1.6,.5),.34,.1,mat(0)));
+  else if(kind==='star')g.add(M(poly(T,[0,1,2,3,4,5,6,7,8,9].map(i=>{const r=i%2?.5:1.15,a=Math.PI/2+i*Math.PI/5;return[Math.cos(a)*r,Math.sin(a)*r]})),.3,.09,mat(0)));
+  else if(kind==='check')g.add(M(poly(T,[[-1.1,.05],[-.75,.4],[-.3,-.05],[.75,1],[1.1,.65],[-.3,-.8]]),.3,.09,mat(0)));
+  else if(kind==='cube'){const m=new T.Mesh(new T.BoxGeometry(1.5,1.5,1.5),mat(0));m.rotation.set(.5,.7,0);g.add(m)}
+  else if(kind.endsWith('.glb'))return g;
+  else g.add(M(rr(T,1.7,1.1,.22),.18,.08,mat(0)));
   return g};
-window.__hf.buildReady['@ID@']=window.__hfThree.then(T=>{
+const loadGlb=async(T,g)=>{const {GLTFLoader}=await import('https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/loaders/GLTFLoader.js/+esm');const r=await new GLTFLoader().loadAsync('@KIND@');
+  const m=r.scene,bb=new T.Box3().setFromObject(m),sz=bb.getSize(new T.Vector3()),c=bb.getCenter(new T.Vector3());m.position.sub(c);m.scale.setScalar(2.2/Math.max(sz.x,sz.y,sz.z,1e-6));g.add(m)};
+window.__hf.buildReady['@ID@']=window.__hfThree.then(async T=>{
   const rd=new T.WebGLRenderer({canvas:cv,alpha:true,antialias:true,preserveDrawingBuffer:true});rd.setPixelRatio(1);rd.setSize(S,S,false);
-  const sc=new T.Scene(),cam=new T.PerspectiveCamera(30,1,.1,50),o=build(T);cam.position.set(0,0,6.4);
+  const sc=new T.Scene(),cam=new T.PerspectiveCamera(30,1,.1,50),o=build(T);cam.position.set(0,0,6.4);if('@KIND@'.endsWith('.glb'))await loadGlb(T,o);
   sc.add(new T.HemisphereLight(0xffffff,0x9a9ad8,2.2));const a=new T.DirectionalLight(0xffffff,2.6);a.position.set(-2,3,4);sc.add(a);
   const b=new T.DirectionalLight(0xdfe0ff,1.1);b.position.set(3,-1,2);sc.add(b);sc.add(o);
   R=()=>{const t=tl.time()-AT,e=@SEED@;o.visible=st.s>.001;o.scale.setScalar(Math.max(st.s,.001));o.position.y=Math.sin(t*2.1+e)*.08;
@@ -964,12 +993,18 @@ def scene3d(p, build, d, x=0, y=0, w=None, h=None, at=0.0, fov=35, dist=8, fog=N
     return html, js
 
 
-def obj3d(p, kind, x, y, size=520, at=0.0, d=2.4, color=None, spin=False, tilt=0.0, seed=0.0, k='o3'):
-    """Objeto 3D flutuante com centro em (x,y) px. kind: cursor|card|layers|bolt. Entra em `at`, sai em at+d. Use dentro de both()."""
-    assert kind in ('cursor', 'card', 'layers', 'bolt'), kind
+OBJ3D_KINDS = ('cursor', 'card', 'layers', 'bolt', 'pen', 'puzzle', 'calendar', 'pages', 'squircle', 'star', 'check', 'cube')
+
+def obj3d(p, kind, x, y, size=520, at=0.0, d=2.4, color=None, spin=False, tilt=0.0, seed=0.0, k='o3', color2='#1E1E1E'):
+    """Objeto 3D flutuante com centro em (x,y) px, chanfro e material brilhante em dois tons (color = cor da marca, color2 = detalhe).
+    kind: cursor|card|layers|bolt|pen|puzzle|calendar|pages|squircle|star|check|cube, ou o caminho de um .glb (assets/3d/, assets/lib/3d/),
+    carregado com GLTFLoader e ajustado ao quadro (materiais do arquivo). Entra em `at`, sai em at+d. Use dentro de both(); 260-340 px ao lado da cabeça."""
+    assert kind in OBJ3D_KINDS or kind.endswith('.glb'), f'{kind}: use {", ".join(OBJ3D_KINDS)} ou um .glb'
+    if kind.endswith('.glb'): assert os.path.exists(kind), f'{kind} não existe (ver assets/manifest.json e assets/lib/3d/)'
+
     i = f'{p}-{k}'
     html = f'<canvas id="{i}" width="{size}" height="{size}" {AO} style="position:absolute;left:{x - size / 2:.0f}px;top:{y - size / 2:.0f}px;width:{size}px;height:{size}px;opacity:{0 if at > 0 else 1}"></canvas>'
-    code = (_OBJ3D.replace('@ID@', i).replace('@SIZE@', str(size)).replace('@COLOR@', color or '#6f6fc9').replace('@KIND@', kind)
+    code = (_OBJ3D.replace('@ID@', i).replace('@SIZE@', str(size)).replace('@COLOR@', color or '#6f6fc9').replace('@COLOR2@', color2).replace('@KIND@', kind)
             .replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}').replace('@SEED@', f'{seed:.2f}')
             .replace('@SPIN@', 'true' if spin else 'false').replace('@TILT@', f'{tilt:.2f}'))
     js = (f'tl.set("#{i}",{{opacity:0}},0);' if at > 0 else '') + f'tl.set("#{i}",{{opacity:1}},{at:.2f});tl.set("#{i}",{{opacity:0}},{at + d:.2f});{code}'
@@ -1392,4 +1427,81 @@ def light_field(p, color=AMB, at=0.0, d_in=.5, hold=.3, d_out=1.1, k='lf'):
             f'background:radial-gradient(ellipse closest-side,{color} 0%,{color} 40%,rgba(0,0,0,0) 100%)"></div>')
     js = (f'tl.fromTo("#{p}-{k}",{{scale:.4,opacity:0}},{{scale:1.25,opacity:1,duration:{d_in},ease:"expo.out"}},{at:.2f});'
           f'tl.to("#{p}-{k}",{{scale:1.6,opacity:0,duration:{d_out},ease:"power2.in"}},{at + d_in + hold:.2f});')
+    return html, js
+
+
+# ---- props de editor e mockups (estilos de produto: Insula Build) ----
+def device(p, src, kind, x, y, w, at=0.0, ry=-18, rx=6, rz=-2, d=None, k='dv'):
+    """Celular ou laptop em perspectiva 3D com um print dentro (ref_site/top_mobile.png, top_desktop.png ou assets/img/...).
+    kind='phone'|'laptop'; x, y = canto superior esquerdo; w = largura do aparelho em px. Entra girando com mola e flutua; d = segundos até sair."""
+    assert kind in ('phone', 'laptop'), kind
+    i = f'{p}-{k}'
+    if kind == 'phone':
+        h = w * 2.05
+        body = (f'<div style="width:{w:.0f}px;height:{h:.0f}px;border-radius:{w * .16:.0f}px;background:#111;padding:{w * .04:.0f}px;box-shadow:inset 0 0 0 2px #333">'
+                f'<img src="{src}" style="display:block;width:100%;height:100%;object-fit:cover;object-position:top;border-radius:{w * .12:.0f}px"></div>')
+    else:
+        h = w * .72
+        body = (f'<div style="width:{w:.0f}px;height:{w * .62:.0f}px;border-radius:{w * .035:.0f}px {w * .035:.0f}px 0 0;background:#111;padding:{w * .02:.0f}px {w * .02:.0f}px 0;box-shadow:inset 0 0 0 2px #333">'
+                f'<img src="{src}" style="display:block;width:100%;height:100%;object-fit:cover;object-position:top;border-radius:{w * .015:.0f}px {w * .015:.0f}px 0 0"></div>'
+                f'<div style="width:{w * 1.16:.0f}px;height:{w * .05:.0f}px;margin-left:{-w * .08:.0f}px;border-radius:0 0 {w * .03:.0f}px {w * .03:.0f}px;background:linear-gradient(#d9d9df,#b9b9c2)"></div>')
+    html = (f'<div {AO} style="position:absolute;left:{x}px;top:{y}px;width:{w * 1.2:.0f}px;height:{h + 20:.0f}px;perspective:1600px">'
+            f'<div id="{i}" style="position:absolute;left:0;top:0;transform-style:preserve-3d;filter:drop-shadow(0 40px 50px rgba(20,16,60,.35));opacity:0">{body}</div></div>')
+    js = (f'tl.fromTo("#{i}",{{opacity:0,y:70,rotationY:{ry - 28},rotationX:{rx},rotationZ:{rz}}},{{opacity:1,y:0,rotationY:{ry},rotationX:{rx},rotationZ:{rz},duration:.7,ease:"back.out(1.4)"}},{at:.2f});'
+          f'tl.to("#{i}",{{y:-14,rotationY:{ry + 4},duration:1.8,ease:"sine.inOut",repeat:5,yoyo:true}},{at + .7:.2f});')
+    if d is not None: js += f'tl.to("#{i}",{{opacity:0,y:40,duration:.3,ease:"power2.in"}},{at + d - .3:.2f});'
+    return html, js
+
+
+def ruler(p, at=0.0, color='#8d8d96', step=20, label=200, d=None, k='ru'):
+    """Réguas de editor no topo e na esquerda (ticks a cada `step` px, número a cada `label`). Vai em front; some em at+d."""
+    i = f'{p}-{k}'
+    ticks, nums = [], []
+    for x in range(0, W + 1, step):
+        big = x % label == 0
+        ticks.append(f'<line x1="{x}" y1="0" x2="{x}" y2="{16 if big else 8}"/><line x1="0" y1="{x}" x2="{16 if big else 8}" y2="{x}"/>' if x <= H else f'<line x1="{x}" y1="0" x2="{x}" y2="{16 if big else 8}"/>')
+        if big and x: nums.append(f'<text x="{x + 4}" y="30">{x}</text><text x="20" y="{x + 4}" transform="rotate(-90 20 {x + 4})">{x}</text>' if x <= H else f'<text x="{x + 4}" y="30">{x}</text>')
+    for y in range(W + step, H + 1, step):
+        big = y % label == 0
+        ticks.append(f'<line x1="0" y1="{y}" x2="{16 if big else 8}" y2="{y}"/>')
+        if big: nums.append(f'<text x="20" y="{y + 4}" transform="rotate(-90 20 {y + 4})">{y}</text>')
+    html = (f'<svg id="{i}" {AO} data-layout-decor viewBox="0 0 {W} {H}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;font:500 15px Aspekta,sans-serif;fill:{color}">'
+            f'<rect x="0" y="0" width="{W}" height="36" fill="rgba(255,255,255,.55)"/><rect x="0" y="0" width="36" height="{H}" fill="rgba(255,255,255,.55)"/>'
+            f'<g stroke="{color}" stroke-width="1.5">{"".join(ticks)}</g>{"".join(nums)}</svg>')
+    js = f'tl.fromTo("#{i}",{{opacity:0}},{{opacity:1,duration:.4,ease:"power2.out"}},{at:.2f});'
+    if d is not None: js += f'tl.to("#{i}",{{opacity:0,duration:.25}},{at + d - .25:.2f});'
+    return html, js
+
+
+def arrow(p, x1, y1, x2, y2, at=0.0, color='#E53935', dur=.5, width=7, d=None, k='ar'):
+    """Seta vermelha desenhada à mão de (x1,y1) para (x2,y2): traço levemente curvo que se desenha em `dur` s, ponta por último."""
+    import math
+    i = f'{p}-{k}'
+    dx, dy, L = x2 - x1, y2 - y1, max(math.hypot(x2 - x1, y2 - y1), 1)
+    cx, cy = (x1 + x2) / 2 - dy / L * L * .12, (y1 + y2) / 2 + dx / L * L * .12          # controle fora do eixo: curva de caneta
+    ang = math.atan2(y2 - cy, x2 - cx); hl = max(22, width * 4)
+    hx1, hy1 = x2 - hl * math.cos(ang - .5), y2 - hl * math.sin(ang - .5)
+    hx2, hy2 = x2 - hl * math.cos(ang + .5), y2 - hl * math.sin(ang + .5)
+    html = (f'<svg {AO} viewBox="0 0 {W} {H}" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">'
+            f'<path id="{i}" d="M{x1:.0f} {y1:.0f} Q{cx:.0f} {cy:.0f} {x2:.0f} {y2:.0f}" fill="none" stroke="{color}" stroke-width="{width}" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>'
+            f'<path id="{i}h" d="M{hx1:.0f} {hy1:.0f} L{x2:.0f} {y2:.0f} L{hx2:.0f} {hy2:.0f}" fill="none" stroke="{color}" stroke-width="{width}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>')
+    js = (f'tl.to("#{i}",{{strokeDashoffset:0,duration:{dur},ease:"power2.inOut"}},{at:.2f});'
+          f'tl.to("#{i}h",{{strokeDashoffset:0,duration:{dur * .35:.2f},ease:"power2.out"}},{at + dur * .85:.2f});')
+    if d is not None: js += f'tl.to(["#{i}","#{i}h"],{{opacity:0,duration:.25}},{at + d - .25:.2f});'
+    return html, js
+
+
+def select_box(p, x, y, w, h, label='', at=0.0, color=None, guides=True, d=None, k='sb'):
+    """Caixa de seleção de editor: borda na cor, 8 alças brancas, etiqueta escura (ex. 'X 636 · Y 1303') e linhas-guia até as bordas."""
+    color = color or RED
+    i = f'{p}-{k}'
+    hs = ''.join(f'<div style="position:absolute;left:{hx}%;top:{hy}%;width:14px;height:14px;margin:-7px;background:#fff;border:2px solid {color};border-radius:3px"></div>'
+                 for hx in (0, 50, 100) for hy in (0, 50, 100) if not (hx == 50 and hy == 50))
+    g = (f'<div style="position:absolute;left:{x + w / 2:.0f}px;top:0;width:1px;height:{H}px;background:{color};opacity:.35"></div>'
+         f'<div style="position:absolute;left:0;top:{y + h / 2:.0f}px;width:{W}px;height:1px;background:{color};opacity:.35"></div>') if guides else ''
+    lb = f'<div style="position:absolute;left:0;top:-44px;padding:6px 12px;border-radius:8px;background:#1E1E1E;color:#fff;font:600 20px Aspekta,sans-serif;white-space:nowrap">{label}</div>' if label else ''
+    html = (f'<div id="{i}" {AO} style="position:absolute;inset:0;opacity:0">{g}'
+            f'<div style="position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;border:3px solid {color};border-radius:4px">{hs}{lb}</div></div>')
+    js = f'tl.fromTo("#{i}",{{opacity:0,scale:1.04}},{{opacity:1,scale:1,duration:.35,ease:"power3.out"}},{at:.2f});'
+    if d is not None: js += f'tl.to("#{i}",{{opacity:0,duration:.25}},{at + d - .25:.2f});'
     return html, js

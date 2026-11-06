@@ -1,4 +1,5 @@
-// B-roll sources: search and download for Pexels, Pixabay and Wikimedia Commons. All three are free and carry a stated license.
+// Asset sources: search and download for Pexels, Pixabay, Wikimedia Commons, Openverse (CC images), Iconify (SVG icons) and Poly Pizza (CC0 3D models).
+// Every result carries a stated license.
 // Artlist and Higgsfield are not here: they have no public search/download API that we could confirm; see keys.ts.
 import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -7,7 +8,7 @@ import { getKey } from './keys.ts';
 import { UserError } from './pipeline.ts';
 import type { Rights } from './edits.ts';
 
-export type Kind = 'video' | 'image';
+export type Kind = 'video' | 'image' | 'model';   // model: a .glb for three.js (obj3d in kit.py)
 export interface Candidate {
   provider: string; id: string; kind: Kind; title: string; author: string;
   license: string; pageUrl: string; previewUrl: string; downloadUrl: string;
@@ -75,12 +76,49 @@ const commons: Source = {
   },
 };
 
-export const SOURCES: Source[] = [pexels, pixabay, commons];
+// Openverse indexes CC and public-domain images from many hosts (Flickr, Wikimedia, museums); the file URL is on the original host.
+// shortcut: hosts is open because the image lives wherever Openverse indexed it; tighten if the download ever goes beyond https
+const openverse: Source = {
+  id: 'openverse', needsKey: false, hosts: /./,
+  async search(q, kind, limit) {
+    if (kind !== 'image') return [];
+    const j = await getJson(`https://api.openverse.org/v1/images/?${qs({ q, page_size: Math.min(limit, 20), license_type: 'commercial,modification' })}`);
+    return (j.results ?? []).filter((r: any) => r.url).map((r: any): Candidate => ({ provider: 'openverse', id: String(r.id), kind, title: r.title || q, author: r.creator || 'desconhecido',
+      license: `CC ${String(r.license).toUpperCase()}${r.license_version ? ` ${r.license_version}` : ''}`, pageUrl: r.foreign_landing_url || r.url, previewUrl: r.thumbnail || r.url, downloadUrl: r.url, width: r.width, height: r.height }));
+  },
+};
+
+// Iconify: 200k SVG icons in sets, each set with its own license; the SVG is rendered by the API (color and size in the query).
+const iconify: Source = {
+  id: 'iconify', needsKey: false, hosts: /^api\.iconify\.design$/,
+  async search(q, kind, limit) {
+    if (kind !== 'image') return [];
+    const j = await getJson(`https://api.iconify.design/search?${qs({ query: q, limit: Math.max(32, limit) })}`);
+    return (j.icons ?? []).slice(0, limit).map((name: string): Candidate => {
+      const [prefix, icon] = name.split(':'), col = j.collections?.[prefix] ?? {};
+      return { provider: 'iconify', id: name, kind, title: `${col.name ?? prefix} / ${icon}`, author: col.author?.name ?? prefix, license: col.license?.title ?? 'ver coleção',
+        pageUrl: `https://icon-sets.iconify.design/${prefix}/${icon}/`, previewUrl: `https://api.iconify.design/${prefix}/${icon}.svg?height=128`, downloadUrl: `https://api.iconify.design/${prefix}/${icon}.svg?height=512`, width: 512, height: 512 };
+    });
+  },
+};
+
+// Poly Pizza: low-poly CC0 / CC-BY models as .glb (free key from poly.pizza/settings/api). Field names follow the v1.1 API.
+const polypizza: Source = {
+  id: 'polypizza', needsKey: true, hosts: /(^|\.)poly\.pizza$/,
+  async search(q, kind, limit, key) {
+    if (kind !== 'model') return [];
+    const j = await getJson(`https://api.poly.pizza/v1.1/search/${encodeURIComponent(q)}?${qs({ Limit: limit })}`, { 'X-Auth-Token': key! });
+    return (j.results ?? []).filter((r: any) => r.Download).map((r: any): Candidate => ({ provider: 'polypizza', id: String(r.ID ?? r.id), kind, title: r.Title ?? q, author: r.Creator?.Username ?? '',
+      license: r.Licence ?? r.License ?? 'CC0', pageUrl: `https://poly.pizza/m/${r.ID ?? r.id}`, previewUrl: r.Thumbnail ?? '', downloadUrl: r.Download }));
+  },
+};
+
+export const SOURCES: Source[] = [pexels, pixabay, commons, openverse, iconify, polypizza];
 
 /** Searches every source that has a key (Commons always). One source failing does not hide the others. */
 export async function search(q: unknown, opts: { kind?: Kind; providers?: string[]; limit?: number } = {}) {
   if (typeof q !== 'string' || !q.trim()) throw new UserError('query is empty');
-  const kind = opts.kind === 'image' ? 'image' : 'video', limit = Math.min(Math.max(opts.limit ?? 8, 1), 20);
+  const kind: Kind = opts.kind === 'image' || opts.kind === 'model' ? opts.kind : 'video', limit = Math.min(Math.max(opts.limit ?? 8, 1), 20);
   const wanted = SOURCES.filter(s => !opts.providers || opts.providers.includes(s.id));
   if (!wanted.length) throw new UserError('no known provider in the list');
   const errors: Record<string, string> = {}, results: Candidate[] = [];
@@ -106,7 +144,7 @@ export async function download(c: Candidate, dest: string) {
 }
 
 // ---- from a candidate to a clip in the lower band of the frame ----
-const MEDIA_RE = /\.(mp4|webm|mov|jpe?g|png|webp)$/i;
+const MEDIA_RE = /\.(mp4|webm|mov|jpe?g|png|webp|svg|glb)$/i;
 /** The file extension the composition can play; null for anything else (ogv and the like are skipped). */
 export const extOf = (c: Candidate) => { try { return MEDIA_RE.exec(new URL(c.downloadUrl).pathname)?.[0].toLowerCase() ?? null; } catch { return null; } };
 
@@ -119,7 +157,7 @@ export function pick(cands: Candidate[], need: number): Candidate | undefined {
 
 /** Pexels and Pixabay state their license; Commons does per file, and anything that is not CC or public domain stays flagged. */
 export function rightsOf(c: Candidate): Rights {
-  const ok = c.provider !== 'commons' || /^(CC[ -]|CC0|public domain|PD)/i.test(c.license);
+  const ok = !['commons', 'openverse'].includes(c.provider) || /^(CC[ -]|CC0|public domain|PD)/i.test(c.license);
   return { status: ok ? 'licensed' : 'unlicensed', source: c.provider, license: c.license.slice(0, 300), author: c.author.slice(0, 300), url: c.pageUrl.slice(0, 300) };
 }
 
