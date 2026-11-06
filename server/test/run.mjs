@@ -7,7 +7,7 @@ import { PYTHON } from '../host.ts';
 
 const env = { ...process.env, WORKSPACE: mkdtempSync(join(tmpdir(), 'editor-test-')) };
 const runs = [[process.execPath, ['--test', 'test/']],
-  ...['test_transcribe', 'test_anim', 'test_kit_lint', 'test_pace', 'test_joins'].map(t => [PYTHON, [`test/${t}.py`]])];
+  ...['test_transcribe', 'test_kit_lint', 'test_pace', 'test_joins'].map(t => [PYTHON, [`test/${t}.py`]])];
 for (const [cmd, args] of runs) {
   const r = spawnSync(cmd, args, { stdio: 'inherit', env });
   if (r.status !== 0) process.exit(r.status ?? 1);

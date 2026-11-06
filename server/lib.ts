@@ -57,27 +57,6 @@ export function pickFormats(f: unknown): string[] | null {
 // Path segments that come from a URL or a request body (project, brand, icon ids).
 export const safeId = (s: unknown): s is string => typeof s === 'string' && /^[\w][\w.-]{0,80}$/.test(s) && !s.includes('..');
 
-// Batch edit of edit.json, the part that needs no model. Accent marks and field edits go first, while the indices are still the
-// ones the person saw; deletions go last (deleteCards), highest index first, so the other cards keep their place.
-export type EditItem = { type: string; cardIndex?: number; card?: any; captionIndex?: number; wordIndex?: number; accent?: boolean };
-export function applyDirectEdits(edit: any, items: EditItem[]) {
-  for (const it of items) {
-    if (it.type === 'word_accent') {
-      const cap = edit.captions?.[Number(it.captionIndex)], wi = Number(it.wordIndex);
-      if (!cap?.words?.[wi]) continue;
-      if (it.accent !== false) for (const w of cap.words) w.accent = false;   // spec: one accent word per caption
-      cap.words[wi].accent = it.accent !== false;
-    } else if (it.type === 'card_edit') {
-      const idx = Number(it.cardIndex);
-      if (edit.cards?.[idx] && it.card) edit.cards[idx] = { ...edit.cards[idx], ...it.card };
-    }
-  }
-}
-export function deleteCards(edit: any, items: EditItem[]) {
-  const idx = [...new Set(items.filter(i => i.type === 'card_delete').map(i => Number(i.cardIndex)))].sort((a, b) => b - a);
-  for (const i of idx) if (i >= 0 && i < edit.cards.length) edit.cards.splice(i, 1);
-}
-
 // Cut-out windows of a format (format.json "cutWindows": {head, mid: [a, b], tail}, seconds): the speaker is cut out only there,
 // the rest of the reel shows him in a panel or not at all. Clipped to the clip and merged when they touch; null = cut out everywhere.
 export type CutWindows = { head?: number; mid?: [number, number]; tail?: number };

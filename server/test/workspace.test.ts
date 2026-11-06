@@ -118,7 +118,7 @@ test('completeProject marks project as completed and clears requiresHumanConfirm
   assert.equal(overview?.requiresHumanConfirmation, true);
 });
 
-test('review notes are checked, live files stay inside proj/, and an open note blocks the final render', async () => {
+test('review notes are checked, live files stay inside compose/, and an open note blocks the final render', async () => {
   const clip = join(tmp, 'review.mp4');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
   const st = await P.createProject({ name: 'Review', video: clip, preEdited: true, brand: 'padrao' });
@@ -131,9 +131,9 @@ test('review notes are checked, live files stay inside proj/, and an open note b
   const g = P.putReviewNotes(st.id, [...r.notes, { id: 'g', t: 0, all: true, text: 'tire o grão' }], r.version);   // a whole-video note keeps its flag
   assert.deepEqual(g.notes[1], { id: 'g', t: 0, all: true, text: 'tire o grão', status: 'open' });
   P.putReviewNotes(st.id, r.notes, g.version);
-  mkdirSync(join(P.WS, 'projects', st.id, 'proj'));
-  writeFileSync(join(P.WS, 'projects', st.id, 'proj', 'index.html'), '<html></html>');
-  assert.ok(P.liveFile(st.id, 'index.html').endsWith('/proj/index.html'));
+  mkdirSync(join(P.WS, 'projects', st.id, 'compose'));
+  writeFileSync(join(P.WS, 'projects', st.id, 'compose', 'index.html'), '<html></html>');
+  assert.ok(P.liveFile(st.id, 'index.html').endsWith('/compose/index.html'));
   assert.throws(() => P.liveFile(st.id, '../state.json'), /no \.\.\/state\.json/);
   await assert.rejects(P.final(st.id, ['9:16']), /1 anotação/);
   // approval: refused with an open note; final refuses without it; a stale version (another tab) cannot overwrite the notes
@@ -146,42 +146,6 @@ test('review notes are checked, live files stay inside proj/, and an open note b
 });
 // the approval the final render needs, written straight into state.json (approveReview needs a live composition)
 const approve = (id: string) => { const f = join(P.WS, 'projects', id, 'state.json'); writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), approvedAt: 1 })); };
-
-test('illustration styles come from compose/estilos and a project keeps the one chosen at creation', async () => {
-  const styles = P.listStyles();
-  assert.ok(styles.some(s => s.id === 'silkscreen-poster') && styles.every(s => s.name && s.line && s.fit), JSON.stringify(styles));
-  // every pack keeps the shape the composer is told to expect: the 11 sections, the credit line and sounds that exist
-  const COMPOSE_DIR = join(import.meta.dirname, '../../claude-reel-editor/skills/reel-editor/compose');
-  const sfx = Object.keys(JSON.parse(readFileSync(join(COMPOSE_DIR, 'sfx/manifest.json'), 'utf8')));
-  for (const st of styles) {
-    const md = readFileSync(join(COMPOSE_DIR, 'estilos', `${st.id}.md`), 'utf8');
-    for (let n = 1; n <= 11; n++) assert.match(md, new RegExp(`^## ${n}\\. `, 'm'), `${st.id}: falta a seção ${n}`);
-    assert.match(md, /Adaptado de `lemo-opuscar|^> Referências?:/m, `${st.id}: sem crédito ou referência`);
-    const sons = (md.match(/^## 9\. [^]*?(?=^## 10\.)/m)?.[0] ?? '').match(/`([a-z0-9-]+)`/g)?.map(x => x.slice(1, -1)) ?? [];
-    for (const x of sons) if (/^(chime|click|error|glitch|impact|key|notification|ping|pop|riser|sparkle|typing|whoosh)/.test(x)) assert.ok(sfx.includes(x), `${st.id}: som ${x} não existe em sfx/manifest.json`);
-  }
-  const clip = join(tmp, 'style_test.mp4');
-  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
-  const st = await P.createProject({ name: 'Style Test', video: clip, preEdited: true, brand: 'padrao', composerMode: 'agent', style: 'silkscreen-poster' });
-  assert.equal(P.getProject(st.id).style, 'silkscreen-poster');
-  await assert.rejects(P.createProject({ name: 'Style Bad', video: clip, preEdited: true, brand: 'padrao', style: 'nope' }), /estilo/);
-});
-
-test('composerMode can be set at creation and toggled via setComposerMode', async () => {
-  const clip = join(tmp, 'agent_mode.mp4');
-  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=1:s=160x120:r=30', '-y', clip]);
-  const st1 = await P.createProject({ name: 'Agent Test', video: clip, preEdited: true, brand: 'padrao', composerMode: 'agent' });
-  const p1 = P.getProject(st1.id);
-  assert.equal(p1.composerMode, 'agent');
-  assert.equal(p1.composed, true);
-
-  const res1 = P.setComposerMode(st1.id, 'card');
-  assert.equal(res1.ok, true);
-  assert.equal(res1.composerMode, 'card');
-  const p1Updated = P.getProject(st1.id);
-  assert.equal(p1Updated.composerMode, 'card');
-  assert.equal(p1Updated.composed, true);   // v8: the mode is kept in the state but every reel is composed by the agent
-});
 
 test('compose copies are gitignored at creation, and an old project drops its tracked copies from the index', async () => {
   const clip = join(tmp, 'ignore.mp4');

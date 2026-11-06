@@ -8,7 +8,6 @@ import * as K from './keys.ts';
 import * as B from './broll.ts';
 import * as V from './voice.ts';
 import * as C from './cortes.ts';
-import * as S from './style_sheets.ts';
 
 process.chdir(import.meta.dirname);
 
@@ -34,7 +33,6 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['DELETE', /^\/settings\/keys\/([^/]+)$/, m => K.deleteKey(m[1])],
   ['POST', /^\/settings\/keys\/([^/]+)\/test$/, m => K.testKey(m[1])],
   ['GET', /^\/formats$/, () => P.listFormats()],
-  ['GET', /^\/illustration-styles$/, () => P.listStyles()],
   ['GET', /^\/styles$/, () => P.listMotionStyles()],
   ['GET', /^\/styles\/([^/]+)$/, m => P.getStyle(m[1])],
   ['POST', /^\/styles\/([^/]+)\/refine$/, (m, b) => P.refineStyle(m[1], b)],
@@ -53,7 +51,6 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/brands\/clone$/, (_, b) => P.cloneBrandWithOpus(b)],
   ['GET', /^\/brands\/([^/]+)$/, m => P.getBrand(m[1])],
   ['PUT', /^\/brands\/([^/]+)$/, (m, b) => P.updateBrand(m[1], b.brand, b.md)],
-  ['POST', /^\/brands\/test$/, (_, b) => P.testClip(b.brand, b.project)],
   ['GET', /^\/brands\/([^/]+)\/md$/, m => P.getBrandMd(m[1])],
   ['POST', /^\/brands\/([^/]+)\/sync-md$/, (m, b) => P.syncBrandMarkdown(m[1], b.md)],
   ['GET', /^\/projects\/overview$/, () => P.listProjectsOverview()],
@@ -79,20 +76,13 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/projects\/([^/]+)\/brand$/, (m, b) => P.brandStep(m[1], b)],
   ['POST', /^\/projects\/([^/]+)\/brand\/save-default$/, m => P.saveBrandDefault(m[1])],
   ['POST', /^\/projects\/([^/]+)\/motion$/, m => P.motion(m[1])],
-  ['POST', /^\/projects\/([^/]+)\/broll$/, m => P.brollFill(m[1])],
-  ['POST', /^\/projects\/([^/]+)\/composer-mode$/, (m, b) => P.setComposerMode(m[1], b?.mode ?? 'agent')],
   ['PUT', /^\/projects\/([^/]+)\/style$/, (m, b) => P.setStyle(m[1], b?.styleId)],
-  ['POST', /^\/projects\/([^/]+)\/preview$/, m => P.renderPreview(m[1])],
-  ['PUT', /^\/projects\/([^/]+)\/edit$/, (m, b) => P.putEdit(m[1], b)],
-  ['POST', /^\/projects\/([^/]+)\/batch$/, (m, b) => P.batchEdit(m[1], b)],
-  ['POST', /^\/projects\/([^/]+)\/cards\/(\d+)\/ask$/, (m, b) => P.askCard(m[1], Number(m[2]), b.instruction)],
   ['POST', /^\/projects\/([^/]+)\/final$/, (m, b) => P.final(m[1], b?.formats)],
   ['POST', /^\/projects\/([^/]+)\/formats$/, (m, b) => P.setFormats(m[1], b?.formats)],
   ['POST', /^\/projects\/([^/]+)\/complete$/, (m, b) => P.completeProject(m[1], b?.completed ?? true)],
   ['GET', /^\/projects\/([^/]+)\/review$/, m => P.getReview(m[1])],
   ['PUT', /^\/projects\/([^/]+)\/review$/, (m, b) => P.putReviewNotes(m[1], b.notes, b.version)],
   ['POST', /^\/projects\/([^/]+)\/review\/apply$/, m => P.applyReview(m[1])],
-  ['POST', /^\/projects\/([^/]+)\/review\/build$/, m => P.buildReview(m[1])],
   ['GET', /^\/projects\/([^/]+)\/layers$/, m => P.getLayers(m[1])],
   ['PUT', /^\/projects\/([^/]+)\/layers$/, (m, b) => P.putLayers(m[1], b)],
   ['POST', /^\/projects\/([^/]+)\/media$/, (m, b) => P.addMedia(m[1], b.path)],
@@ -162,14 +152,6 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && lv) return file(P.liveFile(decodeURIComponent(lv[1]), decodeURIComponent(lv[2])), req, res);
     const hf = path.match(/^\/hf\/([^/]+)$/);
     if (req.method === 'GET' && hf) return file(P.hfFile(hf[1]), req, res);
-    const tc = path.match(/^\/tests\/([^/]+)\/final\.mp4$/);
-    if (req.method === 'GET' && tc) return file(P.testFile(decodeURIComponent(tc[1])), req, res);
-    const is = path.match(/^\/illustration-styles\/([^/]+)\/(sheet\.png|md)$/);
-    if (req.method === 'GET' && is && is[2] === 'md') return res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(readFileSync(S.packFile(decodeURIComponent(is[1]))));
-    if (req.method === 'GET' && is) {   // awaits the render (one pack at a time, ~10 s each); 404 = pack without engine, nothing to draw
-      const png = await S.illustrationSheet(decodeURIComponent(is[1]));
-      return png ? file(png, req, res) : res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"estilo sem motor"}');
-    }
     const sr = path.match(/^\/styles\/([^/]+)\/refs\/([^/]+)$/);
     if (req.method === 'GET' && sr) return file(P.styleRefFile(decodeURIComponent(sr[1]), decodeURIComponent(sr[2])), req, res);
     const ff = path.match(/^\/brands\/([^/]+)\/fonts\/([^/]+)$/);

@@ -7,13 +7,13 @@ import { homedir } from 'node:os';
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { agent, ask, type Cost, MAX_TURNS_HIT } from './models.ts';
-import { applyDirectEdits, cutWindows, deleteCards, deepMerge, FORMATS, pickFormats, remapWords, safeId, shortcutPlan, spansFromWords, type Plan, type Word } from './lib.ts';
-import { CAPTION_PRESETS, CARD_TYPES, formatCardTypes, validateCaptionStyle, validateCard, validateFont, validateIcon } from './validate.ts';
+import { cutWindows, deepMerge, FORMATS, pickFormats, remapWords, safeId, shortcutPlan, spansFromWords, type Plan, type Word } from './lib.ts';
+import { CAPTION_PRESETS, validateCaptionStyle, validateFont, validateIcon } from './validate.ts';
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
 import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
 import { synthesize, synthesizeLong } from './voice.ts';
 import { carregarEmbrulho, compor, conferirCampos, extrairQuadro, listarEmbrulhos, precosDoSrt, renderCamadas, sugerirQuadros } from './embrulhos.ts';
-import { band, download as brollDownload, extOf, type Kind, pick as brollPick, rightsOf, search as brollSearch } from './broll.ts';
+import { download as brollDownload, extOf, type Kind, rightsOf, search as brollSearch } from './broll.ts';
 import { afterEffectsCmd, NPM, NPX, PYTHON, WIN } from './host.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -51,17 +51,13 @@ export interface BusyInfo {
 type State = {
   id: string; name: string; brand: string; formatId?: string; preEdited: boolean; subtitle?: string; referenceUrl?: string; extraReferenceUrls?: string[]; referenceNote?: string; userImages?: string[]; formats: string[];
   override: Record<string, unknown>; step: string; plan?: Plan; cost: Cost[]; qa?: { pass: boolean; report: string; summary?: string };
-  styleChosen?: string;   // illustration pack the director picked for this project (compose:estilo) when the user chose none
   running?: BusyInfo | null;
   workMs?: number;   // time AI and render steps held the lock, summed (human waiting between steps excluded)
   completed?: boolean;
   completedAt?: number;
   approvedAt?: number;   // the reviewer approved the AI composition (Revisão); cleared by any new AI pass, not by manual edits
-  composerMode?: 'agent' | 'card';
-  style?: string;                      // illustration style pack (compose/estilos/<id>.md) chosen at creation; none = the director picks
   styleId?: string;                    // motion style (workspace/styles/<id>/) chosen at creation or in Revisão; none = the director picks from the list in the brief
   character?: { name: string; pose?: string };   // animation-brandkit character standing in for the speaker (cutout.webm is built from its pose)
-  brollFill?: boolean;   // fill beats of the reel with stock b-roll in the lower band (see brollFill below)
 };
 
 // ---- progress (SSE) & persistent project logs ----------------------------------------------------------------------
@@ -141,7 +137,6 @@ const logCost = (st: State) => (c: Cost) => { st.cost.push(c); save(st); emit(st
 const STEP_ORDER = ['created', 'ingest', 'script', 'motion', 'final'];
 const stepRank = (step: string) => STEP_ORDER.indexOf(step === 'brand' ? 'script' : step);
 // The hex colours of a brand: the only ones a custom card may use.
-const paletteOf = (brand: any): string[] => Object.values(brand.colors ?? {}).filter((v): v is string => typeof v === 'string');
 
 // brand.json keeps font and icon files relative to the brand folder, so the workspace can move or the drive be renamed;
 // whatever reads a brand (getBrand) sees absolute paths, and saveBrand turns the ones inside the brand folder back.
@@ -985,30 +980,6 @@ function writeBrand(st: State) {
   return brand as any;
 }
 
-// "Testar no vídeo": render ~3 s of a real, already-edited project with this (unsaved) brand, no cards, no final pass.
-// Output is the same build_reel.py + HyperFrames path as a real render, so it is the truth the DOM preview only approximates.
-let testing = false;
-export const testFile = (id: string) => safeId(id) ? join(WS, 'tests', id, 'final.mp4') : fail('bad id');
-export async function testClip(brand: any, project?: string) {
-  checkBrand(brand);
-  if (testing) fail('já existe um teste em andamento');
-  const ok = (p: string) => ['master.mp4', 'edit.json'].every(f => existsSync(join(projDir(p), f)));
-  const id = (safeId(project) && ok(project) ? project : undefined) ?? listProjects().find(ok) ?? fail('nenhum projeto com vídeo editado para testar: rode até a etapa 4 uma vez');
-  testing = true;
-  try {
-    const src = projDir(id), T = join(WS, 'tests', id), edit = readJSON(join(src, 'edit.json'));
-    const caps = edit.captions as any[], t0 = Math.max(0, (caps[Math.floor(caps.length / 2)]?.start ?? 0) - 0.1), len = 3;
-    rmSync(T, { recursive: true, force: true }); mkdirSync(T, { recursive: true });
-    await run(id, 'ffmpeg', ['-v', 'error', '-y', '-ss', String(t0), '-t', String(len), '-i', join(src, 'master.mp4'), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', join(T, 'master.mp4')]);
-    const clip = caps.filter(c => c.end > t0 && c.start < t0 + len).map(c => ({ ...c, start: Math.max(0, +(c.start - t0).toFixed(2)), end: Math.min(len, +(c.end - t0).toFixed(2)),
-      words: c.words.map((w: any) => ({ ...w, t: Math.max(0, +(w.t - t0).toFixed(2)) })).filter((w: any) => w.t < len) }));
-    writeJSON(join(T, 'edit.json'), { captions: clip, punch: [], cards: [] });
-    writeJSON(join(T, 'brand.json'), brand);
-    await py(id, 'render.py', [T], { REELS_HOME: T });
-    return { file: `/tests/${id}/final.mp4`, project: id, from: t0 };
-  } finally { testing = false; }
-}
-
 // ---- picking the source ---------------------------------------------------------------------------------------------
 // The native macOS chooser returns the real path (no copy of a 2 GB clip); drops are streamed into workspace/uploads.
 export const expandHome = (p: string) => typeof p === 'string' && /^~(\/|$)/.test(p) ? join(homedir(), p.slice(1)) : p;
@@ -1072,20 +1043,6 @@ export const intake = (from: string, to: string) => from.startsWith(UPLOADS + se
 // ---- formats (Editor 7.0) --------------------------------------------------------------------------------------------
 // every format id comes from a URL or a request body, so the folder is only built from a safe id
 const formatDir = (f: string) => safeId(f) ? join(WS, "formats", f) : fail('format id: letters, digits, - and _ only');
-// Illustration style packs (compose/estilos/*.md, adapted from lemo-opuscar): the user may pick one at creation (it becomes
-// compose/ESTILO.md); otherwise the director chooses one from the index inside the treatment (DIRETOR.md §6).
-const STYLES_DIR = join(K_DIR, 'estilos');
-export function listStyles() {
-  return readdirSync(STYLES_DIR).filter(f => f.endsWith('.md') && f !== 'README.md').sort().map(f => {
-    const id = f.slice(0, -3), md = readFileSync(join(STYLES_DIR, f), 'utf8');
-    return { id, name: md.match(/^# (.+?)(?: \(.+\))?$/m)?.[1] ?? id, line: md.match(/^> (.+)$/m)?.[1] ?? '', fit: md.match(/\*\*Encaixe:\*\*(.+)$/m)?.[1]?.trim() ?? '' };
-  });
-}
-function styleId(s: string) {
-  if (!safeId(s) || !existsSync(join(STYLES_DIR, `${s}.md`))) fail(`estilo ${JSON.stringify(s)} não existe: use ${listStyles().map(x => x.id).join(', ')}`);
-  return s;
-}
-
 export function listFormats(): string[] {
   const p = join(WS, "formats");
   if (!existsSync(p)) return [];
@@ -1106,7 +1063,7 @@ export function getFormat(id: string) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-// Creative brief of the format picked on the first screen, appended to every model prompt that designs cards.
+// Creative brief of the format picked on the first screen, appended to the script prompt.
 // Brand rules stay the authority on look (colours, fonts, icons, tone); the format owns structure and rhythm.
 // reference.json of a landing-page reference, or null (video reference or none)
 function siteRef(st: State): any {
@@ -1115,14 +1072,6 @@ function siteRef(st: State): any {
   const r = readJSON(f);
   return r.isSite ? r : null;
 }
-// The agent composer (kit.py + HyperFrames, the hand-made workflow) runs for formats that ask for it, and for any cut-out
-// format with a site reference: the card pipeline cannot show the site's images, so it loses the art direction the site gives.
-// v8: every reel is composed by the agent; the card pipeline (motionCards, build_reel.py) stays in the code until the new
-// version is approved, but nothing routes to it (st.composerMode and format.composer are ignored).
-function usesAgent(_st: State): boolean {
-  return true;
-}
-
 // Absolute paths of the site screenshots and images, for prompts whose model can Read the project folder
 function siteFiles(id: string): string {
   const P = projDir(id), img = join(P, 'assets', 'img');
@@ -1241,49 +1190,6 @@ async function analyseVideoReference(id: string, st: State, url: string, P: stri
   writeJSON(out, res);
 }
 
-// ILUSTRACAO.md: the brand's illustration style guide (what a film studio's STYLE.md is), written once by Opus from the site
-// screenshots and images, kept in workspace/brands/<brand>/ and copied into every compose/. Regenerated when the source site changes.
-const illustrationJobs = new Map<string, Promise<string>>();   // one Opus call per brand at a time: the script step starts it, composeScaffold waits on the same run
-function ensureIllustrationStyle(id: string, st: State, log: (c: Cost) => void = logCost(st)): Promise<string> {
-  const key = `${st.brand}|${siteRef(st) ? st.referenceUrl : 'brand'}`;   // same brand, other site: another guide
-  const running = illustrationJobs.get(key);
-  if (running) return running;
-  const job = illustrationStyleNow(id, st, log).finally(() => { if (illustrationJobs.get(key) === job) illustrationJobs.delete(key); });
-  illustrationJobs.set(key, job);
-  return job;
-}
-async function illustrationStyleNow(id: string, st: State, log: (c: Cost) => void): Promise<string> {
-  const P = projDir(id), B = brandDir(st.brand), out = join(B, 'ILUSTRACAO.md'), meta = join(B, 'ilustracao.json');
-  const source = siteRef(st) ? st.referenceUrl! : 'brand';
-  if (existsSync(out) && existsSync(meta) && readJSON(meta).source === source) return out;
-  emit(id, 'log', `🎨 Escrevendo o guia de ilustração da marca (${source === 'brand' ? 'brand.md' : source})...`);
-  const brandMd = existsSync(join(P, 'brand.md')) ? readFileSync(join(P, 'brand.md'), 'utf8') : '';
-  const ref = existsSync(join(P, 'reference.json')) ? readJSON(join(P, 'reference.json')) : null;
-  const { markdown } = await ask<{ markdown: string }>('reference', 'reference:illustration', {
-    system: 'You are the illustration art director of a motion studio. Write ILUSTRACAO.md: the style guide a motion designer follows to DRAW the illustrations of this brand\'s reels in code ' +
-      '(Canvas 2D with ctx calls, and three.js scenes), the way a film studio writes a STYLE.md. Read the site screenshots and every image first: the style comes from what they show, not from their file names. ' +
-      'Write in Brazilian Portuguese, concrete and buildable (numbers, px, hex, ctx and three.js recipes), about 120 lines, with these sections: ' +
-      '1 Essência (e o que NÃO é: nunca pictograma de pessoa com cabeça redonda, nunca ícone de linha fina, nunca emoji, nunca balão de fala com texto de exemplo); ' +
-      '2 Materiais e render (como desenhar cada material em Canvas: pincel, papel, grão, contorno, duotone, sombra dura; receitas de ctx); ' +
-      '3 Lógica de cor (paleta por função: fundo, forma, acento, luz; o que nunca combina); 4 Linha e forma (silhuetas, proporções, espessuras em px, como simplificar um objeto real); ' +
-      '5 Luz e profundidade em 3D (material, luzes, sombra, fundo, câmera, para scene3d do kit); 6 Movimento nativo (como a ilustração entra, vive e sai: 6 moves próprios deste estilo); ' +
-      '7 Motivos (12 objetos e metáforas desta marca e do que ela vende, cada um com a receita de desenho em 2 linhas); 8 Armadilhas (o que faz parecer amador neste estilo). ' +
-      'Every illustration must be a specific object of the speech, drawn with material and light, never a generic symbol.',
-    readDir: P,
-    content: siteFiles(id) + (ref ? `
-Site analysis:
-${Object.entries(ref).map(([k, v]) => `- ${k}: ${v}`).join('\n')}
-` : '') + `
-brand.md:
-${brandMd}`,
-    schema: obj({ markdown: str }),
-  }, log);
-  writeFileSync(out, markdown);
-  writeJSON(meta, { source, at: new Date().toISOString() });
-  emit(id, 'log', `✓ Guia de ilustração salvo em brands/${st.brand}/ILUSTRACAO.md (reutilizado nos próximos reels)`);
-  return out;
-}
-
 function formatGuide(st: State): string {
   let f: any;
   try { f = getFormat(st.formatId || 'business-reels'); } catch { return ''; }
@@ -1307,7 +1213,7 @@ function formatGuide(st: State): string {
   return `# Format brief (chosen by the user, follow it)\n${lines.join('\n')}\n` +
     (siteRef(st) ? 'A site reference is attached below: its palette, images and facts win over the brand colours and over any "text only" rule of this format; the brand keeps fonts and tone; the format decides structure and rhythm.\n\n'
       : 'The brand rules above always win on colours, fonts, icons, tone and caption look; the format decides layout, structure and rhythm.\n\n') +
-    styleGuide(st) + formatCards(f) + referenceGuide(st) + userImageGuide(st);
+    styleGuide(st) + referenceGuide(st) + userImageGuide(st);
 }
 // Images the user sent with the form: an image card points at one of them (src = the path listed here).
 function userImageGuide(st: State): string {
@@ -1316,59 +1222,6 @@ function userImageGuide(st: State): string {
     st.userImages.map(p => `- ${p}`).join('\n') + '\n';
 }
 
-// Card types only some formats offer (formatCardTypes), with their fields; also given to the card-edit prompts.
-function formatCards(f: any): string {
-  const types = formatCardTypes(f), out: string[] = [];
-  if (types.includes('tier')) out.push('tier {tier: "S"|"A"|"B"|"C"|"D"|"F", text: "short item name", icon?: "<brand icon>" or src?: "image path"}\n' +
-    '  One ranked item. At start it appears as a card above the S-F table (captions step aside while it is on screen); at end, the moment ' +
-    'the presenter says the grade, it shrinks into its row and stays there to the end of the video. One tier card per ranked item, in spoken ' +
-    'order, start when the item is introduced, end exactly when the grade is said, at least 0.8 s apart, never overlapping another tier card. ' +
-    'The table is always on screen: do not draw it with custom cards. Leave the 3 s hook free of tier cards.');
-  if (types.includes('backdrop')) out.push('backdrop {src: "image path" or icon: "<brand icon>", dim?: 0-1}\n' +
-    '  Puts a picture behind the presenter (the person is cut out and stays in front). Use it only when there is a real image for that moment ' +
-    '(a brand icon or a file the user gave); it needs an explicit end and does not hide captions.');
-  if (types.includes('broll')) out.push('broll {src: "video or image path"}\n' +
-    '  The creator\'s own B-roll over the whole frame: the presenter disappears, the voice and captions stay. Only with a real file the user ' +
-    'gave; without B-roll use custom illustrations instead, never an empty screen. Cuts on phrase ends, 1.8-3.5 s.');
-  if (f?.layout === 'cutout-widgets') out.push('Any card may add "behind": true: it is drawn between the room and the cut-out presenter, so the ' +
-    'head passes in front of it (depth). Use it for the progress widget (e.g. 23/30 dias) and big words placed around the head.');
-  if (f?.layout === 'full-editorial') out.push('Any card may add "behind": true: it is drawn between the room and the cut-out presenter, so the ' +
-    'head passes in front of the words. Alternate the giant-word cards between "behind": true and over everything.');
-  if (f?.layout === 'cluster-floating') out.push('image {src: ["a.png", ...3-5 files]} becomes a floating cluster of 3-5 tilted photos over the ' +
-    'black top of the frame (y 30-540); the presenter is framed in the bottom 1360 px. Swap the whole cluster at each new idea.');
-  return out.length ? `# Card types of this format (also valid as tipo_card / type)\n${out.join('\n')}\n\n` : '';
-}
-function cardTypes(st: State): string[] {
-  try { return formatCardTypes(getFormat(st.formatId || 'business-reels')); } catch { return [...CARD_TYPES]; }
-}
-function formatCardsOf(st: State): string {
-  try { return formatCards(getFormat(st.formatId || 'business-reels')); } catch { return ''; }
-}
-
-// Env the render scripts read from the project's format: layout, punch-ins, camera zoom/mode, bottom safe zone (build_reel.py).
-function formatEnv(st: State): Record<string, string> {
-  let f: any;
-  try { f = getFormat(st.formatId || 'business-reels'); } catch { return {}; }
-  const p = f.editingStyle?.punchIns;
-  const cam = f.camera, sb = f.visualAssets?.safeZones?.bottom;
-  return {
-    ...(f.layout ? { REEL_LAYOUT: f.layout } : {}),
-    ...(p?.enabled && Array.isArray(p.intervalSeconds) ? { REEL_PUNCH: `${p.intervalSeconds.join(',')},${p.zoomScale ?? 1.25}` } : {}),
-    ...(cam?.zoomFactor ? { REEL_ZOOM: String(cam.zoomFactor) } : {}),
-    ...(cam?.mode ? { REEL_CAMERA_MODE: cam.mode } : {}),
-    ...(sb ? { REEL_SAFE_BOTTOM: String(sb) } : {}),
-  };
-}
-
-// formatEnv plus the person cut-out (cutout.webm) when the format wants one; without macOS Vision the render falls back to the plain layout.
-async function renderEnv(id: string, st: State): Promise<Record<string, string>> {
-  const env = formatEnv(st);
-  let f: any;
-  try { f = getFormat(st.formatId || 'business-reels'); } catch { return env; }
-  if (!f.cutout) return env;
-  try { await ensureCutout(id); return { ...env, REEL_CUTOUT: '1' }; }
-  catch (e: any) { emit(id, 'log', `recorte indisponível, render sem recorte: ${e.message}`); return env; }
-}
 
 export function createFormat(id: string, data?: any) {
   const dir = formatDir(id);
@@ -1649,10 +1502,7 @@ export async function createProject(o: {
   brand: string;
   formatId?: string;
   formats?: string[];
-  composerMode?: 'agent' | 'card';
-  style?: string;                      // illustration style pack (compose/estilos/<id>.md) chosen at creation; none = the director picks
   styleId?: string;                    // motion style id (workspace/styles/<id>/); validated here
-  brollFill?: boolean;
   /** Text → voice: the script is spoken as written; replaces the video. `voice` falls back to the brand's `voice`. */
   text?: string;
   voice?: { provider: string; voice: string; language?: string };
@@ -1696,7 +1546,6 @@ export async function createProject(o: {
     if (o.character.pose && !c.poses.some((x: any) => x.name === o.character!.pose)) fail(`pose ${JSON.stringify(o.character.pose)} não existe em ${c.name}`);
   }
   if (o.formatId) formatDir(o.formatId);   // only checks the id is safe: an unknown format still falls back to no format guide
-  const style = o.style ? styleId(o.style) : undefined;
   let own: string[] | null = null;   // default export: the chosen format's own aspect ratio
   try { own = pickFormats([getFormat(o.formatId || 'business-reels').aspectRatio]); } catch {}
   const formats = o.formats === undefined ? own ?? FORMATS : checkFormats(o.formats);   // a default: the final step picks again
@@ -1747,7 +1596,6 @@ export async function createProject(o: {
     }
 
     writeFileSync(join(P, '.gitignore'), '._*\nactivity.log\nraw.*\n*.mp4\n*.wav\nproj/\n*_whisper/\nqa_transcript/\nframes/\nref/\ncutout/\ncutout.webm\ncutout.json\nnose.json\nfillers.json\ncut_filter.txt\nafter-effects/\nref_extra/\nassets/user/\n' + COMPOSE_IGNORE);
-    const composerMode = o.composerMode;
     const userImages = images.map((img, k) => {
       const name = `${k}-${basename(img).replace(/[^\w.-]+/g, '_')}`;
       mkdirSync(join(P, 'assets', 'user'), { recursive: true });
@@ -1755,7 +1603,7 @@ export async function createProject(o: {
       return `assets/user/${name}`;
     });
     if (userImages.length) appendProjectLog(id, `🖼️ Imagens importadas: ${userImages.length}`);
-    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], composerMode, ...(style ? { style } : {}), ...(o.styleId ? { styleId: getStyle(o.styleId).id } : {}), ...(o.character ? { character: o.character } : {}), ...(o.brollFill === true ? { brollFill: true } : {}) };
+    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], ...(o.styleId ? { styleId: getStyle(o.styleId).id } : {}), ...(o.character ? { character: o.character } : {}) };
     save(st);
     await run(id, 'git', ['init', '-q', P]);
     await run(id, 'git', ['-C', P, 'config', 'core.autocrlf', 'false']);
@@ -1775,7 +1623,7 @@ export const getProject = (id: string) => {
   const composedFormats = composedByAgent(st) ? FORMATS.filter(f => existsSync(join(composeDirOf(P, st, f), 'index.html'))) : [];
   const readyFinals = FORMATS.filter(f => existsSync(join(P, finalName(f))));
   const running = getBusy(id);
-  return { ...st, composed: usesAgent(st) || composedByAgent(st), composedFormats, readyFinals, primaryFormat: primaryAspect(st), running,
+  return { ...st, composed: true, composedFormats, readyFinals, primaryFormat: primaryAspect(st), running,
     interrupted: !running && existsSync(composeMarker(id)) };   // a compose cut by a server restart (the marker outlived the lock)
 };
 // the marker compose() keeps while it runs; the user acknowledges it from the Revisão
@@ -1808,12 +1656,6 @@ export const setStyle = (id: string, styleId?: string | null) => {
   st.styleId = styleId ? getStyle(styleId).id : undefined;
   save(st);
   return { ok: true, styleId: st.styleId ?? null };
-};
-export const setComposerMode = (id: string, mode: 'agent' | 'card') => {
-  const st = load(id);
-  st.composerMode = mode;
-  save(st);
-  return { ok: true, composerMode: mode, usesAgent: usesAgent(st) };
 };
 export const listProjects = () => existsSync(join(WS, 'projects')) ? readdirSync(join(WS, 'projects')).filter(p => safeId(p) && existsSync(join(projDir(p), 'state.json'))).sort().reverse() : [];
 
@@ -1976,7 +1818,7 @@ export const listProjectsOverview = (): ProjectOverview[] => {
 };
 // Files the UI may read; anything else stays private.
 export const finalName = (format: string) => `final-${format.replace(':', '-')}.mp4`;
-const PROJECT_FILES = ['script.json', 'edit.json', 'embrulhos.json', 'preview.mp4', 'final.mp4', ...FORMATS.map(finalName), ...listarEmbrulhos().map(m => `embrulho-${m}.mp4`)];
+const PROJECT_FILES = ['script.json', 'embrulhos.json', 'preview.mp4', 'final.mp4', ...FORMATS.map(finalName), ...listarEmbrulhos().map(m => `embrulho-${m}.mp4`)];
 export function projectFile(id: string, f: string) {
   load(id);
   if (!PROJECT_FILES.includes(f) || !existsSync(join(projDir(id), f))) fail(`no ${f} yet`);
@@ -2090,7 +1932,7 @@ export const script = (id: string) => locked(id, 'script', async st => {
   const frames = await sampleFrames(id, dur, Math.min(8, Math.max(4, readJSON(join(P, 'edl.json')).keep.length)));
   emit(id, 'log', '✨ Concebendo roteiro e momentos com IA (Claude)...');
   const res = await ask<any>('script', 'script:moments', {
-    system: `${vocabulary()}\n\n# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatGuide(st)}\n# DIRETOR.md\n${readFileSync(join(K_DIR, 'DIRETOR.md'), 'utf8')}\n\n` +
+    system: `# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatGuide(st)}\n# DIRETOR.md\n${readFileSync(join(K_DIR, 'DIRETOR.md'), 'utf8')}\n\n` +
       'You are an art director planning the graphics and motion design of a short talking-head reel. ' +
       'Return moments that each illustrate exactly what that line says, at the density the brand asks for ' +
       '("graphics": minimal 8-12 s, balanced 4-6 s, busy 2-4 s apart). Write texto in the language of the transcript.\n' +
@@ -2146,12 +1988,6 @@ async function sampleFrames(id: string, dur: number, n: number): Promise<string[
   return out;
 }
 
-// The card vocabulary is the header of build_reel.py and motions.md: one source of truth, read at runtime.
-function vocabulary() {
-  const header = readFileSync(join(S, 'build_reel.py'), 'utf8').split('"""')[1];
-  return `# Card vocabulary (build_reel.py)\n${header}\n# Catalog motions (motions.md)\n${readFileSync(join(SKILL, 'references/motions.md'), 'utf8')}`;
-}
-
 // The compose kit's helper list, read from compose/GUIDE.md: the composer picks from it, one source of truth.
 function kitHelpers() {
   const guide = readFileSync(join(K_DIR, 'GUIDE.md'), 'utf8');
@@ -2180,10 +2016,10 @@ export const brandStep = (id: string, b: { brand?: string; override?: Record<str
   if (stepRank(st.step) >= stepRank('motion')) await retheme(id, st);   // the review player shows the new fonts and colours at once
   return brand;
 });
-// A brand change on an existing composition: cards are rebuilt; an agent reel gets the brand font file again and scenes.py rerun (no model call).
+// A brand change on an existing composition: the reel gets the brand font file again and scenes.py rerun (no model call).
 // shortcut: a font the composer wrote by name inside scenes.py does not change, only the kit's font.otf; a note to the composer does the rest
 async function retheme(id: string, st: State) {
-  if (!composedByAgent(st)) return buildLive(id, st);
+  if (!composedByAgent(st)) return;
   const C = join(projDir(id), 'compose'), font = brandFontFile(st, writeBrand(st));
   if (font) copyFileSync(font, join(C, 'assets', 'fonts', 'font.otf'));
   await run(id, PYTHON, ['-B', 'scenes.py'], {}, false, C);
@@ -2207,37 +2043,8 @@ export const saveBrandDefault = (id: string) => locked(id, 'brand:default', asyn
   return merged;
 });
 
-// Step 4 - Opus turns script.json + brand into the cards of edit.json, then a 1080p preview.
-const CARD = (types: string[]) => obj({ type: { type: 'string', enum: types }, start: num, end: num,
-  props_json: { type: 'string', description: 'JSON object with the fields of this card type (vocabulary or custom {html, css, js}), e.g. {"text":"..."}' } });
-
-function toCard(c: { type: string; start: number; end: number; props_json: string }, brand: any) {
-  let props: any = {};
-  try { props = JSON.parse(c.props_json || '{}'); } catch { props = { _error: 'props_json is not JSON' }; }
-  const card = { ...props, type: c.type, start: c.start, end: c.end };
-  const icon = (brand.icons ?? []).find((i: any) => i.name === card.icon);
-  if (icon) { card.src = c.type === 'image' ? [icon.file] : icon.file; delete card.icon; }
-  return card;
-}
-const SIZE_RULES = 'SCALE on the 1080x1920 canvas: the speaker\'s face must stay visible. Never use inset:0 with an opaque background. ' +
-  'Default: titles up to 110px, big numbers up to 180px, secondary text up to 70px; cards/overlays up to 75% of the width and one third of the height, ' +
-  'in the top or bottom third. For impact moments (hook, key number, punchline; at most 3 per reel) you may break the default: ' +
-  'type up to 320px that bleeds off the frame edge, diagonal or asymmetric layouts, lines across the whole frame, elements around the speaker, ' +
-  'as long as nothing opaque covers the face.\n';
-const CUSTOM_RULES = SIZE_RULES + 'A "custom" card has html, css, js. css is scoped to the card, no @-rules. js is the body of ' +
-  'function(tl, T, el): add GSAP tweens to tl at absolute times from T (the card start), find nodes with el.querySelector. ' +
-  'No network, no images, no timers, no Math.random/Date, no window/document. Colours only var(--main), var(--pop), ' +
-  'var(--light), var(--cap), var(--cap-accent), the brand hex values or, when a site is attached, the site palette hex values. Authored on a 1080x1920 stage.';
-
-// Straight from the approved script to the review player.
-// Formats with composer: "agent" skip the card pipeline; the composer works from the script and brief.
-export const motion = async (id: string) => {
-  const st = load(id);
-  const out = st.formatId && usesAgent(st) ? await compose(id) : await motionCards(id);
-  // b-roll is an extra: a search that finds nothing must not undo the motion pass that just succeeded
-  if (st.brollFill) await brollFill(id).catch(e => appendProjectLog(id, `🎞️ B-roll não preenchido: ${(e as Error).message}`));
-  return out;
-};
+// Straight from the approved script to the composer and the review player.
+export const motion = (id: string) => compose(id);
 
 // A synthetic voice saved into the project's media/ folder, ready to be added as an audio layer. Never called by a step: it spends the user's credits.
 export async function speak(id: string, o: { provider: string; text: unknown; voice: unknown; language?: string }) {
@@ -2290,287 +2097,14 @@ async function fetchAssets(id: string, st: State, moments: any[]) {
   emit(id, 'log', `🖼 Biblioteca do reel: ${entries.length} arquivo(s) baixado(s) de ${plan.wants.length} pedido(s) (assets/manifest.json)`);
 }
 
-const BROLL_ID = /^broll\d+$/;
-export const brollFill = (id: string) => locked(id, 'broll', async st => {
-  const P = projDir(id), scr = readJSON(join(P, 'script.json'));
-  const moments: any[] = scr.moments ?? [];
-  if (!moments.length) fail('o roteiro ainda não tem momentos');
-  const fmt = getFormat(st.formatId || 'business-reels');
-  const dur = Math.round((await duration(id, join(P, 'master.mp4')) - 0.02) * 100) / 100;
-  const max = Math.min(8, Math.max(1, Math.ceil(dur / 5)));
-  const plan = await ask<{ clips: { moment: number; query: string; kind: 'video' | 'image' }[] }>('broll', 'broll:queries', {
-    system: `You choose where a short vertical reel gains from stock footage or a photo in the lower part of the frame, shown while the speaker keeps talking. ` +
-      `Pick at most ${max} moments, spread through the reel, where a real-world picture helps: a place, a person at work, an object, a situation. ` +
-      `Skip moments that are about interface, numbers, typography or the speaker himself. ` +
-      `For each, write "query": 2 to 4 English words naming something concrete and filmable (never an abstract idea, never a brand or a famous person), and "kind": video unless a still is clearly better. ` +
-      `"moment" is the index of the moment in the list.`,
-    content: JSON.stringify(moments.map((m, i) => ({ moment: i, t_start: m.t_start, t_end: m.t_end, texto: m.texto, visual_action: m.visual_action }))),
-    schema: obj({ clips: { type: 'array', items: obj({ moment: num, query: str, kind: { type: 'string', enum: ['video', 'image'] } }) } }),
-  }, logCost(st));
-  const d = readLayers(P);
-  d.added = d.added.filter(a => !BROLL_ID.test(a.id));   // a second run replaces the first one's clips and keeps the user's own layers
-  for (const k of Object.keys(d.layers)) if (BROLL_ID.test(k)) delete d.layers[k];
-  const media = join(P, 'media');
-  mkdirSync(media, { recursive: true });
-  let n = 0;
-  for (const c of plan.clips.slice(0, max)) {
-    const m = moments[c.moment];
-    if (!m || typeof c.query !== 'string') continue;
-    const start = Math.max(0, Number(m.t_start)), need = Math.min(4.5, Math.max(1.5, Number(m.t_end) - start));
-    const { results, errors } = await brollSearch(c.query, { kind: c.kind, limit: 8 });
-    const best = brollPick(results, need);
-    if (!best) { appendProjectLog(id, `🎞️ B-roll sem resultado para "${c.query}"${Object.keys(errors).length ? ` (${Object.entries(errors).map(([k, v]) => `${k}: ${v}`).join(', ')})` : ''}`); continue; }
-    const file = `broll${++n}-${best.provider}${extOf(best)}`, bid = `broll${n}`;
-    try { await brollDownload(best, join(media, file)); } catch (e) { appendProjectLog(id, `🎞️ Falha ao baixar "${c.query}": ${(e as Error).message}`); n--; continue; }
-    const { w, y } = band(fmt, best);
-    d.added.push({ id: bid, kind: best.kind, src: `media/${file}`, name: `b-roll: ${c.query}`.slice(0, 80), start, duration: best.kind === 'video' && best.duration ? Math.min(need, best.duration) : need,
-      track: 5, w, rights: rightsOf(best) });
-    d.layers[bid] = { y };
-    appendProjectLog(id, `🎞️ B-roll ${best.provider}: "${c.query}" em ${start.toFixed(1)}s (${rightsOf(best).status === 'licensed' ? best.license : 'sem licença ainda'})`);
-  }
-  writeJSON(join(P, 'layers.json'), checkLayers(d));
-  const ignore = join(P, '.gitignore');
-  if (existsSync(ignore) && !/^media\/broll/m.test(readFileSync(ignore, 'utf8'))) appendFileSync(ignore, 'media/broll*\n');   // downloaded clips are big and re-fetchable
-  await commit(id, `b-roll: ${n} clipes`);
-  return { clips: n };
-});
-const motionCards = (id: string) => locked(id, 'motion', async st => {
-  const P = projDir(id), brand = writeBrand(st);
-  const edit = readJSON(join(P, 'edit.json'));
-  const scr = readJSON(join(P, 'script.json'));
-  const dur = Math.round((await duration(id, join(P, 'master.mp4')) - 0.02) * 100) / 100;
-  const palette = [...paletteOf(brand), ...Object.values<string>(siteRef(st)?.siteColors ?? {})];
-  const system = `${vocabulary()}\n\n# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatGuide(st)}` +
-    'You are an elite motion designer using Claude Opus 5.5 to animate a short reel. Turn the ' +
-    'approved script moments (their texto, tipo_card and t_start..t_end)' + ' into cards of edit.json. You have COMPLETE CREATIVE FREEDOM to build dynamic, bespoke GSAP/HTML/CSS animations ("custom" card type) ' +
-    'or use standard card types when appropriate. Do not restrict yourself to rigid or basic card templates.\n' +
-    'Prefer "custom" for most cards; use shot, image or sticker only where the script asks for that media or the format requires it.\n' +
-    'One card per script moment, inside that moment\'s t_start..t_end. Never add a second card in the same window (a sticker, image or shot next to a title) unless the moment itself asks for it: those cards stack on the title in the timeline.\n' +
-    'Bring the script moments to life with kinetic typography, interactive mockups, ' +
-    'animated metric counters, smooth fades, 3D transforms, and glowing highlights.\n' +
-    'For "custom" cards:\n' +
-    `${CUSTOM_RULES}\n` +
-    'Every card has an explicit end; keep text within the size hints. Sticker/image/shot cards may use a brand icon with ' +
-    '{"icon": "<name>"} instead of src. Follow brand.json rules (e.g. require_carousel).';
-  const data = {
-    duration: dur,
-    script: scr,
-    brand,
-    captions: edit.captions.map((c: any) => ({ start: c.start, end: c.end, text: c.words.map((w: any) => w.text).join(' ') }))
-  };
-  let cards: any[] = [], errors: string[] = [], accents: string[] = scr.accentWords ?? [];
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await ask<{ cards: any[]; accentWords: string[] }>('motion', 'motion:cards', {
-      system,
-      content: JSON.stringify(data) + (errors.length ? `\n\nYour previous cards had these problems, return the full corrected list:\n${errors.join('\n')}` : ''),
-      schema: obj({ cards: { type: 'array', items: CARD(cardTypes(st)) }, accentWords: { type: 'array', items: str } }),
-    }, logCost(st));
-    cards = res.cards.map(c => toCard(c, brand));
-    if (res.accentWords?.length) accents = res.accentWords;
-    errors = cards.flatMap((c, i) => validateCard(c, dur, palette).map(e => `card ${i} (${c.type}): ${e}`));
-    if (!errors.length) break;
-  }
-  if (errors.length) {
-    emit(id, 'log', `dropped invalid cards: ${errors.join(' | ')}`);
-    cards = cards.filter(c => !validateCard(c, dur, palette).length);
-  }
-  const acc = new Set(accents.map(norm));
-  for (const c of edit.captions) for (const w of c.words) w.accent = acc.has(norm(w.text));
-  edit.cards = cards;
-  writeJSON(join(P, 'edit.json'), edit);
-  Object.assign(st, { step: 'motion' }); save(st);
-  const r = readReview(id), stale = r.notes.filter(n => n.status === 'open');
-  if (stale.length) {   // they pointed at cards that no longer exist
-    for (const n of stale) Object.assign(n, { status: 'skipped', reply: 'Os cards foram refeitos a partir do roteiro: anote de novo o que ainda valer.' });
-    writeReview(id, r);
-  }
-  await commit(id, `step 4: ${cards.length} cards`);
-  await buildLive(id, st);   // the review player plays it live: no render until the delivery step
-  return edit;
-});
-const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w]/g, '');
-
-async function preview(id: string, st: State) {
-  const P = projDir(id);
-  writeBrand(st);
-  await py(id, 'render.py', [P], { REEL_PREVIEW: '1', ...await renderEnv(id, st) });
-  renameSync(join(P, 'final.mp4'), join(P, 'preview.mp4'));
-  emit(id, 'preview', { file: 'preview.mp4' });
-}
-
-export const renderPreview = (id: string) => locked(id, 'preview', async st => {
-  agentOnly(st);
-  await preview(id, st);
-  return { ok: true };
-});
-
-// edit.json does not drive an agent-composed reel: a card edit would overwrite its preview and never reach the final
-function agentOnly(st: State) {
-  if (composedByAgent(st))
-    fail('Este reel foi composto pelo agente: peça ajustes pela composição (POST /projects/:id/compose com note), não pela timeline de cards');
-}
-
-// Visual edit from the timeline: validate, write, rebuild the preview. No model involved.
-// shortcut: rebuilds the whole preview; HyperFrames has no partial render, so upgrade only if it gains one
-export const putEdit = (id: string, edit: any) => locked(id, 'edit', async st => {
-  agentOnly(st);
-  const P = projDir(id), brand = writeBrand(st);
-  if (!Array.isArray(edit?.captions) || !Array.isArray(edit?.cards)) fail('edit.json needs captions[] and cards[]');
-  const dur = Math.round((await duration(id, join(P, 'master.mp4')) - 0.02) * 100) / 100;
-  const palette = [...paletteOf(brand), ...Object.values<string>(siteRef(st)?.siteColors ?? {})];
-  const errors = edit.cards.flatMap((c: any, i: number) => validateCard(c, dur, palette).map(e => `card ${i}: ${e}`));
-  if (errors.length) fail(errors.join('; '));
-  writeJSON(join(P, 'edit.json'), { punch: [], ...edit });
-  if (stepRank(st.step) < stepRank('motion')) { st.step = 'motion'; save(st); }   // cards written by hand: the review opens without the model
-  await commit(id, 'edit: timeline');
-  await buildLive(id, st);   // the review player plays it live; POST /preview renders preview.mp4 on demand
-  return readJSON(join(P, 'edit.json'));
-});
-
-const BATCH_CARD_ITEM = (types: string[]) => obj({
-  index: num,
-  type: { type: 'string', enum: types },
-  start: num,
-  end: num,
-  props_json: { type: 'string', description: 'JSON object with the fields of this card type (vocabulary), e.g. {"text":"..."}' },
-});
-const BATCH_CARDS_SCHEMA = (types: string[]) => obj({
-  cards: { type: 'array', items: BATCH_CARD_ITEM(types) },
-});
-
-export type BatchItem = {
-  id?: string;
-  type: 'ask' | 'card_edit' | 'card_delete' | 'word_accent';
-  cardIndex?: number;
-  card?: any;
-  instruction?: string;
-  captionIndex?: number;
-  wordIndex?: number;
-  accent?: boolean;
-  summary?: string;
-};
-
-// Batch visual edit: applies non-LLM tweaks (props, accents, deletes) and groups AI calls (script, Opus), then one preview rebuild.
-export const batchEdit = (id: string, body: { items?: BatchItem[]; edit?: any } | BatchItem[]) => locked(id, 'batch', async st => {
-  const items: BatchItem[] = Array.isArray(body) ? body : (body?.items ?? []);
-  const P = projDir(id), brand = writeBrand(st);
-  const edit = readJSON(join(P, 'edit.json'));
-  const dur = Math.round((await duration(id, join(P, 'master.mp4')) - 0.02) * 100) / 100;
-  const palette = [...paletteOf(brand), ...Object.values<string>(siteRef(st)?.siteColors ?? {})];
-
-  // 1. Edições sem LLM primeiro (destaque de palavras e edição de campos dos cards; lib.ts)
-  applyDirectEdits(edit, items);
-
-  // 2. Agrupamento de pedidos de IA (ask)
-  const deleteSet = new Set(items.filter(it => it.type === 'card_delete').map(it => Number(it.cardIndex)));
-  const askItems = items.filter(it => it.type === 'ask' && !deleteSet.has(Number(it.cardIndex)));
-
-  const sonnetList: Array<{ cardIndex: number; instruction: string }> = [];
-  const opusList: Array<{ cardIndex: number; instruction: string }> = [];
-
-  for (const it of askItems) {
-    const idx = Number(it.cardIndex);
-    const card = edit.cards?.[idx];
-    if (!card) fail(`no card ${idx} for ask`);
-    const inst = String(it.instruction ?? '').trim();
-    if (!inst) fail(`instruction is required for card ${idx}`);
-    if (card.type === 'custom') opusList.push({ cardIndex: idx, instruction: inst });
-    else sonnetList.push({ cardIndex: idx, instruction: inst });
-  }
-
-  // Chamada única ao Opus para cards padrão
-  if (sonnetList.length > 0) {
-    const res = await ask<{ cards: Array<{ index: number; type: string; start: number; end: number; props_json: string }> }>(
-      'script',
-      'script:ask-batch',
-      {
-        system: `${vocabulary()}\n\n${formatCardsOf(st)}You change the requested cards of a reel as asked. Return each modified card with its matching index. ${CUSTOM_RULES}`,
-        content: JSON.stringify({
-          duration: dur,
-          brand,
-          requests: sonnetList.map(r => ({ index: r.cardIndex, card: edit.cards[r.cardIndex], request: r.instruction })),
-        }),
-        schema: BATCH_CARDS_SCHEMA(cardTypes(st)),
-      },
-      logCost(st),
-    );
-    for (const rc of res.cards ?? []) {
-      const next = toCard(rc, brand);
-      const errors = validateCard(next, dur, palette);
-      if (errors.length) fail(`card ${rc.index} rejected: ${errors.join('; ')}`);
-      edit.cards[rc.index] = next;
-    }
-  }
-
-  // Chamada única ao Opus para cards motion (custom)
-  if (opusList.length > 0) {
-    const res = await ask<{ cards: Array<{ index: number; type: string; start: number; end: number; props_json: string }> }>(
-      'motion',
-      'motion:ask-batch',
-      {
-        system: `${vocabulary()}\n\n# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatCardsOf(st)}You change the requested motion/custom cards of a reel as asked. Return each modified card with its matching index. ${CUSTOM_RULES}`,
-        content: JSON.stringify({
-          duration: dur,
-          brand,
-          requests: opusList.map(r => ({ index: r.cardIndex, card: edit.cards[r.cardIndex], request: r.instruction })),
-        }),
-        schema: BATCH_CARDS_SCHEMA(cardTypes(st)),
-      },
-      logCost(st),
-    );
-    for (const rc of res.cards ?? []) {
-      const next = toCard(rc, brand);
-      const errors = validateCard(next, dur, palette);
-      if (errors.length) fail(`card ${rc.index} rejected: ${errors.join('; ')}`);
-      edit.cards[rc.index] = next;
-    }
-  }
-
-  // 3. Remoção de cards (card_delete) após resolução de IA
-  deleteCards(edit, items);
-
-  // 4. Validação final de todos os cards
-  const allErrors = edit.cards.flatMap((c: any, i: number) => validateCard(c, dur, palette).map(e => `card ${i}: ${e}`));
-  if (allErrors.length) fail(allErrors.join('; '));
-
-  writeJSON(join(P, 'edit.json'), { punch: [], ...edit });
-  await commit(id, `batch: ${items.length} alterations (${sonnetList.length} standard, ${opusList.length} custom)`);
-  await buildLive(id, st);
-  return readJSON(join(P, 'edit.json'));
-});
-
-// "Ask Claude" about one card: script model for a standard card, motion model (Opus) for a custom one.
-export const askCard = (id: string, index: number, instruction: string) => locked(id, 'ask', async st => {
-  const P = projDir(id), brand = writeBrand(st);
-  const edit = readJSON(join(P, 'edit.json'));
-  const card = edit.cards?.[index] ?? fail(`no card ${index}`);
-  if (!String(instruction ?? '').trim()) fail('instruction is required');
-  const custom = card.type === 'custom';
-  const dur = Math.round((await duration(id, join(P, 'master.mp4')) - 0.02) * 100) / 100;
-  const res = await ask<any>(custom ? 'motion' : 'script', custom ? 'motion:ask' : 'script:ask', {
-    system: `${vocabulary()}\n\n${formatCardsOf(st)}You change one card of a reel as asked. Return the whole card. ${CUSTOM_RULES}`,
-    content: JSON.stringify({ duration: dur, brand, card, request: instruction }),
-    schema: CARD(cardTypes(st)),
-  }, logCost(st));
-  const next = toCard(res, brand);
-  const palette = [...paletteOf(brand), ...Object.values<string>(siteRef(st)?.siteColors ?? {})];
-  const errors = validateCard(next, dur, palette);
-  if (errors.length) fail(`the new card was rejected: ${errors.join('; ')}`);
-  edit.cards[index] = next;
-  writeJSON(join(P, 'edit.json'), edit);
-  await commit(id, `card ${index}: ${instruction.slice(0, 60)}`);
-  await preview(id, st);
-  return next;
-});
-
-// ---- Step 5 review: the browser plays proj/index.html live (no render); notes pinned to a time and a spot on the frame ----
+// ---- Step 5 review: the browser plays compose/index.html live (no render); notes pinned to a time and a spot on the frame ----
 export type Note = { id: string; t: number; all?: boolean; end?: number; x?: number; y?: number; text: string; status: 'open' | 'done' | 'skipped'; reply?: string; round?: number };
 type Review = { notes: Note[]; round: number; version?: number };   // version: bumped on every write; a PUT must send the one it read
 const reviewFile = (id: string) => join(projDir(id), 'review.json');
 const readReview = (id: string): Review => existsSync(reviewFile(id)) ? readJSON(reviewFile(id)) : { notes: [], round: 0 };
-// an agent-composed reel lives in compose/ (scenes.py writes its index.html); every other reel in proj/ (build_reel.py)
-const composedByAgent = (st: State) => usesAgent(st) && existsSync(join(projDir(st.id), 'compose', 'scenes.py'));
-const liveDir = (st: State) => join(projDir(st.id), composedByAgent(st) ? 'compose' : 'proj');
+// the reel lives in compose/ (scenes.py writes its index.html)
+const composedByAgent = (st: State) => existsSync(join(projDir(st.id), 'compose', 'scenes.py'));
+const liveDir = (st: State) => join(projDir(st.id), 'compose');
 // what the review player can show: the live composition, or the rendered preview of an agent reel composed before it stopped rendering
 export function getReview(id: string) {
   const st = load(id), D = liveDir(st);
@@ -2611,19 +2145,6 @@ export function putReviewNotes(id: string, notes: unknown, version?: unknown) {
 }
 const writeReview = (id: string, r: Review) => writeJSON(reviewFile(id), { ...r, version: (r.version ?? 0) + 1 });
 
-// The composition alone, without capturing it: seconds instead of the minutes of a render.
-async function buildLive(id: string, st: State) {
-  writeBrand(st);
-  if (st.approvedAt) { delete st.approvedAt; save(st); }   // a new composition is not the approved one
-  if (!existsSync(join(SKILL, 'engine/hf/hyperframes-player.global.js'))) await py(id, 'setup_engine.py', []);
-  await py(id, 'build_reel.py', [projDir(id)], await renderEnv(id, st));
-  emit(id, 'built', {});
-}
-export const buildReview = (id: string) => locked(id, 'build', async st => {
-  agentOnly(st);
-  await buildLive(id, st);
-  return getReview(id);
-});
 
 export function liveFile(id: string, rel: string) {
   const base = liveDir(load(id)), p = resolve(base, rel);
@@ -2634,21 +2155,13 @@ export function liveFile(id: string, rel: string) {
 export const hfFile = (name: string) => ['hyperframes-player.global.js', 'hyperframe.runtime.iife.js'].includes(name) ? join(SKILL, 'engine/hf', name) : fail(`no ${name}`);
 
 // ---- Edição: manual layers on top of the AI composition (server/edits.ts). Saving rewrites the live index.html at once. ----
-const EDITS_CLI = join(ROOT, 'server/edits.ts');
 export function getLayers(id: string) {
   const st = load(id), D = liveDir(st), P = projDir(id);
   if (!existsSync(join(D, 'index.html'))) fail('a composição ainda não foi montada: abra a Revisão (Etapa 3) primeiro');
   const { warnings } = syncEdits(D, P);
   const html = readFileSync(aiCopy(join(D, 'index.html')), 'utf8');
-  // a card reel: cards and captions are not clips, their windows come from edit.json
-  const extra: { id: string; kind: string; start: number; end: number; track: number }[] = [];
-  if (!composedByAgent(st) && existsSync(join(P, 'edit.json'))) {
-    const edit = readJSON(join(P, 'edit.json'));
-    (edit.cards ?? []).forEach((c: any, i: number) => extra.push({ id: `k${i}`, kind: 'card', start: c.start, end: c.end ?? c.start + 2, track: 20 }));
-    (edit.captions ?? []).forEach((c: any, i: number) => extra.push({ id: `c${i}`, kind: 'caption', start: c.start, end: c.end, track: 21 }));
-  }
   const duration = Number(/data-composition-id="[^"]+"[^>]*data-duration="([\d.]+)"|data-duration="([\d.]+)"[^>]*data-composition-id=/.exec(html)?.slice(1).find(Boolean) ?? 0);
-  const layers = listLayers(html, extra);
+  const layers = listLayers(html);
   for (const l of layers.filter(l => l.comp)) {   // a scene's texts live in its own file (the AI's copy, as edits index into it)
     const f = resolve(D, l.comp!), ai = aiCopy(f);
     if (f.startsWith(D + sep) && existsSync(f)) {
@@ -2684,21 +2197,17 @@ export async function addMedia(id: string, from: string) {
   const dur = kind === 'audio' || kind === 'video' ? await duration(id, join(dir, file)).catch(() => 0) : 0;
   return { src: `media/${file}`, kind, duration: dur };
 }
-// the simple captions: phrases from the transcript (agent reel) or the caption lines of edit.json (card reel)
+// the simple captions: phrases from the transcript
 export function captionDraft(id: string) {
-  const st = load(id), P = projDir(id);
-  if (composedByAgent(st)) {
-    const f = join(P, 'compose', 'assets', 'transcript.json');
-    if (!existsSync(f)) fail('sem transcript.json na composição');
-    return captionLines(readJSON(f));
-  }
-  return (readJSON(join(P, 'edit.json')).captions ?? []).map((c: any) => ({ t: c.start, end: c.end, text: c.words.map((w: any) => w.text).join(' ') }));
+  load(id);
+  const f = join(projDir(id), 'compose', 'assets', 'transcript.json');
+  if (!existsSync(f)) fail('sem transcript.json na composição');
+  return captionLines(readJSON(f));
 }
 
 const fmtT = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 
-// One round: every open note goes to the model in one call (motion model, as the cards are motion work), the cards and
-// caption words change, the composition is rebuilt and the player reloads. No render: that waits for the approval.
+// One round: every open note goes to the composer in one call and the player reloads. No render: that waits for the approval.
 export const applyReview = async (id: string) => {
   const st0 = load(id);
   const open = readReview(id).notes.filter(n => n.status === 'open');
@@ -2712,81 +2221,15 @@ export const applyReview = async (id: string) => {
     writeReview(id, r);
   };
   // an agent-composed reel is changed by its composer, which takes the notes as one adjustment and renders out.mp4 itself
-  if (composedByAgent(st0)) {
-    const note = open.map(n => n.all ? `[vídeo todo] ${n.text}` : `[${fmtT(n.t)}${n.end !== undefined ? `–${fmtT(n.end)}` : ''}${n.x !== undefined ? ` · ponto x=${n.x.toFixed(0)}% y=${n.y!.toFixed(0)}% do quadro` : ''}] ${n.text}`).join('\n');
-    const r = await compose(id, `Anotações da revisão (tempo no vídeo · ponto marcado no quadro · pedido):\n${note}`);
-    // an interrupted composer (summary starts with ⚠) may not have read the notes: they stay open for the next round
-    if (r.summary.startsWith('⚠')) emit(id, 'log', `As ${open.length} anotação(ões) continuam abertas: ${r.summary}`);
-    else {
-      const last = r.summary.trim().split('\n').filter(Boolean).pop()?.slice(0, 300) || 'Aplicada pelo compositor.';
-      reply(readReview(id), new Map(open.map(n => [n.id, { done: true, reply: last }])));
-    }
-    return { ...getReview(id), summary: r.summary };
+  const note = open.map(n => n.all ? `[vídeo todo] ${n.text}` : `[${fmtT(n.t)}${n.end !== undefined ? `–${fmtT(n.end)}` : ''}${n.x !== undefined ? ` · ponto x=${n.x.toFixed(0)}% y=${n.y!.toFixed(0)}% do quadro` : ''}] ${n.text}`).join('\n');
+  const r = await compose(id, `Anotações da revisão (tempo no vídeo · ponto marcado no quadro · pedido):\n${note}`);
+  // an interrupted composer (summary starts with ⚠) may not have read the notes: they stay open for the next round
+  if (r.summary.startsWith('⚠')) emit(id, 'log', `As ${open.length} anotação(ões) continuam abertas: ${r.summary}`);
+  else {
+    const last = r.summary.trim().split('\n').filter(Boolean).pop()?.slice(0, 300) || 'Aplicada pelo compositor.';
+    reply(readReview(id), new Map(open.map(n => [n.id, { done: true, reply: last }])));
   }
-  return locked(id, 'review', async st => {
-    agentOnly(st);
-    const P = projDir(id), brand = writeBrand(st);
-    const edit = readJSON(join(P, 'edit.json'));
-    const dur = Math.round((await duration(id, join(P, 'master.mp4')) - 0.02) * 100) / 100;
-    const palette = [...paletteOf(brand), ...Object.values<string>(siteRef(st)?.siteColors ?? {})];
-    const system = `${vocabulary()}\n\n# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatCardsOf(st)}` +
-      'You revise an edited reel from the reviewer\'s notes. Each note has t (seconds into the reel), end when it covers a stretch t..end instead of a single moment, and, when the reviewer pointed at ' +
-      'the frame, x/y in % of the 1080x1920 frame from the top-left. What is on screen at t: the captions and cards whose start..end ' +
-      'contain t. Apply every note you can: change, retime, add or remove cards, and fix caption words (wrong transcription, spelling) ' +
-      'with caption_fixes. You cannot recut the source video or change the voice: answer those notes with done=false and say why.\n' +
-      'Return only what changes: changes[] with index = the card index to replace, or -1 for a new card; remove[] with card indices; ' +
-      'replies[] with one entry per note id: done, and one short sentence in Brazilian Portuguese of what you did.\n' + CUSTOM_RULES;
-    const data = {
-      duration: dur, brand,
-      cards: edit.cards.map((c: any, index: number) => ({ index, ...c })),
-      captions: edit.captions.map((c: any, caption: number) => ({ caption, start: c.start, end: c.end, words: c.words.map((w: any, word: number) => ({ word, t: w.t, text: w.text })) })),
-      notes: open.map(({ id, t, end, x, y, text }) => ({ id, t, end, x, y, text })),
-    };
-    const schema = obj({
-      changes: { type: 'array', items: BATCH_CARD_ITEM(cardTypes(st)) },
-      remove: { type: 'array', items: num },
-      caption_fixes: { type: 'array', items: obj({ caption: num, word: num, text: str }) },
-      replies: { type: 'array', items: obj({ id: str, done: { type: 'boolean' }, reply: str }) },
-    });
-    type Res = { changes: { index: number; type: string; start: number; end: number; props_json: string }[]; remove: number[]; caption_fixes: { caption: number; word: number; text: string }[]; replies: { id: string; done: boolean; reply: string }[] };
-    // remove[] holds indices of the cards as sent, so it applies after the replacements (new cards go past the end)
-    const merge = (r: Res, skipInvalid: boolean) => {
-      const out = edit.cards.slice();
-      for (const ch of r.changes ?? []) {
-        const card = toCard(ch, brand);
-        if (skipInvalid && validateCard(card, dur, palette).length) continue;   // still invalid after the retry: old card stays, a new one is dropped
-        if (Number.isInteger(ch.index) && ch.index >= 0 && ch.index < out.length) out[ch.index] = card; else out.push(card);
-      }
-      const gone = new Set(r.remove ?? []);
-      return out.filter((_: any, i: number) => !gone.has(i));
-    };
-    let res!: Res, cards: any[] = [], errors: string[] = [];
-    for (let attempt = 0; attempt < 2; attempt++) {
-      res = await ask<Res>('motion', 'review:apply', {
-        system,
-        content: JSON.stringify(data) + (errors.length ? `\n\nYour previous answer had these problems, return the full corrected answer:\n${errors.join('\n')}` : ''),
-        schema,
-      }, logCost(st));
-      cards = merge(res, false);
-      errors = cards.flatMap((c, i) => validateCard(c, dur, palette).map(e => `card ${i} (${c.type}): ${e}`));
-      if (!errors.length) break;
-    }
-    if (errors.length) {
-      emit(id, 'log', `cards inválidos descartados: ${errors.join(' | ')}`);
-      cards = merge(res, true);
-    }
-    for (const f of res.caption_fixes ?? []) {
-      const w = edit.captions[f.caption]?.words?.[f.word], text = String(f.text ?? '').trim();
-      if (w && text) w.text = text;
-    }
-    edit.cards = cards.sort((a, b) => a.start - b.start);
-    writeJSON(join(P, 'edit.json'), edit);
-    const r = readReview(id);
-    reply(r, new Map((res.replies ?? []).map(a => [a.id, a])));
-    await commit(id, `review: round ${r.round}, ${open.length} notes`);
-    await buildLive(id, st);
-    return { ...getReview(id), warnings: errors };
-  });
+  return { ...getReview(id), summary: r.summary };
 };
 
 // Step 5 - final render + QA for the formats picked here, one file each, in FORMATS order. Haiku only explains a failed QA.
@@ -2834,10 +2277,10 @@ export const final = (id: string, formats?: unknown) => locked(id, 'final', asyn
       await run(id, 'ffmpeg', ['-y', '-v', 'error', '-i', ln, '-c:v', 'copy',
         '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', join(P, 'final.mp4')]);
       rmSync(ln, { force: true });
-    } else await py(id, 'render.py', [P, '--final'], { REEL_FORMAT: format, REEL_AFTER_BUILD: EDITS_CLI, ...await renderEnv(id, st) });
+    } else fail('a composição ainda não foi montada: abra a Revisão primeiro');
     const qa = await run(id, PYTHON, [join(S, 'qa.py'), P], { REEL_FORMAT: format }, true);
     runs.push({ format, pass: qa.code === 0, out: qa.out.trim() });
-    renameSync(join(P, 'final.mp4'), join(P, finalName(format)));   // render.py always writes final.mp4
+    renameSync(join(P, 'final.mp4'), join(P, finalName(format)));   // the render always writes final.mp4
   }
   st.qa = { pass: runs.every(r => r.pass), report: runs.map(r => `== ${r.format} ==\n${r.out}`).join('\n\n') };
   if (!st.qa.pass) {
@@ -2861,7 +2304,7 @@ export const exportAfterEffects = (id: string) => locked(id, "ae", async st => {
   const gi = join(P, ".gitignore");
   if (existsSync(gi) && !/^after-effects\/$/m.test(readFileSync(gi, "utf8"))) appendFileSync(gi, "after-effects/\n");
   const scriptPath = join(ROOT, "server/ae/make_jsx.mjs");
-  // the composition the review player plays (proj/ or compose/), loaded in the HyperFrames runtime, manual edits included
+  // the composition the review player plays (compose/), loaded in the HyperFrames runtime, manual edits included
   const htmlFile = join(liveDir(st), "index.html");
   if (!existsSync(htmlFile)) fail("O projeto precisa ter a composição montada (abra a Revisão) para exportar para o After Effects.");
   syncEdits(liveDir(st), P);
@@ -3295,7 +2738,6 @@ const COMPOSE_MAX_TURNS = Number(process.env.COMPOSE_MAX_TURNS ?? 70);   // meas
 async function composeRun(id: string, st: State, note?: string, mode?: string, aspect?: string) {
   const motion = mode === 'motion';
   const P = projDir(id);
-  if (!usesAgent(st)) fail('Este formato não usa o compositor agent');
   // another format: its own composition; the message names what came in, so a stale UI value is obvious in the log
   const other = aspect && aspect !== primaryAspect(st) && !motion ? pickFormats([aspect])?.[0] ?? fail(`formato ${JSON.stringify(aspect)} não existe: use ${FORMATS.join(', ')}`) : null;
   const full = !note && !other;   // the full run: the treatment first, so the cutout (started at ingest) finishes behind it

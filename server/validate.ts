@@ -1,82 +1,4 @@
-// Trust boundary for everything a model (or the UI) writes into edit.json. build_reel.py trusts edit.json,
-// so a card that fails here never reaches the render.
-
-export const CARD_TYPES = ['shot', 'image', 'sticker', 'motion', 'follow', 'custom'] as const;
-
-// Card types a format adds to the model's vocabulary: tier needs the Ranking table, backdrop needs the person cut-out,
-// broll is the Personal Reels' own footage.
-// Elsewhere build_reel.py skips them, so they are only offered where they render.
-export function formatCardTypes(f: any): string[] {
-  return [...CARD_TYPES, ...(f?.layout === 'tier-list-bottom' ? ['tier'] : []), ...(f?.cutout ? ['backdrop'] : []), ...(f?.layout === 'cutout-widgets' ? ['broll'] : [])];
-}
-
-const REQUIRED: Record<string, string[]> = {
-  shot: ['src'],
-  image: ['src'], backdrop: ['src'], tier: ['tier', 'text'], broll: ['src'], sticker: ['src'], motion: ['name'], follow: ['words'], custom: ['html'],
-};
-
-// custom cards: no network, no extra scripts, nothing non-deterministic (the same edit.json must render the same video)
-const BANNED_MARKUP = [/<\s*(script|iframe|object|embed|link|meta|base|form|img|video|audio|foreignObject)\b/i, /\son\w+\s*=/i,
-  /javascript:/i, /(https?:)?\/\/[\w-]/i, /url\s*\(/i, /@import/i, /\b(src|href)\s*=/i];
-const BANNED_JS = /\b(fetch|XMLHttpRequest|WebSocket|EventSource|import|require|eval|Function|setTimeout|setInterval|requestAnimationFrame|Math\.random|Date|performance|crypto|localStorage|sessionStorage|document|window|globalThis|navigator|location|this|constructor|__proto__|prototype|ownerDocument|defaultView|contentWindow)\b|\b(top|self|parent|frames)\b(?!\s*:)/;   // `top:` is a GSAP/CSS property
-// shortcut: a word list, not a sandbox - `this`, `constructor` and the paths to `window` are banned because they were the way around it; upgrade to running the js in an isolated frame if Opus starts probing it
-const MAX_CUSTOM = 100_000;
-
-// Fields build_reel.py writes into inline CSS, JS and HTML attributes: they must be the right kind of value, never code.
-const NUM_FIELDS = ['x', 'y', 'size', 'rotate', 'dim'], STR_FIELDS = ['text', 'top', 'bottom', 'title', 'label', 'name', 'bg', 'tier', 'framing', 'smear'];
-const COLOR = /^(#[0-9a-f]{3,8}|var\(--[\w-]+\))$/i;
-const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
-const strings = (v: unknown) => Array.isArray(v) && v.every(x => typeof x === 'string');
-
-export function validateFields(c: any): string[] {
-  const e: string[] = [];
-  for (const k of NUM_FIELDS) if (c[k] !== undefined && !finite(c[k])) e.push(`${k} must be a number`);
-  for (const k of STR_FIELDS) if (c[k] !== undefined && typeof c[k] !== 'string') e.push(`${k} must be text`);
-  if (c.color !== undefined && !(typeof c.color === 'string' && COLOR.test(c.color))) e.push('color must be a #hex or var(--token)');
-  if (c.type === 'motion' && typeof c.name === 'string' && !/^[\w-]+$/.test(c.name)) e.push('motion name: letters, digits, - and _ only');
-  if (c.box !== undefined && !(Array.isArray(c.box) && c.box.length === 4 && c.box.every(finite))) e.push('box must be [x, y, w, h] numbers');
-  if (c.row_times !== undefined && !(Array.isArray(c.row_times) && c.row_times.every(finite))) e.push('row_times must be numbers');
-  if (c.rows !== undefined && !strings(c.rows)) e.push('rows must be a list of text');
-  if (c.src !== undefined && typeof c.src !== 'string' && !strings(c.src)) e.push('src must be a path or a list of paths');
-  if (c.words !== undefined && !(Array.isArray(c.words) && c.words.every((w: any) => typeof w?.text === 'string'))) e.push('words must be a list of {text}');
-  const sfx = c.sfx;
-  if (sfx !== undefined && sfx !== false && !(sfx && typeof sfx === 'object' && /^\w+$/.test(sfx.name) && (sfx.db === undefined || finite(sfx.db)))) e.push('sfx must be false or {name, db}');
-  return e;
-}
-
-export function validateCard(c: any, dur: number, palette: string[]): string[] {
-  const e: string[] = [];
-  if (!c || typeof c !== 'object') return ['card is not an object'];
-  if (!CARD_TYPES.includes(c.type) && !['backdrop', 'tier', 'broll'].includes(c.type)) return [`unknown type ${JSON.stringify(c.type)}`];
-  if (typeof c.start !== 'number' || c.start < 0) e.push('start must be a number >= 0');
-  // always an explicit end: an open card can swallow every caption after it (REUSE.md, test finding 2)
-  if (typeof c.end !== 'number' || !(c.end > c.start)) e.push('end must be a number after start');
-  if (typeof c.end === 'number' && c.end > dur + 0.05) e.push(`end ${c.end} is past the video (${dur}s)`);
-  for (const k of REQUIRED[c.type]) if (c[k] === undefined || c[k] === '' || (Array.isArray(c[k]) && !c[k].length)) e.push(`${c.type} needs ${k}`);
-  if (c.type === 'custom') e.push(...validateCustom(c, palette));
-  e.push(...validateFields(c));
-  // tier: shown at start, slides into its row at end (the grade) and stays there; the slide takes 0.5 s
-  if (c.type === 'tier' && !['S', 'A', 'B', 'C', 'D', 'F'].includes(c.tier)) e.push('tier must be one of S, A, B, C, D, F');
-  if (c.type === 'tier' && c.end - c.start < 0.8) e.push('tier card needs at least 0.8 s before the grade');
-  return e;
-}
-
-export function validateCustom(c: any, palette: string[]): string[] {
-  const e: string[] = [];
-  const html = String(c.html ?? ''), css = String(c.css ?? ''), js = String(c.js ?? '');
-  if (html.length + css.length + js.length > MAX_CUSTOM) e.push(`custom card is over ${MAX_CUSTOM} characters`);
-  for (const re of BANNED_MARKUP) if (re.test(html) || re.test(css)) e.push(`html/css not allowed: ${re}`);
-  if (/<\/?style/i.test(html)) e.push('put styles in css, not in html');
-  if (css.includes('@')) e.push('no @-rules in css (animate with GSAP; build_reel scopes plain rules only)');
-  const bad = js.match(BANNED_JS);
-  if (bad) e.push(`js not allowed: ${bad[0]} (only tl, T and el.querySelector*)`);
-  if (js && !syntaxOk(js)) e.push('js does not parse');
-  return e;
-}
-
-function syntaxOk(js: string) {
-  try { new Function('tl', 'T', 'el', js); return true; } catch { return false; }   // parse only, never called
-}
+// Trust boundary for what the UI and the models write into a brand: icons, fonts and the caption style.
 
 // Icons uploaded to a brand. PNG is checked by magic bytes; SVG is rendered by the browser, so it gets the markup rules.
 export function validateIcon(name: string, bytes: Buffer): string[] {
@@ -101,7 +23,7 @@ export function validateFont(name: string, bytes: Buffer): string[] {
   return FONT_MAGIC[ext].includes(bytes.subarray(0, 4).toString('hex')) ? [] : [`not a .${ext} file`];
 }
 
-// brand.json captionStyle (SPEC §2). Every field is optional; build_reel.py falls back to the fork's captions/colors keys.
+// brand.json captionStyle (SPEC §2). Every field is optional.
 export const CAPTION_PRESETS = [
   'word-pop',
   'karaoke',

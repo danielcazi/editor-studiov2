@@ -1,42 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CARD_TYPES, formatCardTypes, validateAnim, validateCaptionStyle, validateCard, validateCustom, validateFont, validateIcon } from '../validate.ts';
+import { validateAnim, validateCaptionStyle, validateFont, validateIcon } from '../validate.ts';
 
 const palette = ['#ED84B0', '#FFEEF5'];
 const custom = (o: object) => ({ type: 'custom', start: 1, end: 3, html: '<div class="b">oi</div>', css: '.b{color:var(--main)}', js: 'tl.from(el.querySelector(".b"),{y:40,top:10,duration:.3},T);', ...o });
-
-test('standard cards need an end inside the video and their fields', () => {
-  assert.deepEqual(validateCard({ type: 'sticker', start: 0, end: 2, src: 'a.png' }, 10, palette), []);
-  assert.ok(validateCard({ type: 'sticker', start: 0, src: 'a.png' }, 10, palette).some(e => e.includes('end')));
-  assert.ok(validateCard({ type: 'sticker', start: 0, end: 12, src: 'a.png' }, 10, palette).some(e => e.includes('past')));
-  assert.ok(validateCard({ type: 'sticker', start: 0, end: 2 }, 10, palette).some(e => e.includes('needs src')));
-  assert.deepEqual(validateCard({ type: 'nope', start: 0, end: 1 }, 10, palette), ['unknown type "nope"']);
-});
-
-test('a clean custom card passes', () => {
-  assert.deepEqual(validateCard(custom({}), 10, palette), []);
-  assert.deepEqual(validateCustom(custom({ css: '.b{background:#ed84b0}' }), palette), []);
-});
-
-test('custom card: no network, scripts or non-determinism', () => {
-  const bad: [object, string][] = [
-    [{ html: '<script>alert(1)</script>' }, 'script'],
-    [{ html: '<div onclick="x()">' }, 'on'],
-    [{ html: '<a href="https://evil.com">' }, 'href'],
-    [{ css: '.b{background:url(https://x.com/a.png)}' }, 'url'],
-    [{ css: '@import "x.css";' }, '@'],
-    [{ js: 'fetch("/x")' }, 'fetch'],
-    [{ js: 'tl.to(el,{x:Math.random()},T)' }, 'Math.random'],
-    [{ js: 'document.body.remove()' }, 'document'],
-    [{ js: 'top.location="x"' }, 'top'],
-    [{ js: 'tl.to(el,{x:' }, 'parse'],
-  ];
-  for (const [o, hint] of bad) assert.ok(validateCustom(custom(o), palette).some(e => e.includes(hint)), `${JSON.stringify(o)} -> ${hint}`);
-});
-
-test('custom card: any colour is allowed', () => {
-  assert.deepEqual(validateCustom(custom({ css: '.b{color:#00ff00;background:rgb(0,0,0)}' }), palette), []);
-});
 
 test('icons: PNG magic bytes, SVG without scripts or external refs', () => {
   const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
@@ -95,25 +62,3 @@ test('anim-presets.json passes the validator', async () => {
   assert.deepEqual(presets['slide-scale'].in.from, { scale: 0, y: 40 }); // position e escala
 });
 
-test('backdrop cards need a src and an end', () => {
-  assert.deepEqual(validateCard({ type: 'backdrop', src: 'bg.png', start: 0, end: 2 }, 10, []), []);
-  assert.ok(validateCard({ type: 'backdrop', start: 0, end: 2 }, 10, []).some(m => /needs src/.test(m)));
-});
-
-test('tier cards need a tier S-F, a text and time to slide', () => {
-  assert.deepEqual(validateCard({ type: 'tier', tier: 'S', text: 'pix', start: 0, end: 2 }, 10, []), []);
-  assert.ok(validateCard({ type: 'tier', tier: 'E', text: 'pix', start: 0, end: 2 }, 10, []).some(m => /one of S/.test(m)));
-  assert.ok(validateCard({ type: 'tier', tier: 'A', start: 0, end: 2 }, 10, []).some(m => /needs text/.test(m)));
-  assert.ok(validateCard({ type: 'tier', tier: 'A', text: 'x', start: 0, end: 0.5 }, 10, []).some(m => /0.8 s/.test(m)));
-  assert.ok(!(CARD_TYPES as readonly string[]).includes('tier'));
-});
-
-test('formats offer tier only with the Ranking table and backdrop only with the cut-out', () => {
-  assert.deepEqual(formatCardTypes({}), [...CARD_TYPES]);
-  assert.deepEqual(formatCardTypes({ layout: 'tier-list-bottom' }), [...CARD_TYPES, 'tier']);
-  assert.deepEqual(formatCardTypes({ cutout: true }), [...CARD_TYPES, 'backdrop']);
-  assert.deepEqual(formatCardTypes(undefined), [...CARD_TYPES]);
-  assert.deepEqual(formatCardTypes({ layout: 'cutout-widgets', cutout: true }), [...CARD_TYPES, 'backdrop', 'broll']);
-  assert.deepEqual(validateCard({ type: 'broll', src: 'a.mp4', start: 0, end: 2 }, 10, []), []);
-  assert.ok(validateCard({ type: 'broll', start: 0, end: 2 }, 10, []).some(m => /needs src/.test(m)));
-});

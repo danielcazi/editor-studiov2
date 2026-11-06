@@ -192,29 +192,6 @@
   .q-desc { flex: 1; word-break: break-word; color: var(--cream); }
   .q-del { padding: 3px 8px; font-size: 11px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--mute); cursor: pointer; transition: color .15s, border-color .15s; }
   .q-del:hover:not(:disabled) { color: var(--red); border-color: var(--red); }
-  /* Catálogo de cards na Etapa 2 (roteiro) */
-  .cards-catalog { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
-  .cards-catalog-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
-  .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-  .card-tile {
-    background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 10px;
-    cursor: pointer; transition: transform .12s, border-color .12s, background .12s, box-shadow .12s;
-    display: flex; flex-direction: column; gap: 8px; user-select: none;
-  }
-  .card-tile:hover { border-color: var(--line-strong); transform: translateY(-2px); background: var(--panel); }
-  .card-tile.active {
-    border-color: var(--accent); background: rgba(242, 230, 0, .06);
-    box-shadow: 0 0 0 1px var(--accent), 0 4px 14px rgba(0, 0, 0, .4);
-    transform: translateY(-2px);
-  }
-  .card-tile .tile-prev {
-    height: 60px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
-    display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;
-  }
-  .card-tile .tile-title { font: 700 12px var(--mono); color: var(--cream); display: flex; align-items: center; justify-content: space-between; }
-  .card-tile .tile-desc { font: 11px/1.3 var(--sans); color: var(--mute); }
-  .card-tile .tile-tag { font: 600 9px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--line); color: var(--dim); text-transform: uppercase; }
-  .card-tile.active .tile-tag { background: var(--accent); color: var(--ink); }
   tr.row-selected td { background: rgba(242, 230, 0, .05) !important; }
   tr.row-selected td:first-child { border-left: 3px solid var(--accent); }
   tr[data-i] { cursor: pointer; transition: background .12s; }
@@ -3578,18 +3555,6 @@ function animHooks(form) {   // capture: runs before the repaint reads the form
     }
   });
 }
-// "Testar no vídeo": ~3 s of a real edited clip through the real renderer with the brand as it is now (unsaved)
-function testPanel(getBrand, project) {
-  const el = document.createElement('div');
-  el.innerHTML = '<p><button>Testar no vídeo (3 s)</button> <span class="muted t-note"></span></p><video controls loop muted style="width:100%;max-width:270px" hidden></video><div class="err"></div>';
-  const btn = $('button', el), v = $('video', el), note = $('.t-note', el);
-  btn.onclick = () => act(btn, async () => {
-    note.textContent = 'renderizando… (leva alguns minutos)'; v.hidden = true;
-    try { const r = await api('POST', '/brands/test', { brand: getBrand(), project }); v.src = r.file + '?' + Date.now(); v.hidden = false; v.play().catch(() => {}); note.textContent = `trecho de ${r.project} a partir de ${r.from.toFixed(1)}s`; }
-    catch (e) { note.textContent = ''; throw e; }
-  });
-  return el;
-}
 const effAnim = b => { const cs = b.captionStyle ?? {}; return cs.preset ? deepMerge(ANIMP[cs.preset] ?? {}, cs.anim ?? {}) : null; };
 function capEl(b, brandId, k, bg) {
   const s = capStyle(b), f = b.fonts?.[s.font] ?? {}, words = 'esse é o seu novo reel'.split(' '), A = effAnim(b);
@@ -5423,7 +5388,6 @@ async function brands(sel, initialTab = 'identidade') {
 
   const sp = stagePanel(sel, () => brandData);
   $('#sp').append(sp);
-  $('#sp').append(testPanel(() => brandData));
 
   const refresh = () => {
     sp.paint();
@@ -5877,11 +5841,10 @@ let dashBrand = '';
 let dashSearch = '';
 
 async function projects() {
-  let [overviewList, bl, flIds, styles, motionStyles] = await Promise.all([
+  let [overviewList, bl, flIds, motionStyles] = await Promise.all([
     api('GET', '/projects/overview').catch(() => []),
     api('GET', '/brands').catch(() => []),
     api('GET', '/formats').catch(() => []),
-    api('GET', '/illustration-styles').catch(() => []),
     api('GET', '/styles').then(ids => Promise.all(ids.map(i => api('GET', `/styles/${i}`).catch(() => null)))).then(l => l.filter(Boolean)).catch(() => [])
   ]);
   globalProjectsData = overviewList;
@@ -6423,7 +6386,6 @@ async function projects() {
     const statusSub = $('#npStatusSub');
     const nameInput = $('#npProjectName');
     const formatSelect = $('#npFormatSelect');
-    const agentToggleBtn = $('#npAgentToggleBtn');
     const fmtPreview = $('#npFmtPreview');
     const refUrlInput = $('#npRefUrl');
     const preToggle = $('#npPreToggle');
@@ -6432,27 +6394,6 @@ async function projects() {
     const uploadFileName = $('#npUploadFileName');
     const uploadPercent = $('#npUploadPercent');
     const uploadProgressBar = $('#npUploadProgressBar');
-
-    let isAgentMode = true;   // v8: every reel is composed by the agent; the cards toggle is gone
-    let userManuallyToggledAgent = false;
-
-    const setAgentToggle = (val) => {
-      isAgentMode = !!val;
-      if (agentToggleBtn) agentToggleBtn.classList.toggle('active', isAgentMode);
-      updateFormatPreview();
-      updateFooterStatus();
-    };
-
-    let brollFill = false;
-    const brollBtn = $('#npBrollToggleBtn');
-    if (brollBtn) brollBtn.onclick = () => { brollFill = !brollFill; brollBtn.classList.toggle('active', brollFill); };
-
-    if (agentToggleBtn) {
-      agentToggleBtn.onclick = () => {
-        userManuallyToggledAgent = true;
-        setAgentToggle(!isAgentMode);
-      };
-    }
 
     // Helper: format duration
     const formatDuration = sec => {
@@ -6466,7 +6407,7 @@ async function projects() {
     const updateFooterStatus = () => {
       const chosenFmt = fl.find(f => f.id === formatSelect.value);
       const fmtLabel = chosenFmt?.name || formatSelect.value;
-      const composerTag = isAgentMode ? ' · 🤖 Modo Agente' : ' · 🃏 Modo Cards';
+      const composerTag = ' · 🤖 Modo Agente';
 
       if (!videoPaths.length) {
         statusDot.className = 'np-status-indicator';
@@ -6547,9 +6488,7 @@ async function projects() {
           ? '<span class="np-fmt-badge np-fmt-cutout">✂ Recorte Alpha Ativo</span>'
           : '<span class="np-fmt-badge np-fmt-nocutout">👤 Vídeo Direto (Sem Recorte)</span>';
         const layoutBadge = chosen.layout ? `<span class="np-fmt-badge">📐 ${esc(chosen.layout)}</span>` : '';
-        const composerBadge = isAgentMode
-          ? '<span class="np-fmt-badge" style="background:rgba(168,85,247,0.22);color:#d8b4fe;border:1px solid rgba(168,85,247,0.45)">🤖 Agente Composer</span>'
-          : '<span class="np-fmt-badge" style="background:rgba(59,130,246,0.15);color:#93c5fd;border:1px solid rgba(59,130,246,0.3)">🃏 Cards Tradicional</span>';
+        const composerBadge = '<span class="np-fmt-badge" style="background:rgba(168,85,247,0.22);color:#d8b4fe;border:1px solid rgba(168,85,247,0.45)">🤖 Agente Composer</span>';
 
         fmtPreview.innerHTML = `
           <div class="np-fmt-top">
@@ -6563,8 +6502,8 @@ async function projects() {
           </div>
           ${chosen.description ? `<div class="np-fmt-desc">${esc(chosen.description)}</div>` : ''}
           <div class="np-fmt-guide-card">
-            <span class="np-fmt-guide-title">💡 ${isAgentMode ? 'Modo Agente Ativo:' : 'Diferencial:'}</span>
-            <span>${isAgentMode ? 'Liberdade criativa total orientada pelo Motion Guide (HyperFrames), sem restrições dos templates de cards pré-definidos.' : esc(diff.diferencial)}</span>
+            <span class="np-fmt-guide-title">💡 Diferencial:</span>
+            <span>${esc(diff.diferencial)}</span>
           </div>
         `;
       } else {
@@ -6578,11 +6517,6 @@ async function projects() {
         updateFormatPreview();
       };
       // Alinhamento inicial com o primeiro formato
-      const initChosen = fl.find(f => f.id === formatSelect.value);
-      if (initChosen && initChosen.composer === 'agent') {
-        isAgentMode = true;
-        if (agentToggleBtn) agentToggleBtn.classList.add('active');
-      }
       updateFormatPreview();
     }
 
@@ -6958,7 +6892,7 @@ async function projects() {
           name: nameInput.value.trim() || 'novo-video', text: speechEl.value, voice: { provider: provEl.value, voice: voiceEl.value }, character: charEl.value ? { name: charEl.value } : undefined,
           referenceUrl: refUrlInput.value.trim() || undefined, referenceNote: $('#npRefNote').value.trim() || undefined,
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
-          composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, styleId: $('#npMotionStyleSelect')?.value || undefined, brollFill
+          styleId: $('#npMotionStyleSelect')?.value || undefined
         });
         location.hash = `#/p/${st.id}`;
         api('POST', `/projects/${st.id}/ingest`).catch(() => {});
@@ -6992,8 +6926,7 @@ async function projects() {
             brand,
             formatId,
             images: imagePaths,
-            composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, styleId: $('#npMotionStyleSelect')?.value || undefined,
-            brollFill
+            styleId: $('#npMotionStyleSelect')?.value || undefined
           });
           api('POST', `/projects/${st.id}/ingest`).catch(() => {});
         }
@@ -7017,8 +6950,7 @@ async function projects() {
         brand,
         formatId,
         images: imagePaths,
-        composerMode: isAgentMode ? 'agent' : 'card', style: $('#npStyleSelect')?.value || undefined, styleId: $('#npMotionStyleSelect')?.value || undefined,
-        brollFill
+        styleId: $('#npMotionStyleSelect')?.value || undefined
       });
 
       location.hash = `#/p/${st.id}`;
@@ -7044,7 +6976,7 @@ async function projects() {
   renderView();
 }
 
-// the script goes straight to cards, reviewed in the live player (3), then delivery (4)
+// the script goes straight to the composer, reviewed in the live player (3), then delivery (4)
 const STEPS = [['created', 'Vídeo'], ['ingest', '1 Ingestão'], ['script', '2 Roteiro'], ['motion', '3 Revisão'], ['edit', '4 Edição'], ['final', '5 Entrega']];
 const stepIdx = step => step === 'brand' ? 2 : STEPS.findIndex(s => s[0] === step);
 const STEP_INFO = {
@@ -7059,7 +6991,7 @@ const STEP_INFO = {
     index: 2,
     name: '2 Roteiro',
     title: 'Etapa 2 em andamento: Roteiro com IA',
-    desc: 'Claude Opus analisando momentos-chave, identificando ganchos e sugerindo a estrutura de cards...',
+    desc: 'Claude Opus analisando momentos-chave, identificando ganchos e sugerindo os momentos do vídeo...',
     short: 'Roteiro (Opus)'
   },
   brand: {
@@ -7073,7 +7005,7 @@ const STEP_INFO = {
     index: 3,
     name: '3 Revisão',
     title: 'Gerando o vídeo com Claude Opus',
-    desc: 'Claude Opus está criando os cards animados a partir do roteiro; o vídeo abre no player ao vivo da Revisão...',
+    desc: 'Claude Opus está compondo as cenas a partir do roteiro; o vídeo abre no player ao vivo da Revisão...',
     short: 'Motion (Opus)'
   },
   preview: {
@@ -7108,7 +7040,7 @@ const STEP_INFO = {
     index: 3,
     name: '3 Revisão',
     title: 'Aplicando as anotações da revisão',
-    desc: 'Claude Opus aplicando as anotações nos cards e legendas; o player ao vivo recarrega em seguida...',
+    desc: 'Claude Opus aplicando as anotações nas cenas; o player ao vivo recarrega em seguida...',
     short: 'Revisão (Opus)'
   },
   build: {
@@ -7348,12 +7280,8 @@ async function project(id) {
     $('#pt').textContent = st.name || id;
     const badgesEl = $('#pt-badges');
     if (badgesEl) {
-      const isAgent = st.composed || st.composerMode === 'agent';
       badgesEl.innerHTML = `
         ${st.brand ? `<span style="background:var(--panel2);border:1px solid var(--line);padding:2px 8px;border-radius:4px;font:600 11px var(--sans);color:var(--cream)">${esc(st.brand)}</span>` : ''}
-        <button id="btn-toggle-composer-mode" style="display:inline-flex;align-items:center;gap:5px;background:${isAgent ? 'rgba(168,85,247,0.18)' : 'rgba(59,130,246,0.14)'};color:${isAgent ? '#d8b4fe' : '#93c5fd'};border:1px solid ${isAgent ? 'rgba(168,85,247,0.45)' : 'rgba(59,130,246,0.35)'};padding:2px 8px;border-radius:12px;font:700 11px var(--mono);cursor:pointer;transition:all .15s ease" title="Clique para alternar o modo de composição (Agente HyperFrames vs Cards)">
-          ${isAgent ? '🤖 MODO AGENTE' : '🃏 MODO CARDS'}
-        </button>
         <select id="pt-style-select" title="Estilo de motion deste projeto (aba Estilos): vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
           <option value="">🎞 motion: diretor decide</option>
           ${st.styleId ? `<option value="${esc(st.styleId)}" selected>🎞 ${esc(st.styleId)}</option>` : ''}
@@ -7374,16 +7302,6 @@ async function project(id) {
       if (styleSel) {
         api('GET', '/styles').then(ids => { for (const sid of ids) if (![...styleSel.options].some(o => o.value === sid)) styleSel.add(new Option(`🎞 ${sid}`, sid)); }).catch(() => {});
         styleSel.onchange = async () => { await api('PUT', `/projects/${id}/style`, { styleId: styleSel.value || null }); render(); };
-      }
-      const btnMode = $('#btn-toggle-composer-mode');
-      if (btnMode) {
-        btnMode.onclick = async () => {
-          const nextMode = isAgent ? 'card' : 'agent';
-          const label = nextMode === 'agent' ? 'Modo Agente (liberdade criativa HyperFrames)' : 'Modo Cards (estruturado)';
-          if (!confirm(`Alternar composição deste projeto para ${label}?`)) return;
-          await api('POST', `/projects/${id}/composer-mode`, { mode: nextMode });
-          render();
-        };
       }
     }
     const actionsEl = $('#pt-actions');
@@ -7546,7 +7464,7 @@ async function project(id) {
         body.innerHTML = `
           <div class="box">
             <h3>Etapa 3: Revisão</h3>
-            <p class="muted">Aprove o roteiro (Etapa 2): o Claude gera os cards e o vídeo abre aqui no player ao vivo.</p>
+            <p class="muted">Aprove o roteiro (Etapa 2): o Claude compõe as cenas e o vídeo abre aqui no player ao vivo.</p>
           </div>`;
       }
     } else if (viewStep === 'edit') {
@@ -7798,9 +7716,6 @@ async function scriptStep(id, body) {
     if (info) {
       info.innerHTML = `Linha selecionada: <span style="color:var(--accent)">#${selectedIdx + 1} (${start}s – ${end}s)</span> · Card: <span style="color:var(--accent);text-transform:uppercase;">${curType}</span>`;
     }
-    body.querySelectorAll('.card-tile').forEach(tile => {
-      tile.classList.toggle('active', tile.dataset.type === curType);
-    });
   }
 
   function selectRow(idx) {
@@ -7888,25 +7803,6 @@ async function scriptStep(id, body) {
     };
   });
 
-  // Clique nos cards do catálogo na parte inferior aplica à linha selecionada
-  body.querySelectorAll('.card-tile').forEach(tile => {
-    tile.onclick = () => {
-      const type = tile.dataset.type;
-      const trs = body.querySelectorAll('tr[data-i]');
-      const tr = trs[selectedIdx] || trs[0];
-      if (!tr) return;
-      const cardSel = tr.querySelector('.m-card');
-      if (cardSel) {
-        cardSel.value = type;
-        cardSel.dispatchEvent(new Event('change'));
-        selectRow(Number(tr.dataset.i));
-        const start = tr.querySelector('.m-start')?.value;
-        const end = tr.querySelector('.m-end')?.value;
-        line(`[edição] Linha #${selectedIdx + 1} (${start}s – ${end}s): card alterado para "${type.toUpperCase()}"`);
-      }
-    };
-  });
-
   // Seleciona a primeira linha ao abrir
   selectRow(0);
 
@@ -7932,7 +7828,7 @@ async function scriptStep(id, body) {
 
   const handleApprove = async (btn) => {
     const cur = await api('GET', `/projects/${id}`);
-    if (['motion', 'final'].includes(cur.step) && !confirm('Os cards atuais serão refeitos pelo Claude a partir deste roteiro, e as anotações abertas da Revisão fecham (a versão anterior fica no histórico git do projeto). Continuar?')) return;
+    if (['motion', 'final'].includes(cur.step) && !confirm('As cenas atuais serão refeitas pelo Claude a partir deste roteiro, e as anotações abertas da Revisão fecham (a versão anterior fica no histórico git do projeto). Continuar?')) return;
     const approveBtns = body.querySelectorAll('.btn-approve-script');
     approveBtns.forEach(b => {
       b.disabled = true;
@@ -7965,15 +7861,15 @@ async function scriptStep(id, body) {
 
       await api('PUT', `/projects/${id}/script`, { ...s, moments });
       line(`✓ Roteiro aprovado com sucesso (${moments.length} momentos).`);
-      line('→ Claude Opus gerando os cards a partir do roteiro; o vídeo abre na Revisão (Etapa 3)...');
+      line('→ Claude Opus compondo as cenas a partir do roteiro; o vídeo abre na Revisão (Etapa 3)...');
 
       if (typeof window.setProjectRunning === 'function') window.setProjectRunning({ step: 'motion', startedAt: Date.now() });
       if (typeof window.switchProjectStep === 'function') window.switchProjectStep('motion');
 
       api('POST', `/projects/${id}/motion`).catch(err => {
         if (typeof window.setProjectRunning === 'function') window.setProjectRunning(null);
-        line(`ERRO na geração dos cards: ${err.message}`);
-        alert(`Erro na geração dos cards: ${err.message}`);
+        line(`ERRO na composição: ${err.message}`);
+        alert(`Erro na composição: ${err.message}`);
         if (typeof window.renderProject === 'function') window.renderProject();
       });
     } catch (err) {
@@ -8196,8 +8092,7 @@ async function reviewStep(id, body, st) {
   async function mount(keepT = 0) {
     P = null;
     if (rv.mode === 'none') {
-      stage.innerHTML = `<div class="rv-msg"><div>O preview ao vivo deste projeto ainda não foi montado.</div><button class="primary" id="rv-build">Montar preview ao vivo</button></div>`;
-      $('#rv-build').onclick = e => act(e.target, async () => { rv = await api('POST', `/projects/${id}/review/build`); await mount(); });
+      stage.innerHTML = `<div class="rv-msg"><div>O vídeo ainda não foi composto: aprove o roteiro (Etapa 2) para montar a Revisão.</div></div>`;
       return;
     }
     stage.innerHTML = rv.mode === 'video'
@@ -9740,29 +9635,6 @@ async function stylesView() {
   app.querySelectorAll('.fmt-quick-btn.export').forEach(btn => btn.onclick = e => { e.stopPropagation(); exportStyle(all.find(x => x.id === btn.dataset.styId)); });
   app.querySelectorAll('.fmt-quick-btn.delete').forEach(btn => btn.onclick = e => { e.stopPropagation(); del(btn.dataset.styId, btn.dataset.styName); });
   app.querySelectorAll('.fmt-style-card').forEach(card => card.onclick = () => openStyleModal(card.dataset.styId, exportStyle, del));
-}
-
-// the pack's markdown (the recipe the composer reads) as plain text, with its sheet when the pack has an engine
-async function openPackModal(id, x) {
-  const host = $('#fmtModalHost');
-  if (!host) return;
-  const md = await fetch(`/illustration-styles/${encodeURIComponent(id)}/md`).then(r => r.text()).catch(e => String(e));
-  const img = app.querySelector(`[data-pack-id="${CSS.escape(id)}"] img`);
-  host.innerHTML = `
-    <div class="fmt-modal-overlay" id="packMdlOverlay">
-      <div class="fmt-modal-box" style="flex-direction:column;gap:0">
-        <button class="fmt-modal-close" id="packMdlClose" title="Fechar">&times;</button>
-        ${img ? `<img src="${img.src}" style="width:100%;display:block;border-bottom:1px solid rgba(255,255,255,0.08)" alt="">` : ''}
-        <div class="fmt-modal-content" style="gap:8px">
-          <h2 style="margin:0;color:var(--cream);font-size:22px">${esc(x?.name || id)}</h2>
-          <p style="margin:0;font-size:13px;color:var(--mute)">${esc(x?.line || '')}</p>
-          <pre style="white-space:pre-wrap;font:12px/1.5 var(--mono);color:var(--cream);margin:8px 0 0">${esc(md)}</pre>
-        </div>
-      </div>
-    </div>`;
-  const close = () => host.innerHTML = '';
-  $('#packMdlClose').onclick = close;
-  $('#packMdlOverlay').onclick = e => { if (e.target.id === 'packMdlOverlay') close(); };
 }
 
 async function openStyleModal(id, exportStyle, del) {
