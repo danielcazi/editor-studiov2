@@ -81,13 +81,29 @@ function dropShadow(L, sh) {
 // câmera de mundo (compose): null 3D "mundo" com a pose do #world, um null 3D por profundidade (translateZ + escala de compensação)
 // e uma câmera com zoom = perspective do CSS. As camadas dentro do mundo são filhas dessas nulls (e viram 3D no fim, ver abaixo).
 var WN = null, DN = {};
+// organização da timeline: auxiliares (controles de peça, nulls do mundo, câmera, camadas de ajuste) em laranja e shy; as de
+// personalização (mundo, profundidades, câmera, ajuste) também travadas, mas só no fim da montagem (camada travada não se move nem edita)
+var LABEL_AUX = 11, TRAVAR = [];
+function aux(L, trava) { L.label = LABEL_AUX; L.shy = true; if (trava) TRAVAR.push(L); return L; }
+// âncora no centro do conteúdo da camada, sem mover nada na tela: a posição acompanha o deslocamento (escala considerada)
+function ancoraNoCentro(L, t) {
+  var r; try { r = L.sourceRectAtTime(t, false); } catch (e) { return null; }
+  if (!r || (r.width < 0.01 && r.height < 0.01)) return null;
+  var c = [r.left + r.width / 2, r.top + r.height / 2], tr = L.property('ADBE Transform Group');
+  var an = tr.property('ADBE Anchor Point'), ps = tr.property('ADBE Position'), sc = tr.property('ADBE Scale'), a = an.value, sv = sc.value;
+  var dx = (c[0] - a[0]) * sv[0] / 100, dy = (c[1] - a[1]) * sv[1] / 100;
+  an.setValue(a.length > 2 ? [c[0], c[1], a[2]] : c);
+  if (ps.dimensionsSeparated) { var px = tr.property('ADBE Position_0'), py = tr.property('ADBE Position_1'); px.setValue(px.value + dx); py.setValue(py.value + dy); }
+  else { var p = ps.value; ps.setValue(p.length > 2 ? [p[0] + dx, p[1] + dy, p[2]] : [p[0] + dx, p[1] + dy]); }
+  return c;
+}
 function setKeys(prop, ts, vs) { if (ts.length > 1) prop.setValuesAtTimes(ts, vs); else if (ts.length) prop.setValue(vs[0]); }
 function mundo(comp, Wd) {
   var cam = comp.layers.addCamera('câmera de mundo', [W / 2, H / 2]);
-  cam.autoOrient = AutoOrientType.NO_AUTO_ORIENT;
+  cam.autoOrient = AutoOrientType.NO_AUTO_ORIENT; aux(cam, true);
   cam.property('ADBE Camera Options Group').property('ADBE Camera Zoom').setValue(Wd.p);
   cam.property('ADBE Transform Group').property('ADBE Position').setValue([W / 2, H / 2, -Wd.p]);
-  WN = comp.layers.addNull(); WN.name = 'mundo (câmera)'; WN.threeDLayer = true;
+  WN = comp.layers.addNull(); WN.name = 'mundo (câmera)'; WN.threeDLayer = true; aux(WN, true);
   var tr = WN.property('ADBE Transform Group'); tr.property('ADBE Anchor Point').setValue([W / 2, H / 2, 0]);
   var ts = [], ps = [], ss = [], rx = [], ry = [], rz = [];
   // CSS gira com z para o espectador, o After com z para o fundo: X e Y trocam de sinal
@@ -96,7 +112,7 @@ function mundo(comp, Wd) {
   setKeys(tr.property('ADBE Rotate X'), ts, rx); setKeys(tr.property('ADBE Rotate Y'), ts, ry); setKeys(tr.property('ADBE Rotate Z'), ts, rz);
   DN['@world'] = WN;
   for (k = 0; k < Wd.depths.length; k++) {
-    var D = Wd.depths[k], N = comp.layers.addNull(); N.name = 'profundidade ' + D.id; N.threeDLayer = true;
+    var D = Wd.depths[k], N = comp.layers.addNull(); N.name = 'profundidade ' + D.id; N.threeDLayer = true; aux(N, true);
     var t2 = N.property('ADBE Transform Group'); t2.property('ADBE Anchor Point').setValue([W / 2, H / 2, 0]);
     t2.property('ADBE Position').setValue([W / 2, H / 2, -D.z]); t2.property('ADBE Scale').setValue([D.s * 100, D.s * 100, D.s * 100]);
     N.parent = WN; DN[D.id] = N;
@@ -105,9 +121,14 @@ function mundo(comp, Wd) {
 // sem "jump": as posições já estão no espaço de repouso do mundo, que coincide com a comp
 function pai(L, depth) { if (L && depth && DN[depth]) L.parent = DN[depth]; }
 // null de uma peça: anchor [0,0] no ponto de origem da transformação CSS; keyframes quadro a quadro
-function poseKeys(tr, keys, O) {
+function poseKeys(tr, keys, O, c) {
   var ts = [], ps = [], rs = [], ss = [];
-  for (var k = 0; k < keys.length; k++) { var K = keys[k]; if (!K.p) continue; ts.push(K.t); ps.push(K.p); rs.push(K.r); ss.push(K.s); }
+  for (var k = 0; k < keys.length; k++) {
+    var K = keys[k]; if (!K.p) continue;
+    var q = K.p;
+    if (c) { var rad = K.r * Math.PI / 180, sx = K.s[0] / 100, sy = K.s[1] / 100; q = [K.p[0] + c[0] * sx * Math.cos(rad) - c[1] * sy * Math.sin(rad), K.p[1] + c[0] * sx * Math.sin(rad) + c[1] * sy * Math.cos(rad)]; }
+    ts.push(K.t); ps.push(q); rs.push(K.r); ss.push(K.s);
+  }
   if (!ts.length) { if (O) tr.property('ADBE Position').setValue(O); return; }
   setKeys(tr.property('ADBE Position'), ts, ps); setKeys(tr.property('ADBE Rotate Z'), ts, rs); setKeys(tr.property('ADBE Scale'), ts, ss);
 }
@@ -116,7 +137,7 @@ function pieceNull(comp, P) {
   var tr = N.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
   poseKeys(tr, P.keys, P.O);
-  span(N, P.a, P.b); pai(N, P.depth);
+  span(N, P.a, P.b); pai(N, P.depth); aux(N, false);
   return N;
 }
 function opacityKeys(L, P, own) {
@@ -245,7 +266,7 @@ function svgLayer(comp, S, P, N, folder) {
     V.selected = true;
     var n0 = comp.numLayers;
     app.executeCommand(CMD_FORMAS);
-    if (comp.numLayers > n0) { var L = comp.layer(V.index - 1); V.remove(); L.name = nome; L.selected = false; trimKeys(L, S, P); return L; }
+    if (comp.numLayers > n0) { var L = comp.layer(V.index - 1); V.remove(); L.name = nome; L.selected = false; trimKeys(L, S, P); ancoraNoCentro(L, P.a); return L; }
     log('svg sem conversão (comando ' + CMD_FORMAS + '): ' + S.file);
   } catch (e) { log('svg ' + S.file + ': ' + e); }
   V.selected = false;
@@ -294,6 +315,7 @@ function textLayer(comp, T, P, N) {
   var tr = L.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
   tr.property('ADBE Position').setValue([(umaLinha ? T.l : T.x) - P.O[0], T.base - P.O[1]]);
+  ancoraNoCentro(L, P.a);
   span(L, P.a, P.b); opacityKeys(L, P, T.o * T.alpha); blurKeys(L, P); dropShadow(L, T.sh); blend(L, P);
   return L;
 }
@@ -319,9 +341,11 @@ function ctextLayer(comp, P) {
   td.font = ps; td.fontSize = P.size; td.applyFill = true; td.fillColor = c01(P.color); td.applyStroke = false;
   td.tracking = Math.round(P.track); td.justification = ParagraphJustification.LEFT_JUSTIFY;
   st.setValue(td);
-  var tr = L.property('ADBE Transform Group');
-  tr.property('ADBE Anchor Point').setValue([0, 0]);
-  poseKeys(tr, P.keys, null);
+  var tr = L.property('ADBE Transform Group'), rc = null;
+  try { rc = L.sourceRectAtTime(P.a, false); } catch (e) {}
+  var cc = rc && rc.width > 0.01 ? [rc.left + rc.width / 2, rc.top + rc.height / 2] : null;
+  tr.property('ADBE Anchor Point').setValue(cc || [0, 0]);
+  poseKeys(tr, P.keys, null, cc);
   span(L, P.a, P.b); opacityKeys(L, P, P.alpha); dropShadow(L, P.sh); blend(L, P); pai(L, P.depth);
   return L;
 }
@@ -333,8 +357,8 @@ function clipPiece(comp, P, folder) {
   var L = comp.layers.add(it);
   L.name = P.scene + ' · clipe · ' + P.file.replace(/^.*\//, '');
   var tr = L.property('ADBE Transform Group');
-  tr.property('ADBE Anchor Point').setValue([0, 0]);
-  tr.property('ADBE Position').setValue([P.x, P.y]);
+  tr.property('ADBE Anchor Point').setValue([it.width / 2, it.height / 2]);
+  tr.property('ADBE Position').setValue([P.x + it.width / 2, P.y + it.height / 2]);
   L.startTime = P.a; span(L, P.a, P.b); blend(L, P); pai(L, P.depth);
   return L;
 }
@@ -392,6 +416,8 @@ if (WN) {
   for (var dk in DN) DN[dk].moveToBeginning();
   WN.moveToBeginning();
 }
+for (k = 0; k < TRAVAR.length; k++) TRAVAR[k].locked = true;
+comp.hideShyLayers = true;   // os auxiliares (shy) somem da timeline; o botão de shy da timeline os traz de volta
 var falta = []; for (var fk in FONTES_FALTANDO) falta.push(fk);
 if (falta.length) log('FONTES FALTANDO (o After trocou por outra; instale e reabra): ' + falta.join(', '));
 var vari = []; for (var vk in FONTE_VARIAVEL) vari.push(vk);

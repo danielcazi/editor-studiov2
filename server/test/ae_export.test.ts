@@ -61,6 +61,8 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.match(svg.slice(svg.indexOf('width=') - 1), /^ width="80"/, 'o primeiro width= do arquivo é o da raiz (o After lê esse, e stroke-width virava largura 1)');
   for (const k of ['"kind":"wipe"', '"kind":"vig"', '"kind":"ramp"', '"blend":"screen"', '"file":"V/img/0-foto.png"', '"fit":"cover"']) assert.ok(jsx.includes(k), k);
   assert.ok(existsSync(join(out, 'V/img/0-foto.png')), 'imagem copiada para o pacote');
+  // organização: o molde marca auxiliares (laranja + shy), trava o mundo e centraliza âncoras
+  for (const k of ['aux(N, false)', 'aux(WN, true)', 'aux(cam, true)', 'ancoraNoCentro(L, P.a)', 'comp.hideShyLayers = true', 'TRAVAR[k].locked = true']) assert.ok(jsx.includes(k), k);
   // push-in da cena (#cena 1 → 1,05): a null do título termina com escala ~105 e a origem medida no espaço local da cena
   const tit = D.pieces.find((p: any) => p.kind === 'native' && p.texts.some((t: any) => t.text === 'Texto em DOM'));
   const s1 = tit.keys.at(-1).s[0];
