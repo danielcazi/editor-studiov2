@@ -33,3 +33,23 @@ test('styles: create, read with refs, update (deep merge, camera clamped), brief
   deleteStyle(id);
   assert.throws(() => getStyle(id), /não encontrado/);
 });
+
+test('packs: migrateStyles writes one valid style.json per illustration pack, and a bad pack or engine is refused', async () => {
+  const { mkdtempSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { migrateStyles } = await import('../scripts/migrate-v9.mjs');
+  const kit = join(import.meta.dirname, '../../claude-reel-editor/skills/reel-editor/compose'), ws = mkdtempSync(join(tmpdir(), 'editor-mig-'));
+  const made: string[] = migrateStyles(ws, kit);
+  assert.equal(made.length, 13);   // the 12 packs + image-cluster
+  for (const id of made.filter(x => x !== 'image-cluster')) {
+    const s = JSON.parse(readFileSync(join(ws, 'styles', id, 'style.json'), 'utf8'));
+    assert.ok(s.name && s.description && existsSync(join(kit, 'estilos', s.pack)), id);
+    if (s.engine) assert.ok(existsSync(join(kit, 'engines', `${s.engine}.js`)), id);
+  }
+  assert.deepEqual(migrateStyles(ws, kit), []);   // idempotent
+  assert.throws(() => createStyle('bad-pack', { name: 'x', pack: 'nao-existe.md' }), /pack/);
+  assert.throws(() => createStyle('bad-engine', { name: 'x', engine: '../x' }), /engine/);
+  assert.ok(!listMotionStyles().some(s => s.startsWith('bad-')));
+  createStyle('test-pack', { name: 'Pack', pack: 'diorama.md', engine: 'diorama' });
+  try { assert.match(styleGuide({ styleId: 'test-pack' } as any), /ESTILO\.md[\s\S]*engine='diorama'/); } finally { deleteStyle('test-pack'); }
+});

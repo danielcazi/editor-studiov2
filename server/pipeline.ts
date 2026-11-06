@@ -1284,12 +1284,18 @@ export function getStyle(id: string) {
   if (!existsSync(file)) fail(`estilo ${id} não encontrado`);
   return { ...JSON.parse(readFileSync(file, 'utf8')), refs: styleRefs(id).map(f => basename(f)) };   // refs: the frames beside it, for the UI covers
 }
+// pack = a file of compose/estilos/, engine = a file of compose/engines/: a typo here would only show up as a missing file inside a render
+function checkStyleRefs(s: any) {
+  if (s?.pack != null && !(safeId(s.pack) && existsSync(join(K_DIR, 'estilos', s.pack)))) fail(`pack ${JSON.stringify(s.pack)} não existe em compose/estilos/`);
+  if (s?.engine != null && !(safeId(s.engine) && existsSync(join(K_DIR, 'engines', `${s.engine}.js`)))) fail(`engine ${JSON.stringify(s.engine)} não existe em compose/engines/`);
+}
 export function createStyle(id: string, data: any) {
   const dir = styleDir(id);
   if (existsSync(dir)) fail(`estilo ${id} já existe`);
   if (!data || typeof data !== 'object' || Array.isArray(data)) fail('style must be an object');
-  mkdirSync(dir, { recursive: true });
   const { refs: _r, ...fields } = data;   // refs is what getStyle adds on read, not a field
+  checkStyleRefs(fields);
+  mkdirSync(dir, { recursive: true });
   const base = { name: id, ...fields, id, camera: clampCamera(fields.camera) };
   writeFileSync(join(dir, 'style.json'), JSON.stringify(base, null, 2));
   return base;
@@ -1300,6 +1306,7 @@ export function updateStyle(id: string, data: any) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) fail('style must be an object');
   const { refs: _r, ...fields } = data;
   const next = { ...deepMerge(JSON.parse(readFileSync(file, 'utf8')), fields), id };
+  checkStyleRefs(next);
   next.camera = clampCamera(next.camera);
   writeFileSync(file, JSON.stringify(next, null, 2));
   return next;
@@ -1335,6 +1342,7 @@ function styleBrief(s: any, refs: string[] = []): string {
   const cam = s.camera ?? {};
   const lines = [
     s.guide && `Style guide: ${s.guide}`,
+    s.pack && `Illustration pack: ESTILO.md in the compose folder is how every illustration is drawn (materials, colour, line, light, motion)${s.engine ? `; the engine is canvas(..., engine='${s.engine}')` : ''}. The brand keeps colours and motifs, the pack the technique.`,
     s.motif && `Recurring motif (bring it back through the reel): ${s.motif}`,
     s.palette?.length && `Palette of the reference (approximate hex; the brand colours take their place, keep the roles and contrasts): ${s.palette.map((p: any) => `${p.hex} = ${p.role}`).join(', ')}`,
     s.pace && `Measured rhythm of the reference: a new screen about every ${s.pace}s${s.sfxPerMinute ? `, ${s.sfxPerMinute} sound hits per minute` : ''}`,
@@ -2758,6 +2766,10 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const imgFiles = existsSync(join(A, 'img')) ? readdirSync(join(A, 'img')).filter(f => !f.startsWith('.')) : [];
   // the noSpeaker style: chosen (followed to the letter, with the frames it came from) or, if none, the list the director picks from
   const styleList = style ? [] : listMotionStyles().map(sid => { try { return getStyle(sid); } catch { return null; } }).filter(Boolean);
+  // illustration packs (SPEC-v9 §2.2): the chosen style's pack becomes ESTILO.md; with none chosen the director reads the ones listed in estilos/
+  const packOf = (x: any): string | null => x?.pack && safeId(x.pack) && existsSync(join(K, 'estilos', x.pack)) ? join(K, 'estilos', x.pack) : null;
+  if (style && packOf(style)) copyFileSync(packOf(style)!, join(C, 'ESTILO.md'));
+  else if (!style) for (const x of styleList) if (packOf(x)) { mkdirSync(join(C, 'estilos'), { recursive: true }); copyFileSync(packOf(x)!, join(C, 'estilos', x.pack)); }
   const imgDesc = imgFiles.length ? `img/ (${imgFiles.length} imagens da referência disponíveis: ${imgFiles.join(', ')}; olhe cada uma com Read antes de usar, e mostre com <img src="assets/img/..."> em back/front)` : 'img/ (vazio)';
 
   writeFileSync(join(C, 'brief.md'), [`# Briefing: ${st.name}`,
@@ -2767,12 +2779,12 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     noSpeaker ? `## Referência visual: site da marca\nSem locutor na tela. Leia ref_site/site.md e olhe as imagens de ref_site/ (Read). Paleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site.`
       : siteRef(st) ? `## Marca (${st.brand}) e site\nPaleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site, que é a campanha atual: ela vence as cores do brand.md. Do brand.md valem só o tom e a fonte.\nOlhe ../ref/top_mobile.png e ../ref/top_desktop.png com Read: o print mostra qual cor é fundo, destaque e botão.\n${referenceGuide(st)}\n\n${brandMd.replace(/## Cores[\s\S]*?(?=\n## |$)/, '')}`
       : `## Marca (${st.brand})\nPaleta mapeada em compose.json (RED, RED2, AMB, BLK, CRM; ajuste se o brand.md pedir outra).\n\n${brandMd}`,
-    `## Ritmo (${st.pace ?? 'dinamico'})\nAlgo novo na tela a cada ~${paceOf(st).every} s; cenas de ${paceOf(st).scene[0]} a ${paceOf(st).scene[1]} s${noSpeaker ? '' : `; enquadramento do locutor muda a cada ${paceOf(st).framing[0]} a ${paceOf(st).framing[1]} s e o kit avisa locutor parado por mais de ${paceOf(st).hold} s`}. Os mesmos números estão em compose.json (pace). Isto vale no lugar de qualquer número de ritmo dos outros guias.`,
     !noSpeaker && fmt.janelas?.cut ? (() => { const w = cutWindows(fmt.janelas.cut, duration) ?? [], top = Math.round(targetH * (fmt.panel?.top ?? 0.42)); return `## Locutor: Speech Screen\nO recorte do locutor (cut.webm) só existe nas janelas ${w.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} (fora delas o alfa é vazio). Cena dentro de uma janela: câmera normal (M/L/XL/XXL) com texto gigante atrás; a CTA (cta=True) fica na última janela. Toda outra cena usa \`cam='panel'\`: o vídeo bruto do locutor (assets/talk.mp4) ocupa o painel de baixo (de y=${top} até o rodapé, sem recorte) e TODA a animação (3D, ilustrações, tipografia, imagens do site) fica na área de cima, acima de y=${top}; ou \`cam=None\` para tela cheia sem locutor. O kit reprova recorte fora das janelas.`; })() : '',
     !noSpeaker ? `## Liberdade e limites\nSem cotas: quantas imagens, movimentos de câmera e tipografias cada cena tem é decisão sua pelo que a fala pede; uma cena limpa com a peça certa vale mais que três genéricas. O que não se negocia: fluidez (toda entrada com ease-out e saída com ease-in, algo sempre em movimento lento, passagens desenhadas entre cenas); texto inteiro dentro da zona segura (topo ${safeZones.top}, base ${safeZones.bottom}, laterais ${safeZones.left} px); nada sobre o rosto ou o queixo do locutor; o locutor reenquadrado com o rosto em faceX (centro do quadro) em toda troca de enquadramento, e enquadramento trocando com a fala (M, L, XL, XXL). Fundo das cenas: NUNCA o vídeo do locutor desfocado ou replicado (bg='plate' é erro no kit); use cor sólida ou gradiente da marca, imagem da biblioteca ou do site.` : '',
     `## Formato escolhido (${fmt.name})\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmt.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmt.regras ? `\nQuando: ${fmt.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`,
+    `## Ritmo (${st.pace ?? 'dinamico'})\nAlgo novo na tela a cada ~${paceOf(st).every} s; cenas de ${paceOf(st).scene[0]} a ${paceOf(st).scene[1]} s${noSpeaker ? '' : `; enquadramento do locutor muda a cada ${paceOf(st).framing[0]} a ${paceOf(st).framing[1]} s e o kit avisa locutor parado por mais de ${paceOf(st).hold} s`}. Os mesmos números estão em compose.json (pace). Isto vale no lugar de qualquer número de ritmo dos outros guias.`,
     style ? `## Estilo escolhido (${style.name})\nSiga-o: tipografia, câmera, beats, sons e receitas vêm dele; o formato decide o layout e a marca decide cores e fontes.\n${styleBrief(style, styleRefs(style.id))}` : '',
-    !style && styleList.length ? `## Estilos disponíveis\nNenhum foi escolhido: escolha o que serve ao assunto e à marca, diga qual e por quê no treatment e siga o style.json dele (Read). Para seguir um à risca em todos os renders, o usuário escolhe no projeto.\n${styleList.map((x: any) => `- ${x.id}: ${x.name}. ${x.description ?? ''}${x.motif ? ` Motivo: ${x.motif}.` : ''}${x.camera?.signature ? ` Câmera: ${x.camera.signature}.` : ''} (${join(styleDir(x.id), 'style.json')})`).join('\n')}` : '',
+    !style && styleList.length ? `## Estilos disponíveis\nNenhum foi escolhido: escolha o que serve ao assunto e à marca, diga qual e por quê no treatment e siga o style.json dele (Read). Para seguir um à risca em todos os renders, o usuário escolhe no projeto.\n${styleList.map((x: any) => `- ${x.id}: ${x.name}. ${x.description ?? ''}${x.motif ? ` Motivo: ${x.motif}.` : ''}${x.camera?.signature ? ` Câmera: ${x.camera.signature}.` : ''}${x.pack ? ` Pacote: estilos/${x.pack}${x.engine ? ` (engine='${x.engine}')` : ''}.` : ''} (${join(styleDir(x.id), 'style.json')})`).join('\n')}` : '',
     !noSpeaker && refAnalysis && !siteRef(st) ? `## Análise da referência (reference.json)\nÉ o estilo a reproduzir. Olhe os quadros em ../ref/ com Read antes de escrever.\n${refAnalysis}` : '',
     `## Imagens e objetos\nA peça visual de cada cena vem, nesta ordem: 1) a biblioteca do reel e a compartilhada (seções abaixo) e as imagens do site; 2) objetos 3D (\`obj3d\` com um .glb da biblioteca, ou os tipos prontos do kit); 3) desenho em código (\`canvas()\` / \`scene3d()\`) só quando nada pronto mostra o que a fala diz. Cada peça demonstra a frase em que entra (mockup, objeto, gravura, ícone com material e sombra), nunca enfeite. Proibido: emoji, balão ou card com texto de exemplo, texto em outra língua que a fala não diz, ícone de linha fina chapado sem sombra nem material. Decida a câmera de cada plano pelo DIRETOR.md e escreva treatment.md antes do scenes.py.`,
     manifest.length ? `## Biblioteca do reel (assets/manifest.json)\nBaixada da internet para os momentos do roteiro, com licença e autor. Abra cada imagem com Read antes de usar (o nome não diz o que ela mostra); .svg entra como <img> ou inline; .glb entra com obj3d(p, 'assets/3d/arquivo.glb', x, y, size, at, d).${manifest.some(e => e.kind === 'video') ? ` Vídeo (assets/video/, 15 s, mudo) entra com footage(p, src, x, y, w, h, d, at, start): janela com cantos redondos na cena do momento, nunca sobre o rosto; confira o trecho (start) com ffmpeg antes de usar.` : ''}${manifest.some(e => e.kind === 'audio') ? ` A trilha (assets/music/) entra uma vez no scenes.py com music('assets/music/arquivo.mp3', vol=.16): baixa, sob a voz.` : ''}\n${manifest.map(e => `- assets/${e.file} · ${e.kind === 'audio' ? 'trilha' : `momento ${e.moment}`} · "${e.query}" · ${e.provider} · ${e.license}${e.author ? ` · ${e.author}` : ''}`).join('\n')}` : '',

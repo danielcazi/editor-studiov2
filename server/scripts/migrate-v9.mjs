@@ -1,10 +1,11 @@
 // SPEC-v9 §7: rewrites workspace/formats/*/format.json to the planos + agenda schema. Run with the server stopped: node scripts/migrate-v9.mjs
-// Idempotent (a format that already has `planos` is left alone). Phases 4 and 5 add the styles and skills parts here.
+// Idempotent (a format that already has `planos`, or a style folder that exists, is left alone). Phase 5 adds the skills part here.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const WS = process.env.WORKSPACE || join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'workspace');
+const KIT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'claude-reel-editor', 'skills', 'reel-editor', 'compose');
 const SAFE = { top: 200, bottom: 380, left: 70, right: 70 };
 const base = { aspectRatio: '9:16', width: 1080, height: 1920, speaker: true, refVideo: false, safeZones: SAFE };
 
@@ -44,4 +45,29 @@ export function migrateFormats(ws = WS) {
   return done;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) console.log('formatos migrados:', migrateFormats().join(', ') || 'nenhum (já estavam no esquema novo)');
+// Styles (SPEC-v9 §2.2): the 12 illustration packs of compose/estilos/*.md become workspace/styles/<id>/style.json with `pack` (and `engine`
+// when engines/<name>.js draws it). The name and description come from the pack's own first heading and blockquote.
+export const ENGINES = { 'silkscreen-poster': 'silkscreen', 'briefing-board': 'briefing', 'swiss-motion': 'swiss', 'art-deco': 'deco', sketchnote: 'sketch', launch: 'launch', diorama: 'diorama', cinetic: 'cinetic' };
+// the old image-cluster format was a visual language, not a shot plan: it becomes a style (its text is the format's old promptGuide)
+const IMAGE_CLUSTER = { name: 'Cluster de imagens', description: 'Grupos de imagens acima da cabeça do locutor e legendas pequenas e discretas.',
+  guide: 'Acima da cabeça do locutor, um cluster de 3 a 5 imagens com leve rotação e sombra suave que ilustram o conceito da fala completa daquela ideia (não palavras soltas, nem decoração). O cluster inteiro troca a cada nova ideia; no gancho e na CTA o locutor fica sozinho, sem cluster. Legenda pequena e discreta na parte inferior, com sombra para garantir contraste. Texto que precisa ser lido fica até a fala terminar.' };
+
+export function migrateStyles(ws = WS, kit = KIT) {
+  const dir = join(ws, 'styles'), done = [];
+  mkdirSync(dir, { recursive: true });
+  const write = (id, st) => { if (existsSync(join(dir, id, 'style.json'))) return; mkdirSync(join(dir, id), { recursive: true }); writeFileSync(join(dir, id, 'style.json'), JSON.stringify({ id, ...st }, null, 2)); done.push(id); };
+  for (const f of readdirSync(join(kit, 'estilos')).filter(f => f.endsWith('.md') && f !== 'README.md').sort()) {
+    const id = f.slice(0, -3), md = readFileSync(join(kit, 'estilos', f), 'utf8').split('\n');
+    const name = (md[0] ?? '').replace(/^#\s*/, '').replace(/\s*\(.*\)\s*$/, '') || id;
+    const description = (md.find(l => l.startsWith('> ')) ?? '').slice(2).split(/(?<=\.)\s/)[0];
+    write(id, { name, description, pack: f, ...(ENGINES[id] ? { engine: ENGINES[id] } : {}),
+      guide: 'Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve' + (ENGINES[id] ? ` (motor engine='${ENGINES[id]}').` : '.') });
+  }
+  write('image-cluster', IMAGE_CLUSTER);
+  return done;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  console.log('formatos migrados:', migrateFormats().join(', ') || 'nenhum (já estavam no esquema novo)');
+  console.log('estilos criados:', migrateStyles().join(', ') || 'nenhum (já existiam)');
+}
