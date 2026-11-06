@@ -312,6 +312,7 @@ def render():
     <script>
     {EASES}
     {eng}
+    gsap.defaults({{ autoRound: false }});   // sem isso o GSAP arredonda strokeDashoffset para px inteiro: o traço com pathLength=1 pula em vez de desenhar
     const tl = gsap.timeline({{ paused: true }});
     {js}
     window.__timelines = window.__timelines || {{}}; window.__timelines["{cid}"] = tl;
@@ -436,6 +437,7 @@ def render():
       {(chr(10) + '  ').join(sfx_tags)}
     </div>
     <script>
+    gsap.defaults({{ autoRound: false }});
     const tl = gsap.timeline({{ paused: true }});
     {pcam_js}
     {chr(10).join(world_js)}
