@@ -46,6 +46,13 @@ assert mask == [{"t0": 0, "ignore": [[-90, 300, 1260, 1620]]}, {"t0": 4, "ignore
 assert 'tl.set(".cut",{scale:1.06},1.500);' in html and 'tl.set(".cut",{scale:1},3.000);' in html and ',12.000);' not in html
 assert any('T() sem palavra' in a and '"nada"' in a for a in kit.AVISOS), kit.AVISOS
 kit.S.clear(); kit.CUTS.clear()
+# ritmo: sem `pace` no compose.json vale o dinamico de antes; o aviso de locutor parado segue pace.hold
+assert kit.PACE == {'every': 1.5, 'scene': [1.2, 3], 'framing': [2, 4], 'hold': 4}, kit.PACE
+def hold_warn():
+    kit.AVISOS.clear(); kit.S.clear(); kit.scene(1, 0, 6, 'red', ('L', 'hold', 'L')); kit.lint_static()
+    return [a for a in kit.AVISOS if 'locutor parado' in a]
+assert hold_warn(); kit.PACE['hold'] = 8; assert not hold_warn(); kit.PACE['hold'] = 4
+kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
 # motores por estilo: engine() lê engines/<nome>.js uma vez, canvas(engine=) marca o uso da cena, e cada motor é JS válido
 import subprocess
 shutil.copytree(KIT / "engines", Path(d) / "engines")
@@ -75,3 +82,10 @@ kit.scene(1, 0, 2, 'red', None, sfx=[('whoosh', -.12, .5)])
 kit.scene(2, 2, 4, 'black', None, sfx=[('pop', .3, .5), ('pop', .35, .5), ('click', .35, .5)])
 kit.lint_sfx()
 assert len(kit.ERROS) == 2 and any('antes do reel' in e for e in kit.ERROS) and any('duas vezes' in e for e in kit.ERROS), kit.ERROS
+# b-roll: footage() é uma janela de vídeo mudo com clip dentro da cena; music() entra uma vez no index.html
+h, js = kit.footage('b01', 'assets/video/lib1-clip-tim-cook.mp4', 60, 300, 960, 540, 4.0, at=.5, start=3)
+assert 'class="clip"' in h and 'data-media-start="3.00"' in h and 'data-duration="3.50"' in h and 'muted' in h and 'object-fit:cover' in h, h
+assert 'tl.fromTo("#b01-ft"' in js and '},3.70);' in js, js
+assert 'footage' in kit.KIT_HELPERS
+kit.music('assets/music/lib9-music-upbeat.mp3', vol=.2)
+assert kit.MUSIC == ('assets/music/lib9-music-upbeat.mp3', .2, 1.2)

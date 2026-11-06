@@ -14,6 +14,7 @@ export const PROVIDERS: Provider[] = [
   { id: 'openverse', name: 'Openverse (CC / domínio público)', kind: 'broll', needsKey: false, testable: true },
   { id: 'iconify', name: 'Iconify (ícones SVG)', kind: 'broll', needsKey: false, testable: true },
   { id: 'polypizza', name: 'Poly Pizza (objetos 3D CC0)', kind: 'broll', needsKey: true, testable: true },
+  { id: 'youtube', name: 'YouTube (yt-dlp, b-roll editorial)', kind: 'broll', needsKey: false, testable: false },
   { id: 'artlist', name: 'Artlist', kind: 'broll', needsKey: true, testable: false },
   { id: 'higgsfield', name: 'Higgsfield', kind: 'broll', needsKey: true, testable: false },
   { id: 'elevenlabs', name: 'ElevenLabs', kind: 'voice', needsKey: true, testable: true },

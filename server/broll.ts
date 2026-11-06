@@ -1,6 +1,7 @@
-// Asset sources: search and download for Pexels, Pixabay, Wikimedia Commons, Openverse (CC images), Iconify (SVG icons) and Poly Pizza (CC0 3D models).
-// Every result carries a stated license.
-// Artlist and Higgsfield are not here: they have no public search/download API that we could confirm; see keys.ts.
+// Asset sources: search and download for Pexels, Pixabay, Wikimedia Commons, Openverse (CC images and audio), Iconify (SVG icons), Poly Pizza (CC0 3D models)
+// and YouTube (yt-dlp, no license: editorial use, the b-roll step only).
+// Every result carries a stated license. Artlist and Higgsfield are not here: they have no public search/download API that we could confirm; see keys.ts.
+import { execFile } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -8,13 +9,14 @@ import { getKey } from './keys.ts';
 import { UserError } from './pipeline.ts';
 import type { Rights } from './edits.ts';
 
-export type Kind = 'video' | 'image' | 'model';   // model: a .glb for three.js (obj3d in kit.py)
+export type Kind = 'video' | 'image' | 'model' | 'audio';   // model: a .glb for three.js (obj3d in kit.py); audio: music for music() in kit.py
 export interface Candidate {
   provider: string; id: string; kind: Kind; title: string; author: string;
   license: string; pageUrl: string; previewUrl: string; downloadUrl: string;
   width?: number; height?: number; duration?: number;
+  ext?: string;   // file extension when the download URL does not end in one (Jamendo streams, YouTube pages)
 }
-interface Source { id: string; needsKey: boolean; hosts: RegExp; search(q: string, kind: Kind, limit: number, key?: string): Promise<Candidate[]> }
+interface Source { id: string; needsKey: boolean; hosts: RegExp; search(q: string, kind: Kind, limit: number, key?: string): Promise<Candidate[]>; fetch?(c: Candidate, dest: string): Promise<void> }
 
 const UA = 'Editor7/1.0 (local video editor)';
 async function getJson(url: string, headers: Record<string, string> = {}) {
@@ -81,10 +83,12 @@ const commons: Source = {
 const openverse: Source = {
   id: 'openverse', needsKey: false, hosts: /./,
   async search(q, kind, limit) {
-    if (kind !== 'image') return [];
-    const j = await getJson(`https://api.openverse.org/v1/images/?${qs({ q, page_size: Math.min(limit, 20), license_type: 'commercial,modification' })}`);
+    if (kind !== 'image' && kind !== 'audio') return [];
+    // audio: the music category (Jamendo mostly), no license filter (the b-roll step is the only caller and takes anything)
+    const j = await getJson(`https://api.openverse.org/v1/${kind === 'audio' ? 'audio' : 'images'}/?${qs({ q, page_size: Math.min(limit, 20), ...(kind === 'audio' ? { category: 'music' } : { license_type: 'commercial,modification' }) })}`);
     return (j.results ?? []).filter((r: any) => r.url).map((r: any): Candidate => ({ provider: 'openverse', id: String(r.id), kind, title: r.title || q, author: r.creator || 'desconhecido',
-      license: `CC ${String(r.license).toUpperCase()}${r.license_version ? ` ${r.license_version}` : ''}`, pageUrl: r.foreign_landing_url || r.url, previewUrl: r.thumbnail || r.url, downloadUrl: r.url, width: r.width, height: r.height }));
+      license: `CC ${String(r.license).toUpperCase()}${r.license_version ? ` ${r.license_version}` : ''}`, pageUrl: r.foreign_landing_url || r.url, previewUrl: r.thumbnail || r.url, downloadUrl: r.url, width: r.width, height: r.height,
+      duration: r.duration ? r.duration / 1000 : undefined, ...(kind === 'audio' ? { ext: /^mp3/.test(r.filetype ?? '') || !r.filetype ? '.mp3' : `.${r.filetype}` } : {}) }));   // audio duration comes in ms; Jamendo says "mp32"
   },
 };
 
@@ -113,12 +117,39 @@ const polypizza: Source = {
   },
 };
 
-export const SOURCES: Source[] = [pexels, pixabay, commons, openverse, iconify, polypizza];
+// YouTube through yt-dlp: search needs no key; the download takes a short section (SECTION s) so a keynote does not cost 2 GB.
+// No license: these are for the b-roll step, which the user turns on knowing the footage is used editorially.
+const YT_DLP = () => process.env.YT_DLP ?? 'yt-dlp';
+const SECTION = 15;
+const ytdlp = (args: string[], ms: number) => new Promise<string>((resolve, reject) =>
+  execFile(YT_DLP(), args, { timeout: ms, maxBuffer: 50_000_000 }, (e, out) => e ? reject(new UserError(`yt-dlp: ${e.message.split('\n')[0]}`)) : resolve(String(out))));
+/** One candidate per JSON line of `yt-dlp --dump-json --flat-playlist`. Exported for the test. */
+export function parseYtSearch(out: string, q: string): Candidate[] {
+  return out.split('\n').filter(Boolean).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } })
+    .filter((r: any) => /^[\w-]{11}$/.test(r.id ?? '') && (r.duration ?? 0) >= 8)
+    .map((r: any): Candidate => ({ provider: 'youtube', id: r.id, kind: 'video', title: r.title || q, author: r.uploader || r.channel || '', license: 'YouTube (sem licença: uso editorial)',
+      pageUrl: `https://www.youtube.com/watch?v=${r.id}`, previewUrl: r.thumbnails?.[0]?.url ?? `https://img.youtube.com/vi/${r.id}/hqdefault.jpg`, downloadUrl: `https://www.youtube.com/watch?v=${r.id}`,
+      duration: r.duration, ext: '.mp4' }));
+}
+const youtube: Source = {
+  id: 'youtube', needsKey: false, hosts: /(^|\.)youtube\.com$/,
+  async search(q, kind, limit) {
+    if (kind !== 'video') return [];
+    return parseYtSearch(await ytdlp([`ytsearch${Math.min(limit, 10)}:${q}`, '--dump-json', '--flat-playlist', '--no-download', '--no-warnings'], 60_000), q);
+  },
+  async fetch(c, dest) {
+    // shortcut: a fixed section starting at 15% of a long video (skips intros), the first SECTION s of a short one; upgrade to chapter-aware picking
+    const start = (c.duration ?? 0) > 90 ? Math.floor(c.duration! * 0.15) : 0;
+    await ytdlp(['-f', 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--download-sections', `*${start}-${start + SECTION}`, '--force-overwrites', '--no-warnings', '-o', dest, '--', c.pageUrl], 5 * 60_000);
+  },
+};
+
+export const SOURCES: Source[] = [pexels, pixabay, commons, openverse, iconify, polypizza, youtube];
 
 /** Searches every source that has a key (Commons always). One source failing does not hide the others. */
 export async function search(q: unknown, opts: { kind?: Kind; providers?: string[]; limit?: number } = {}) {
   if (typeof q !== 'string' || !q.trim()) throw new UserError('query is empty');
-  const kind: Kind = opts.kind === 'image' || opts.kind === 'model' ? opts.kind : 'video', limit = Math.min(Math.max(opts.limit ?? 8, 1), 20);
+  const kind: Kind = opts.kind === 'image' || opts.kind === 'model' || opts.kind === 'audio' ? opts.kind : 'video', limit = Math.min(Math.max(opts.limit ?? 8, 1), 20);
   const wanted = SOURCES.filter(s => !opts.providers || opts.providers.includes(s.id));
   if (!wanted.length) throw new UserError('no known provider in the list');
   const errors: Record<string, string> = {}, results: Candidate[] = [];
@@ -136,6 +167,7 @@ export async function download(c: Candidate, dest: string) {
   const src = SOURCES.find(s => s.id === c.provider) ?? (() => { throw new UserError('unknown provider'); })();
   const u = new URL(c.downloadUrl);
   if (u.protocol !== 'https:' || !src.hosts.test(u.hostname)) throw new UserError(`download URL is not from ${src.id}`);
+  if (src.fetch) { await src.fetch(c, dest); return dest; }
   const r = await fetch(u, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10 * 60_000) });
   if (!r.ok || !r.body) throw new UserError(`download failed (${r.status})`);
   if (Number(r.headers.get('content-length') ?? 0) > MAX_BYTES) throw new UserError('file is larger than 500 MB');
@@ -144,9 +176,9 @@ export async function download(c: Candidate, dest: string) {
 }
 
 // ---- from a candidate to a clip in the lower band of the frame ----
-const MEDIA_RE = /\.(mp4|webm|mov|jpe?g|png|webp|svg|glb)$/i;
+const MEDIA_RE = /\.(mp4|webm|mov|jpe?g|png|webp|svg|glb|mp3|m4a|wav|ogg|flac)$/i;
 /** The file extension the composition can play; null for anything else (ogv and the like are skipped). */
-export const extOf = (c: Candidate) => { try { return MEDIA_RE.exec(new URL(c.downloadUrl).pathname)?.[0].toLowerCase() ?? null; } catch { return null; } };
+export const extOf = (c: Candidate) => { if (c.ext) return c.ext; try { return MEDIA_RE.exec(new URL(c.downloadUrl).pathname)?.[0].toLowerCase() ?? null; } catch { return null; } };
 
 const RANK: Record<string, number> = { pexels: 0, pixabay: 1, commons: 2 };
 /** The best playable candidate: long enough first, then Pexels, Pixabay, Commons. */

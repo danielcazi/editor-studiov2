@@ -6319,6 +6319,15 @@ async function projects() {
                   <option value="">Estilo: automático (o diretor escolhe entre os estilos)</option>
                   ${motionStyles.map(s => `<option value="${esc(s.id)}" title="${esc(s.description || '')}">Estilo: ${esc(s.name || s.id)}</option>`).join('')}
                 </select>
+                <select class="np-select" name="pace" id="npPaceSelect" title="Ritmo: a cada quantos segundos algo novo entra na tela">
+                  <option value="dinamico">Ritmo: dinâmico (algo novo a cada ~1,5 s)</option>
+                  <option value="normal">Ritmo: normal (a cada ~2,2 s)</option>
+                  <option value="lento">Ritmo: lento (a cada ~3,5 s)</option>
+                </select>
+                <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:12.5px;cursor:pointer" title="Busca na internet fotos e clipes das pessoas, marcas e eventos citados, e uma trilha, sem filtro de licença (uso editorial)">
+                  <input type="checkbox" id="npBroll" style="margin-top:3px">
+                  <span>🎞 Inserir b-roll <span class="muted" style="display:block;font-size:11px">Fotos e clipes do YouTube das pessoas, marcas e eventos citados, mais uma trilha. Aumenta o tempo de produção em alguns minutos.</span></span>
+                </label>
               </div>
 
               <!-- 4. Vídeo já pré-editado? (Cortes de fala) -->
@@ -6892,7 +6901,7 @@ async function projects() {
           name: nameInput.value.trim() || 'novo-video', text: speechEl.value, voice: { provider: provEl.value, voice: voiceEl.value }, character: charEl.value ? { name: charEl.value } : undefined,
           referenceUrl: refUrlInput.value.trim() || undefined, referenceNote: $('#npRefNote').value.trim() || undefined,
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
-          styleId: $('#npMotionStyleSelect')?.value || undefined
+          styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
         });
         location.hash = `#/p/${st.id}`;
         api('POST', `/projects/${st.id}/ingest`).catch(() => {});
@@ -6926,7 +6935,7 @@ async function projects() {
             brand,
             formatId,
             images: imagePaths,
-            styleId: $('#npMotionStyleSelect')?.value || undefined
+            styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
           });
           api('POST', `/projects/${st.id}/ingest`).catch(() => {});
         }
@@ -6950,7 +6959,7 @@ async function projects() {
         brand,
         formatId,
         images: imagePaths,
-        styleId: $('#npMotionStyleSelect')?.value || undefined
+        styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
       });
 
       location.hash = `#/p/${st.id}`;
@@ -6993,6 +7002,13 @@ const STEP_INFO = {
     title: 'Etapa 2 em andamento: Roteiro com IA',
     desc: 'Claude Opus analisando momentos-chave, identificando ganchos e sugerindo os momentos do vídeo...',
     short: 'Roteiro (Opus)'
+  },
+  broll: {
+    index: 2,
+    name: '2 Roteiro',
+    title: 'Buscando b-roll na internet',
+    desc: 'Fotos e clipes das pessoas, marcas e eventos citados (Wikimedia, YouTube, bancos de stock) e uma trilha, baixados para a biblioteca do reel. Sem filtro de licença: uso editorial.',
+    short: 'B-roll'
   },
   brand: {
     index: 2,
@@ -7286,6 +7302,9 @@ async function project(id) {
           <option value="">🎞 motion: diretor decide</option>
           ${st.styleId ? `<option value="${esc(st.styleId)}" selected>🎞 ${esc(st.styleId)}</option>` : ''}
         </select>
+        <select id="pt-pace-select" title="Ritmo deste projeto: vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
+          ${[['dinamico', 'dinâmico'], ['normal', 'normal'], ['lento', 'lento']].map(([v, n]) => `<option value="${v}"${(st.pace || 'dinamico') === v ? ' selected' : ''}>⏱ ritmo: ${n}</option>`).join('')}
+        </select>
         ${st.completed ? `<span class="badge-done-pill" style="display:inline-flex;align-items:center;gap:5px;background:rgba(0,230,118,0.12);color:#00e676;border:1px solid rgba(0,230,118,0.3);padding:3px 9px;border-radius:12px;font:700 11px var(--mono)">✓ CONCLUÍDO</span>` : ''}
         ${st.interrupted ? `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,170,0,0.14);color:#ffb340;border:1px solid rgba(255,170,0,0.4);padding:2px 8px;border-radius:12px;font:700 11px var(--mono)">⚠ composição interrompida
           <button id="btn-int-open" title="Abrir na Revisão o que o compositor chegou a gerar">abrir o que ficou</button><button id="btn-int-redo" title="Compor de novo do zero">recompor</button></span>` : ''}
@@ -7298,6 +7317,8 @@ async function project(id) {
         running = { step: 'motion', startedAt: Date.now() }; viewStep = 'motion'; render();
         api('POST', `/projects/${id}/motion`).catch(err => { running = null; line(`ERRO ao recompor: ${err.message}`); render(); });
       };
+      const paceSel = $('#pt-pace-select');
+      if (paceSel) paceSel.onchange = async () => { await api('PUT', `/projects/${id}/pace`, { pace: paceSel.value }); render(); };
       const styleSel = $('#pt-style-select');
       if (styleSel) {
         api('GET', '/styles').then(ids => { for (const sid of ids) if (![...styleSel.options].some(o => o.value === sid)) styleSel.add(new Option(`🎞 ${sid}`, sid)); }).catch(() => {});
@@ -7658,6 +7679,7 @@ async function scriptStep(id, body) {
       <div style="display:flex;gap:10px;align-items:center">
         <button class="primary btn-approve-script" id="ok">Aprovar roteiro e gerar o vídeo ➔</button>
         <button class="btn-redo-script" id="redo">Gerar de novo</button>
+        <button id="broll" title="Busca na internet fotos e clipes das pessoas, marcas e eventos citados, e uma trilha">${project.broll ? '✓ B-roll ligado · buscar de novo' : '🎞 Inserir b-roll (este projeto nasceu sem)'}</button>
       </div>
     </div>
     <table><tr><th style="width:75px">início</th><th style="width:75px">fim</th><th style="min-width:180px">estilo de motion</th><th style="min-width:180px">texto em destaque</th><th style="min-width:320px">o que será animado (ação visual)</th><th style="width:90px">status</th></tr>
@@ -7888,6 +7910,21 @@ async function scriptStep(id, body) {
   body.querySelectorAll('.btn-redo-script').forEach(btn => {
     btn.onclick = () => handleRedo(btn);
   });
+  body.querySelector('#broll').onclick = async btn => {
+    btn = btn.currentTarget;
+    if (!confirm('Inserir b-roll busca na internet fotos e clipes das pessoas, marcas, produtos e eventos citados no roteiro (Wikimedia, YouTube, bancos de stock) e uma trilha, sem filtro de licença (uso editorial, por sua conta).\n\nIsso aumenta o tempo de produção: a busca e os downloads levam alguns minutos a mais, e o compositor terá mais material para encaixar.\n\nContinuar?')) return;
+    btn.disabled = true; btn.textContent = 'Buscando b-roll…';
+    line('→ Buscando b-roll na internet (pessoas, clipes, trilha)...');
+    try {
+      await api('POST', `/projects/${id}/broll`);
+      line('✓ B-roll inserido na biblioteca do reel; aprove o roteiro para compor com ele.');
+      showToast({ title: '✓ B-roll inserido', message: 'Veja a lista em Progresso. Aprove o roteiro para compor com o material.', type: 'success', duration: 6000 });
+    } catch (err) {
+      line(`ERRO ao inserir b-roll: ${err.message}`);
+      alert(`Erro ao inserir b-roll: ${err.message}`);
+    }
+    if (typeof window.renderProject === 'function') window.renderProject();
+  };
 }
 
 // Step 3: cor → fonte → legenda → ícones, each prefilled; OK merges into this project's override

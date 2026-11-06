@@ -72,11 +72,13 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/projects\/([^/]+)\/log$/, (m, b) => P.logFromClient(m[1], b?.text)],
   ['POST', /^\/projects\/([^/]+)\/ingest$/, m => P.ingest(m[1]).then(r => { P.script(m[1]).catch(() => {}); return r; })],  // ingest chains into the script suggestion; errors reach the UI via step events
   ['POST', /^\/projects\/([^/]+)\/script$/, m => P.script(m[1])],
+  ['POST', /^\/projects\/([^/]+)\/broll$/, m => P.insertBroll(m[1])],
   ['PUT', /^\/projects\/([^/]+)\/script$/, (m, b) => P.putScript(m[1], b)],
   ['POST', /^\/projects\/([^/]+)\/brand$/, (m, b) => P.brandStep(m[1], b)],
   ['POST', /^\/projects\/([^/]+)\/brand\/save-default$/, m => P.saveBrandDefault(m[1])],
   ['POST', /^\/projects\/([^/]+)\/motion$/, m => P.motion(m[1])],
   ['PUT', /^\/projects\/([^/]+)\/style$/, (m, b) => P.setStyle(m[1], b?.styleId)],
+  ['PUT', /^\/projects\/([^/]+)\/pace$/, (m, b) => P.setPace(m[1], b?.pace)],
   ['POST', /^\/projects\/([^/]+)\/final$/, (m, b) => P.final(m[1], b?.formats)],
   ['POST', /^\/projects\/([^/]+)\/formats$/, (m, b) => P.setFormats(m[1], b?.formats)],
   ['POST', /^\/projects\/([^/]+)\/complete$/, (m, b) => P.completeProject(m[1], b?.completed ?? true)],

@@ -18,6 +18,7 @@ SPEAKER = CFG.get('speaker', True)   # false = reel só de motion: sem plate, se
 CUTS = CFG.get('cuts', [])          # emendas do corte (s, no relógio do reel): o recorte ganha um zoom alternado em cada uma
 PANEL = CFG.get('panel')            # Speech Screen: {'top': fração de H}; cena com cam='panel' mostra o vídeo bruto (assets/talk.mp4) no painel de baixo
 PANEL_TOP = round(H * PANEL['top']) if PANEL else None
+PACE = CFG.get('pace') or {'every': 1.5, 'scene': [1.2, 3], 'framing': [2, 4], 'hold': 4}   # the reel's pace toggle (server PACE table); the default is dinamico
 CUT_WINDOWS = CFG.get('cutWindows')  # [[a, b], ...] s: só aqui existe recorte; cena com câmera M/L/XL fora delas é erro (use 'panel' ou None)
 
 # Relógio por palavra: toda batida cai numa palavra da fala, nunca num segundo digitado. assets/transcript.json vem do master.
@@ -83,6 +84,22 @@ def floatimg(p, src, x, y, w, at=0.0, rot=-4, drift=16, d=None, k='fi'):
           f'tl.to("#{i}",{{y:-{drift},rotation:{rot + 2},duration:1.6,ease:"sine.inOut",repeat:5,yoyo:true}},{at + .55:.2f});')
     if d is not None: js += f'tl.to("#{i}",{{opacity:0,scale:.85,duration:.3,ease:"power2.in"}},{at + d - .3:.2f});'
     return html, js
+
+def footage(p, src, x, y, w, h, d, at=0.0, start=0.0, r=36, k='ft'):
+    """Vídeo da biblioteca do reel (assets/video/, b-roll) numa janela com cantos redondos: entra com mola, fica até d (segundos
+    da cena) e some. Mudo, só a imagem; start = segundo do arquivo em que o trecho começa. Nunca sobre o rosto (layout_check reprova)."""
+    i = f'{p}-{k}'
+    html = (f'<div id="{i}" class="card" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px;overflow:hidden;border-radius:{r}px;opacity:0">'
+            f'<video class="clip" src="{src}" data-start="{at:.2f}" data-duration="{max(.1, d - at):.2f}" data-media-start="{start:.2f}" data-track-index="7" muted playsinline style="width:100%;height:100%;object-fit:cover"></video></div>')
+    js = (f'tl.fromTo("#{i}",{{opacity:0,scale:.9,y:30}},{{opacity:1,scale:1,y:0,duration:.45,ease:"back.out(1.4)"}},{at:.2f});'
+          f'tl.to("#{i}",{{opacity:0,scale:.95,duration:.3,ease:"power2.in"}},{max(at, d - .3):.2f});')
+    return html, js
+
+MUSIC = None
+def music(src, vol=.16, fade=1.2):
+    """Trilha do reel inteiro (assets/music/ ou assets/lib/music/), uma por reel, baixa sob a voz, com fade nas pontas."""
+    global MUSIC
+    MUSIC = (src, vol, fade)
 
 def cascade(p, words, top=300, size=14, at=0.0, step=.4, color=None, accent=None, k='cs'):
     """Palavras que caem uma por batida e empilham linhas; a última na cor de destaque. Tipografia gigante: vai em back. size em % da largura, top em px."""
@@ -262,7 +279,7 @@ def lint_static():
             if s['bg'] == 'broll': erro(f'cena {n}: fundo broll com locutor: o recorte some, use câmera None')
             if CUT_WINDOWS is not None and not any(w[0] - .01 <= s['a'] and s['b'] <= w[1] + .01 for w in CUT_WINDOWS):
                 erro(f'cena {n}: recorte fora das janelas {CUT_WINDOWS} (s); use cam="panel" ou None, ou encaixe a cena numa janela')
-            if mode == 'hold' and s['b'] - s['a'] > 4: aviso(f'cena {n}: {s["b"] - s["a"]:.1f} s com locutor parado; divida em duas com enquadramentos diferentes')
+            if mode == 'hold' and s['b'] - s['a'] > PACE['hold']: aviso(f'cena {n}: {s["b"] - s["a"]:.1f} s com locutor parado; divida em duas com enquadramentos diferentes')
         if s['cta'] and not (cam and cam[0] == 'XXL'): erro(f'cena {n}: CTA exige locutor XXL')
         if s['tr'] not in TRS: erro(f'cena {n}: transição {s["tr"]!r} inválida (use {", ".join(TRS)})')
     for x, y in zip(S, S[1:]):
@@ -434,6 +451,7 @@ def render():
       {panel_html}
       {finish_html}
       <audio id="voice" class="clip" src="assets/voice.m4a" data-start="0" data-duration="{DUR}" data-track-index="8" data-volume="1"></audio>
+      {f'<audio id="music" class="clip" src="{MUSIC[0]}" data-start="0" data-duration="{DUR}" data-track-index="15" data-volume="{MUSIC[1]}" data-fade-in="{MUSIC[2]}" data-fade-out="{MUSIC[2]}"></audio>' if MUSIC else ''}
       {(chr(10) + '  ').join(sfx_tags)}
     </div>
     <script>

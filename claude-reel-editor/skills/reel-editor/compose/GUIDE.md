@@ -16,7 +16,7 @@ Você compõe o reel inteiro, cena a cena, em HyperFrames 0.8.217 + GSAP 3.14.2.
 - **Camada `front` (z-index 4)**: Apenas para UI, mockups, cartões, recibos e badges na altura do peito ou topo, sem obstruir o rosto do locutor.
 
 ## Enquadramentos do locutor (rosto em x≈980 de 1920)
-M 0,95 · L 1,2 (padrão) · XL 1,5 (punch-in) · XXL 1,8 (mão erguida, CTA). Modos de câmera: `hold`, `snap`, `push`, `shake`. Troque de enquadramento a cada 2–4 s. Nunca "locutor pequeno no canto".
+M 0,95 · L 1,2 (padrão) · XL 1,5 (punch-in) · XXL 1,8 (mão erguida, CTA). Modos de câmera: `hold`, `snap`, `push`, `shake`. Troque de enquadramento no ritmo de `pace.framing` do compose.json. Nunca "locutor pequeno no canto".
 
 ## Speech Screen (formato com painel)
 Quando `compose.json` traz `panel` e `cutWindows`, o recorte só existe nas janelas listadas (fora delas o alfa do cut.webm é vazio). Cena fora de uma janela: `cam='panel'` (o vídeo bruto do locutor, assets/talk.mp4, ocupa o painel de baixo a partir de `H*panel.top`, com uma régua na cor de destaque; toda a animação fica acima, e a checagem de layout reprova texto sobre o painel) ou `cam=None` (tela cheia). A CTA fica na última janela, com XXL. `render()` reprova câmera de recorte fora das janelas.
@@ -38,7 +38,7 @@ O `hyperframes check` pode acusar `canvas_covered` no fundo (`bgfill`) de uma ce
 5. Nada sobre o rosto: cards e imagens acima da cabeça; apoio na altura do peito.
 6. CTA: locutor XXL; destaque, botão menor e URL pequena, tudo acima de 380 px da base, sem encostar no queixo.
 7. Zonas seguras: topo 200, base 380, laterais 70 px.
-8. Ritmo: nada sem mudança visual por mais de 3 s; ~1,5 s por estímulo; card de 1,2 a 3 s; nunca o mesmo tipo de card duas vezes seguidas; gancho forte nos 3 primeiros segundos; passagem entre cenas pelo `tr=` de `scene()` (corte seco só na batida forte).
+8. Ritmo: siga `pace` do compose.json (`every` = algo novo a cada N s, `scene` = duração mínima e máxima da cena, `framing`, `hold`); nada sem mudança visual por mais de 2 × `every`; nunca o mesmo tipo de card duas vezes seguidas; gancho forte nos 3 primeiros segundos; passagem entre cenas pelo `tr=` de `scene()` (corte seco só na batida forte).
 9. Texto cabe inteiro na zona segura: meça a largura e reduza o corpo até caber; nunca cortado pelas laterais nem coberto por faixa, card ou locutor.
 10. Número grande em cor forte da paleta sobre fundo claro (ou o inverso), contraste de pelo menos 4,5:1; nunca vermelho sobre vinho ou preto.
 11. Imagem só quando mostra o que a fala diz. Print de notícia, logo ou tela sem ligação com a frase fica fora.
@@ -60,6 +60,7 @@ A peça visual de uma cena vem, nesta ordem: **1)** a biblioteca do reel (`asset
 ## Estilos prontos do kit
 Helpers testados (cada um devolve `(html, js)`; junte com `both(...)`; `at` é relativo ao início da cena; `k=` separa duas instâncias na mesma cena). Use como ponto de partida, não em toda cena: um estilo novo por cena, sem repetir o mesmo dois seguidos.
 - **Imagens do site**: `floatimg(p, src, x, y, w, at, rot, drift, d)` card flutuando (sombra, rotação leve, entra com mola, deriva ida e volta); várias por cena, em `front` ao redor do locutor ou na área de cima do painel.
+- **Vídeo da biblioteca (b-roll)**: `footage(p, src, x, y, w, h, d, at, start)` janela de vídeo mudo com cantos redondos (assets/video/, trechos de 15 s); `d` = segundos da cena, `start` = segundo do arquivo. Nunca sobre o rosto. **Trilha**: `music(src, vol=.16)` uma vez no scenes.py, fora das cenas (assets/music/ ou assets/lib/music/).
 - **Tipografia estrutural** (palavras com papel físico): `cascade` palavras que caem uma por batida e empilham (a última em destaque; `back`) · `lintel` palavra-viga que aperta a frase numa fresta · `hang` palavra descida por cabos que verga a base · `column` palavra que sobe e gira até virar coluna · `platform` palavras anteriores formam um piso justificado e a final assenta nele · `aperture` parede com a palavra cuja letra vira íris e abre a cena (no início da cena; escolha uma letra do meio da palavra) · `phrase` frase que sobe por máscara em grupos (`|`).
 - **Vídeo como código**: `slam` uma palavra por batida, a última invertida · `code` editor digitado com sintaxe · `diff` linhas +/− · `count` número que conta e pousa · `braces` assinatura `{ TÍTULO }` · `typeline` linha monoespaçada digitada.
 - **UI que se transforma**: `morph` um objeto que passa por estados sem corte · `iris` revelação circular de uma camada · `flood` cor inundando a tela · `glass` painel de vidro que nasce como gota · `pay` botão → loader → check · `toggle` · `tabs` abas com indicador líquido · `island` ilha dinâmica no topo · `toast` · `cmdk` paleta ⌘K que filtra · `widget` card de métrica com gráfico.

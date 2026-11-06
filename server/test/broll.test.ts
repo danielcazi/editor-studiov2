@@ -82,3 +82,20 @@ test('download writes the file from the provider host', async () => {
   await B.download(c, dest);
   assert.equal(readFileSync(dest, 'utf8'), 'VIDEO-BYTES');
 });
+
+test('YouTube: one candidate per yt-dlp JSON line, shorts under 8 s and broken lines dropped, .mp4 as extension without a download URL', () => {
+  const out = [JSON.stringify({ id: 'dQw4w9WgXcQ', title: 'Tim Cook keynote', uploader: 'Apple', duration: 5400 }), 'not json', JSON.stringify({ id: 'abcdefghijk', title: 'short', duration: 4 })].join('\n');
+  const c = B.parseYtSearch(out, 'tim cook');
+  assert.equal(c.length, 1);
+  assert.equal(c[0].provider, 'youtube'); assert.equal(c[0].author, 'Apple'); assert.equal(c[0].duration, 5400);
+  assert.equal(c[0].pageUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(B.extOf(c[0]), '.mp4');
+  assert.equal(B.rightsOf(c[0]).status, 'licensed');   // the b-roll step ignores rights anyway; this just documents that youtube is not flagged as commons/openverse
+});
+
+test('Openverse audio: the music category, duration converted from ms', async () => {
+  const seen = stub({ 'api.openverse.org/v1/audio': { results: [{ id: 'a1', title: 'Corporate', creator: 'Ana', license: 'by', license_version: '4.0', url: 'https://prod-1.storage.jamendo.com/?trackid=1&format=mp32', filetype: 'mp32', foreign_landing_url: 'https://jamendo.com/x', duration: 95000 }] } });
+  const { results } = await B.search('upbeat corporate', { kind: 'audio', providers: ['openverse'] });
+  assert.ok(seen[0].url.includes('category=music') && !seen[0].url.includes('license_type'));
+  assert.equal(results.length, 1); assert.equal(results[0].kind, 'audio'); assert.equal(results[0].duration, 95); assert.equal(B.extOf(results[0]), '.mp3');
+});
