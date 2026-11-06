@@ -16,7 +16,7 @@ kit.MISSING.clear()
 assert {"giant", "pill", "counter", "lintel", "obj3d"} <= kit.KIT_HELPERS and "render" not in kit.KIT_HELPERS, sorted(kit.KIT_HELPERS)
 poor = kit.lint_variety("from kit import *\nscene(1,0,10,'red',None,back=lambda p,d: giant(p,['A'],30,10,BLK))\nrender()",
                         "<div class='giant'>A</div>", 'tl.fromTo("#a",{opacity:0,y:40},{opacity:1,y:0,duration:.25,ease:"back.out"},0);tl.to("#a",{opacity:0,duration:.3},2);')
-assert len(poor) == 2 and "duram" in poor[0] and "só animam" in poor[1], poor
+assert len(poor) == 1 and "duram" in poor[0], poor   # v8: the lint only flags stuck timing, not repertoire
 rich_src = "from kit import *\n" + "".join(f"{h}(p)\n" for h in ("giant", "pill", "counter", "lintel", "slam"))
 rich = kit.lint_variety(rich_src, '<div class="giant">A</div>',
                         'tl.fromTo("#a",{opacity:0},{opacity:1,duration:.4},0);tl.to("#b",{rotation:12,clipPath:"inset(0)",duration:1.2},0);tl.to("#c",{skewX:4,duration:.5},1);')
@@ -33,9 +33,7 @@ assert kinds == ['push', 'pan', 'orbit', 'pull', 'pan', 'orbit'] and not kit.ERR
 assert js[1] == 'tl.to("#world",{x:0.000,y:0.000,scale:1.100,rotationX:0.000,rotationY:0.000,rotation:0.000,duration:2.00,ease:"sine.inOut"},0.00);', js[1]
 assert js[2].startswith('tl.to("#world",{x:-40.989,y:0.000,scale:1.100,rotationX:0.000,rotationY:2.049') and js[3].startswith('tl.set("#world",{x:0.000,y:0.000,scale:1.000,rotationX:0.000,rotationY:0.000'), js[2:]
 assert kit.world_cover(dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)) == 1 and kit.world_fit(dict(x=-70, y=0, scale=.95, rx=0, ry=0, rz=4)) == dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)
-assert kit.lint_world(kinds) == [] and len(kit.lint_world(['push'])) == 1, kit.lint_world(['push'])
-kit.S[2]['signature'] = False
-assert len(kit.lint_world(['push', 'pan'])) == 2
+assert kit.lint_world(kinds) == [] and kit.lint_world(['push']) == []   # v8: no camera quotas, the director decides
 kit.S.clear(); kit.scene(1, 0, 2, 'red', None, world=dict(scale=2, d=5)); kit.world_track()
 assert len(kit.ERROS) == 2 and 'fora do limite' in kit.ERROS[0] and 'd=5.0' in kit.ERROS[1], kit.ERROS
 kit.ERROS.clear(); kit.S.clear()
