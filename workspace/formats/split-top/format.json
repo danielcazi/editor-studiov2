@@ -13,8 +13,7 @@
   },
   "name": "Tela dividida (locutor em cima)",
   "order": 6,
-  "hidden": true,
-  "description": "Locutor cru no painel de cima, animação embaixo. Precisa do plano panel-top (fase 6).",
+  "description": "Locutor cru no painel de cima, animação embaixo.",
   "planos": [
     "panel-top",
     "none"

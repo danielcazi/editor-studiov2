@@ -13,11 +13,16 @@
   },
   "name": "Business Reels",
   "order": 2,
-  "description": "Locutor recortado em tela cheia só nos momentos marcantes; no resto a animação ocupa a tela.",
+  "description": "Locutor recortado em tela cheia só nos momentos marcantes; no resto, tela dividida (locutor em cima, apoio embaixo) ou só animação.",
   "planos": [
     "cut",
+    "panel-top",
     "none"
   ],
   "janelas": null,
-  "regras": "Locutor recortado (cut) em tela cheia só nos momentos marcantes que pedem mais espaço em tela para o motion; fora deles a animação ocupa a tela (none). Nunca o mesmo plano duas vezes seguidas."
+  "panel": {
+    "side": "top",
+    "top": 0.5
+  },
+  "regras": "Locutor recortado (cut) em tela cheia só nos momentos marcantes que pedem mais espaço em tela para o motion. Tela dividida (panel-top: locutor cru em cima, apoio embaixo) quando ele explica método, lista ou passo a passo. Animação em tela cheia (none) quando a ilustração precisa de tudo. Nunca o mesmo plano duas vezes seguidas."
 }

@@ -61,6 +61,34 @@ assert any('cena 1' in e and "'panel'" in e and 'fora dos planos' in e for e in 
 assert not any('cena 2' in e or 'cena 3' in e for e in kit.ERROS) and any('cenas 2 e 3' in a and 'mesmo plano none' in a for a in kit.AVISOS), (kit.ERROS, kit.AVISOS)
 kit.PLANOS[:] = ['cut', 'panel', 'none']
 kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
+# v9 fase 6: panel-top (painel em cima), raw (vídeo cru em tela cheia, bg clear) e react (referência na metade oposta ao painel)
+H = kit.H
+kit.PANEL, kit.PANEL_SIDE, kit.PANEL_TOP = {'side': 'top', 'top': .5}, 'top', H // 2
+kit.PANEL_Y0, kit.PANEL_H = 0, H // 2
+kit.PLANOS[:] = ['cut', 'panel', 'panel-top', 'raw', 'react', 'none']
+def erros(*sc):
+    kit.ERROS.clear(); kit.AVISOS.clear(); kit.S.clear()
+    for k, (cam, bg) in enumerate(sc, 1): kit.scene(k, k - 1, k, bg, cam)
+    kit.lint_static(); return list(kit.ERROS)
+assert erros(('panel-top', 'red'), ('raw', 'clear'), (None, 'black')) == []
+assert any('painel embaixo' in e or 'painel de baixo' in e for e in erros(('panel', 'red')))   # "panel" com o painel em cima
+assert any('bg="clear"' in e for e in erros(('raw', 'red')))   # um fundo sólido esconderia o vídeo cru
+assert any('"clear" só com' in e for e in erros((None, 'clear')) + erros((('L', 'hold', 'L'), 'clear')))
+assert any('refVideo' in e for e in erros(('react', 'clear')))   # sem assets/ref.mp4 não há react
+kit.REF_VIDEO = True
+assert erros(('react', 'clear'), (('L', 'hold', 'L'), 'red')) == []
+kit.S.clear(); kit.ERROS.clear()
+kit.scene(1, 0, 3, 'clear', 'raw'); kit.scene(2, 3, 6, 'red', 'panel-top'); kit.scene(3, 6, 9, 'clear', 'react'); kit.scene(4, 9, 10, 'black', None)
+kit.render()
+html = open("index.html").read(); mask = json.load(open("motion_mask.json"))
+assert 'id="rcam"' in html and 'assets/raw.mp4' in html and 'id="rfcam"' in html and 'assets/ref.mp4' in html and 'object-position:' in html, 'raw e react no index.html'
+assert f'#tcam {{ position:absolute; left:0; top:0px; width:1080px; height:{H // 2}px' in html, 'painel de cima: de 0 até a metade'
+assert f'id="rfcam" style="position:absolute;left:0;width:1080px;top:{H // 2}px;height:{H - H // 2}px' in html, 'a referência ocupa a metade de baixo, oposta ao painel'
+assert 'tl.set("#rcam",{opacity:1},0);' in html and 'tl.set("#tcam",{opacity:1},3);' in html and 'tl.set("#tcam",{opacity:1},6);' in html and 'tl.set("#rfcam",{opacity:1},6);' in html
+assert mask[1]["ignore"] == [[0, 0, 1080, H // 2]] and mask[2]["ignore"] == [[0, 0, 1080, H]] and mask[3]["ignore"] == [], mask
+kit.PANEL, kit.PANEL_SIDE, kit.PANEL_TOP, kit.PANEL_Y0, kit.PANEL_H, kit.REF_VIDEO = None, 'bottom', None, 0, 0, False
+kit.PLANOS[:] = ['cut', 'panel', 'none']
+kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
 # motores por estilo: engine() lê engines/<nome>.js uma vez, canvas(engine=) marca o uso da cena, e cada motor é JS válido
 import subprocess
 shutil.copytree(KIT / "engines", Path(d) / "engines")

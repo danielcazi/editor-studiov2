@@ -20,6 +20,12 @@ M 0,95 · L 1,2 (padrão) · XL 1,5 (punch-in) · XXL 1,8 (mão erguida, CTA). M
 
 ## Speech Screen (formato com painel)
 Quando `compose.json` traz `panel` e `cutWindows`, o recorte só existe nas janelas listadas (fora delas o alfa do cut.webm é vazio). Cena fora de uma janela: `cam='panel'` (o vídeo bruto do locutor, assets/talk.mp4, ocupa o painel de baixo a partir de `H*panel.top`, com uma régua na cor de destaque; toda a animação fica acima, e a checagem de layout reprova texto sobre o painel) ou `cam=None` (tela cheia). A CTA fica na última janela, com XXL. `render()` reprova câmera de recorte fora das janelas.
+## Outros planos do locutor (só os de `planos` do compose.json)
+- `cam='panel-top'`: o painel do locutor (vídeo cru, `assets/talk.mp4`) fica em cima, de 0 até `H*panel.top`, com a régua embaixo dele; a animação ocupa o resto e a checagem de layout reprova texto sobre o painel. Só em formato com `panel.side` `top`. `cam='panel'` é o espelho (painel embaixo, `panel.side` `bottom`); usar o errado é erro.
+- `cam='raw'` com `bg='clear'`: o vídeo original em tela cheia, recortado em cover e centrado no rosto (`faceX`), com os gráficos por cima. Não há recorte nem máscara: nada de texto sobre o rosto, e `front` só na altura do peito (a checagem de rosto não cobre este plano). O fundo sólido esconderia o vídeo, então `bg='clear'` é obrigatório e só vale com `raw` ou `react`.
+- `cam='react'` com `bg='clear'`: o vídeo de referência (`assets/ref.mp4`, só existe se o projeto tem um vídeo de referência) ocupa a metade oposta ao painel e o locutor cru fica no painel. Use para reagir ao vídeo; os gráficos vão por cima de tudo.
+- CTA continua exigindo locutor XXL (recortado): nenhum destes planos serve para ela.
+
 O `hyperframes check` pode acusar `canvas_covered` no fundo (`bgfill`) de uma cena de painel: é falso positivo, o painel (`#tcam`) fica fora do `#world` e cobre o fundo; confira no snapshot e siga.
 
 ## Recorte e centro do rosto

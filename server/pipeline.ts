@@ -969,7 +969,7 @@ export async function ensureComposeIgnored(id: string) {
 // so an over-long reel is caught in seconds instead of after minutes of Opus and Chrome.
 // Speech Screen: the format says where the speaker is cut out (janelas.cut) and where he sits in a panel (panel.top, fraction of H)
 // how a shot is written in scenes.py: scene(..., cam=)
-const PLANO_CAM: Record<string, string> = { cut: "cam=('M'|'L'|'XL'|'XXL', modo, final), locutor recortado", panel: "cam='panel', vídeo cru no painel de baixo", 'panel-top': "cam='panel-top', vídeo cru em cima", raw: "cam='raw', vídeo cru em tela cheia", none: 'cam=None, só animação', react: "cam='react', vídeo de referência ao lado do locutor" };
+const PLANO_CAM: Record<string, string> = { cut: "cam=('M'|'L'|'XL'|'XXL', modo, final), locutor recortado", panel: "cam='panel', vídeo cru no painel de baixo", 'panel-top': "cam='panel-top', vídeo cru em cima", raw: "cam='raw' com bg='clear', vídeo cru em tela cheia com os gráficos por cima", none: 'cam=None, só animação', react: "cam='react' com bg='clear', vídeo de referência ao lado do locutor cru" };
 const fmtOf = (st: State): any => { try { return getFormat(st.formatId || 'business-reels'); } catch { return {}; } };
 const cutWindowsOf = (st: State, dur: number) => cutWindows(fmtOf(st).janelas?.cut, dur);
 async function overLength(id: string, P: string, brand: any): Promise<string | null> {
@@ -2666,7 +2666,7 @@ async function composeMediaNow(id: string) {
   // Speech Screen panel: the raw speaker, cropped to the panel's box around the face (no cut-out, no blur)
   const st: State = readJSON(join(P, 'state.json')), panel = fmtOf(st).panel;
   if (panel?.top) {
-    const PW = fmtOf(st).width ?? 1080, PH = Math.round((fmtOf(st).height ?? 1920) * (1 - panel.top)) & ~1;
+    const PW = fmtOf(st).width ?? 1080, PH = Math.round((fmtOf(st).height ?? 1920) * (panel.side === 'top' ? panel.top : 1 - panel.top)) & ~1;
     const sw = Math.max(PW, Math.round(width * PH / height)), fw = Math.min(1920, width * 1080 / height);
     const frac = width > height ? (faceXOf(P, width, height) - (1920 - fw) / 2) / fw : 0.5;
     const tx = Math.min(sw - PW, Math.max(0, Math.round(frac * sw - PW / 2)));
@@ -2731,6 +2731,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     sfxManifest[f.replace(/\.[^.]+$/, '')] = { file: f, duration: (await probeMedia(join(sfxLib, f)).catch(() => ({ duration: 1 }))).duration, description: `efeito do estúdio (${f})`, onset: 0, peak: 0, source: 'workspace/library/sfx' };
   }
   writeJSON(join(A, 'sfx', 'manifest.json'), sfxManifest);
+  // react (SPEC-v9 §4): the reference video of the script step (ref/ref.mp4) goes beside the speaker; the kit lints a react scene without it
+  const refMp4 = join(P, 'ref', 'ref.mp4'), hasRef = !noSpeaker && !!fmtOf(st).refVideo && existsSync(refMp4);
+  if (hasRef) copyFileSync(refMp4, join(A, 'ref.mp4'));
   for (const [from, to] of [['cutout.webm', 'cut.webm'], ['master.mp4', 'raw.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json'], ['talk.mp4', 'talk.mp4']].filter(([f]) => (!noSpeaker || f === 'voice.m4a' || f === 'transcript.json') && (f !== 'talk.mp4' || existsSync(join(P, f))))) if (media || (existsSync(join(P, from)) && !cutoutJobs.has(id))) { const src = join(P, from), dst = join(A, to); if (!existsSync(dst) || statSync(dst).size !== statSync(src).size || statSync(dst).mtimeMs < statSync(src).mtimeMs) copyFileSync(src, dst); }   // deferred: RVM writes cutout.webm in place, so a running job means a partial file
   // the brand as it is now (global + this project's override): the copy in the project folder goes stale when the brand gains a font or colour
   const brand = writeBrand(st);
@@ -2821,6 +2824,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     speaker: !noSpeaker && (media || (existsSync(join(A, 'cut.webm')) && !cutoutJobs.has(id))),
     ...(!noSpeaker && fmtR.planos ? { planos: fmtR.planos } : {}),
     ...(!noSpeaker && fmtR.panel ? { panel: fmtR.panel } : {}),
+    ...(hasRef ? { refVideo: true } : {}),
     ...(!noSpeaker && fmtR.janelas?.cut ? { cutWindows: cutWindows(fmtR.janelas.cut, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
     colors,
     fonte: { w: width, h: height },

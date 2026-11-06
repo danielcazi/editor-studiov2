@@ -13,12 +13,15 @@
   },
   "name": "Reação",
   "order": 7,
-  "hidden": true,
-  "description": "Vídeo de referência numa metade, locutor cru na outra. Precisa do plano react (fase 6).",
+  "description": "Vídeo de referência numa metade, locutor cru na outra (precisa de um vídeo de referência no projeto).",
   "planos": [
     "react",
     "cut"
   ],
   "janelas": null,
+  "panel": {
+    "side": "bottom",
+    "top": 0.5
+  },
   "regras": "Vídeo de referência numa metade e o locutor reagindo na outra; o recorte entra para comentar."
 }

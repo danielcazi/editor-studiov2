@@ -104,7 +104,11 @@ export function validateFormat(f: any): string[] {
   else {
     for (const p of f.planos) if (!PLANOS.includes(p)) e.push(`plano desconhecido: ${p} (use ${PLANOS.join(', ')})`);
     if (f.speaker === false && f.planos.some((p: string) => p !== 'none')) e.push('formato sem locutor só pode ter o plano none');
-    if (f.planos.some((p: string) => p === 'panel' || p === 'panel-top') && !(f.panel?.top > 0 && f.panel.top < 1)) e.push('panel.top: fração de 0 a 1 da altura (planos panel e panel-top)');
+    if (f.planos.some((p: string) => p === 'panel' || p === 'panel-top' || p === 'react') && !(f.panel?.top > 0 && f.panel.top < 1)) e.push('panel.top: fração de 0 a 1 da altura (planos panel, panel-top e react)');
+    if (f.panel?.side != null && f.panel.side !== 'bottom' && f.panel.side !== 'top') e.push('panel.side: bottom ou top');
+    if (f.planos.includes('panel') && f.panel?.side === 'top') e.push('o plano panel é o painel de baixo: com panel.side top use panel-top');
+    if (f.planos.includes('panel-top') && f.panel?.side !== 'top') e.push('o plano panel-top exige panel.side top');
+    if (f.planos.includes('react') && !f.refVideo) e.push('o plano react exige refVideo: true (o vídeo de referência fica ao lado do locutor)');
   }
   if (f.janelas != null) {
     const cut = f.janelas.cut;
