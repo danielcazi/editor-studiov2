@@ -5858,24 +5858,9 @@ async function projects() {
 
   const formatsDetails = await Promise.all(flIds.map(f => api('GET', `/formats/${f}`).catch(() => null)));
   const brandsDetails = Object.fromEntries(await Promise.all(bl.map(async b => [b, await api('GET', `/brands/${b}`).catch(() => ({}))])));   // create dialog: brand cards
-  const ORDER = [
-    'recorte',
-    'business-reels',
-    'speech-screen',
-    'split-bottom',
-    'so-motion',
-    'split-top',
-    'reacao'
-  ];
   const validFormats = formatsDetails.filter(f => f && f.id);
-  validFormats.sort((a, b) => {
-    const idxA = ORDER.indexOf(a.id);
-    const idxB = ORDER.indexOf(b.id);
-    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-    if (idxA !== -1) return -1;
-    if (idxB !== -1) return 1;
-    return (a.order ?? 999) - (b.order ?? 999);
-  });
+  // order comes from each format.json (order field); the server already sorts /formats by it
+  validFormats.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
   const fl = validFormats.filter(f => f.planos);
 
   // Se não houver projetos ainda, abre direto na tela de novo vídeo
@@ -9453,25 +9438,6 @@ function renderStyleAnim(id) {
           </div>
           <span class="anim-pill">1 PALAVRA POR CORTE</span>
         </div>`;
-    case 'split-reel':
-      // rosto em cima, diagrama se desenhando embaixo
-      return `
-        <div class="anim-stage dark">
-          ${half(true, '<div class="anim-bokeh"></div><span class="anim-tag l">SEU ROSTO</span><div class="anim-person" style="width:72%"></div>')}
-          ${half(false, `
-            <div class="anim-glow" style="height:70%"></div>
-            <div class="anim-cap" style="top:3cqw"><span class="anim-serif" style="font-size:8cqw">o roteiro</span></div>
-            <svg viewBox="0 0 100 80" style="position:absolute;left:3cqw;top:15cqw;width:94cqw;height:72cqw" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="6.6" text-anchor="middle">
-              <g fill="none" stroke="#f2e600" stroke-width="1.3" stroke-linecap="round">
-                <path class="d1" pathLength="100" d="M50 16 L21 33"/><path class="d1" pathLength="100" d="M50 16 L79 33"/>
-                <path class="d2" pathLength="100" d="M21 47 L50 63"/><path class="d2" pathLength="100" d="M79 47 L50 63"/>
-              </g>
-              <g class="s1"><rect x="31" y="2" width="38" height="14" rx="3" fill="#1c1c20" stroke="#ffffff66" stroke-width=".6"/><text x="50" y="11.5" fill="#fff">Gancho</text></g>
-              <g class="s2"><rect x="3" y="33" width="36" height="14" rx="3" fill="#1c1c20" stroke="#ffffff66" stroke-width=".6"/><text x="21" y="42.5" fill="#fff">Dor</text></g>
-              <g class="s2"><rect x="61" y="33" width="36" height="14" rx="3" fill="#1c1c20" stroke="#ffffff66" stroke-width=".6"/><text x="79" y="42.5" fill="#fff">Prova</text></g>
-              <g class="s3"><rect x="29" y="63" width="42" height="15" rx="3" fill="#f2e600"/><text x="50" y="73" fill="#111">Oferta</text></g>
-            </svg>`)}
-        </div>`;
     case 'fitted-captions':
       return `
         <div class="anim-stage">
@@ -9519,17 +9485,6 @@ function renderStyleAnim(id) {
           <div class="anim-cap" style="top:77cqw"><span class="anim-box y">qual é o melhor?</span></div>
           <div class="anim-person sm" style="width:62%"></div>
         </div>`;
-    case 'explainer-panel':
-      // explicação animada em cima, você num painel embaixo
-      return `
-        <div class="anim-stage dark">
-          <div class="anim-cap" style="top:5cqw"><b style="font-size:7cqw">Posts <span class="anim-serif">vs.</span> clientes</b></div>
-          <div style="position:absolute;left:12cqw;right:12cqw;top:19cqw;height:44cqw;display:flex;align-items:flex-end;gap:3cqw;border-bottom:1px solid rgba(255,255,255,.3)">
-            ${[25, 40, 55, 75, 100].map((h, i) => `<i class="grow" style="flex:1;height:${h}%;background:var(--ay);border-radius:1cqw 1cqw 0 0;animation-delay:${i * 0.12}s"></i>`).join('')}
-          </div>
-          <div style="position:absolute;top:68cqw;left:0;right:0;display:flex;justify-content:center;gap:12cqw;text-align:center"><span class="anim-num y">30<small>posts</small></span><span class="anim-num">0<small>clientes</small></span></div>
-          <div class="anim-panel"><span class="anim-tag l">VOCÊ</span><div class="anim-bokeh"></div><div class="anim-person" style="width:72%"></div></div>
-        </div>`;
     default:
       return `
         <div class="anim-stage">
@@ -9574,28 +9529,9 @@ async function formats() {
   const ids = await api("GET", "/formats");
   // Carrega detalhes de cada formato
   const allFormats = await Promise.all(ids.map(id => api("GET", `/formats/${id}`).catch(() => null)));
-  // Filtra e prioriza os 10 estilos principais na ordem selecionada
-  const ORDER = [
-    'business-reels',
-    'personal-reels',
-    'split-reel',
-    'fitted-captions',
-    'image-cluster',
-    'cutout-backdrop',
-    'ranking-format',
-    'explainer-panel'
-  ];
-
   const validFormats = allFormats.filter(f => f && f.id);
-  // Ordena conforme a lista especificada, mantendo os 10 primeiros na ordem e outros criados pelo usuário a seguir
-  validFormats.sort((a, b) => {
-    const idxA = ORDER.indexOf(a.id);
-    const idxB = ORDER.indexOf(b.id);
-    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-    if (idxA !== -1) return -1;
-    if (idxB !== -1) return 1;
-    return (a.order ?? 999) - (b.order ?? 999);
-  });
+  // order comes from each format.json (order field)
+  validFormats.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 
   // Filtra para exibição principal dos estilos (ocultando perfis puramente de dimensão técnica se existirem no workspace)
   const displayFormats = validFormats;   // every format folder: a hidden one could not be picked for editing

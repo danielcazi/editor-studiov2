@@ -12,7 +12,7 @@
     "right": 70
   },
   "name": "Reação",
-  "order": 7,
+  "order": 4,
   "description": "Vídeo de referência numa metade, locutor cru na outra (precisa de um vídeo de referência no projeto).",
   "planos": [
     "react",

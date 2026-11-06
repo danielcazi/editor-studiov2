@@ -12,7 +12,7 @@
     "right": 70
   },
   "name": "Só Motion",
-  "order": 5,
+  "order": 3,
   "description": "Sem locutor na tela: só ilustrações, imagens, objetos e tipografia explicando a fala (a voz continua).",
   "planos": [
     "none"

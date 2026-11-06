@@ -12,13 +12,12 @@
     "right": 70
   },
   "name": "Ranking Format",
-  "order": 7,
+  "order": 8,
   "description": "Uma tier list que vai enchendo enquanto você classifica, um card por vez.",
   "planos": [
     "cut",
     "none"
   ],
   "janelas": null,
-  "regras": "",
-  "hidden": true
+  "regras": ""
 }

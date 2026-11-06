@@ -12,7 +12,7 @@
     "right": 70
   },
   "name": "Tela dividida (locutor embaixo)",
-  "order": 4,
+  "order": 5,
   "description": "Locutor cru no painel de baixo o reel inteiro, animação em cima.",
   "planos": [
     "panel",

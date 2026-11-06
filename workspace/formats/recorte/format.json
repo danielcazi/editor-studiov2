@@ -12,7 +12,7 @@
     "right": 70
   },
   "name": "Recorte tela cheia",
-  "order": 1,
+  "order": 7,
   "description": "Locutor recortado em tela cheia, com a animação por trás e à frente.",
   "planos": [
     "cut",
