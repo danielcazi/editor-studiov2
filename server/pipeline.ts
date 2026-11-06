@@ -559,6 +559,8 @@ const runQuiet = (cmd: string, args: string[], ms = 60_000) => new Promise<void>
 const git = (...args: string[]) => execP('git', ['-C', ROOT, ...args]);
 const REPO = 'danielcazi/editor-studiov2', VERSION_FILE = join(ROOT, 'VERSION');   // VERSION holds the sha of the last tarball installed
 const isClone = () => existsSync(join(ROOT, '.git'));
+// VERSAO (tracked) is the human version shown next to "Editor 7.0"; bump it on every push to main.
+export const version = () => { try { return readFileSync(join(ROOT, 'VERSAO'), 'utf8').trim(); } catch { return '?'; } };
 
 async function githubCommits(): Promise<{ sha: string; message: string }[]> {
   const res = await fetch(`https://api.github.com/repos/${REPO}/commits?sha=main&per_page=30`, { headers: { 'user-agent': 'editor-7' } });
@@ -572,14 +574,16 @@ export async function checkUpdate() {
     const branch = (await git('rev-parse', '--abbrev-ref', 'HEAD')).trim();
     const log = (await git('log', '--format=%s', `HEAD..origin/${branch}`)).trim();
     const commits = log ? log.split('\n') : [];
-    return { branch, behind: commits.length, commits, dirty: (await git('status', '--porcelain', '--untracked-files=no')).trim() !== '' };
+    const remote = await git('show', `origin/${branch}:VERSAO`).then(v => v.trim(), () => '?');
+    return { branch, version: version(), remote, behind: commits.length, commits, dirty: (await git('status', '--porcelain', '--untracked-files=no')).trim() !== '' };
   }
   const all = await githubCommits();
   const installed = existsSync(VERSION_FILE) ? readFileSync(VERSION_FILE, 'utf8').trim() : '';
   const i = all.findIndex(c => c.sha === installed);
   // a ZIP download has no VERSION: everything listed counts as new until the first update writes it
   const commits = (i < 0 ? all : all.slice(0, i)).map(c => c.message);
-  return { branch: 'main', behind: commits.length, commits, dirty: false, latest: all[0]?.sha };
+  const remote = await fetch(`https://raw.githubusercontent.com/${REPO}/${all[0]?.sha}/VERSAO`).then(r => r.ok ? r.text() : '?', () => '?');
+  return { branch: 'main', version: version(), remote: remote.trim(), behind: commits.length, commits, dirty: false, latest: all[0]?.sha };
 }
 
 // Overlays the tarball on ROOT. User data is never touched: workspace/projects|uploads|scratch, .env, node_modules;
@@ -596,6 +600,13 @@ async function overlayTarball(sha: string) {
     const rel = relative(src, s).split(sep).join('/');
     return !skip.test(rel) && !(rel.startsWith('workspace/') && existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isFile());
   } });
+  // the overlay only adds and overwrites: files the previous update installed that this one no longer ships are removed here
+  // (only files listed by a previous update, so nothing the person made, and never under workspace/)
+  const files = (readdirSync(src, { recursive: true }) as string[]).map(f => f.split(sep).join('/'))
+    .filter(f => !f.startsWith('workspace/') && !skip.test(f) && statSync(join(src, f)).isFile());
+  const listFile = join(ROOT, '.arquivos-instalados'), keep = new Set(files);
+  if (existsSync(listFile)) for (const f of readFileSync(listFile, 'utf8').split('\n')) if (f && !keep.has(f)) rmSync(join(ROOT, f), { force: true });
+  writeFileSync(listFile, files.join('\n') + '\n');
   writeFileSync(VERSION_FILE, sha + '\n');
   rmSync(tmp, { recursive: true, force: true });
 }

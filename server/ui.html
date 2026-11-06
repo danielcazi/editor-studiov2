@@ -3108,7 +3108,7 @@
 <body>
 <header>
     <div style="display:flex;align-items:center;gap:12px">
-      <b>Editor <i>7.0</i></b>
+      <b>Editor <i>7.0</i></b> <span class="muted" style="font-size:11px;font-family:var(--mono)" title="Versão instalada">v{{VERSAO}}</span>
       <button id="sidebar-toggle" class="sidebar-toggle-btn" type="button" title="Alternar outros projetos ativos" style="display:none">
         <span class="sidebar-toggle-icon">◫</span>
         <span class="sidebar-toggle-label">Outros Projetos</span>
@@ -10387,6 +10387,7 @@ async function configUpdate() {
     out.innerHTML = r.behind
       ? `${r.behind} atualização(ões) disponível(is):<br>${r.commits.map(c => "• " + esc(c)).join("<br>")}${r.dirty ? "<br><br>⚠️ Há edições locais em arquivos do Editor; elas serão guardadas e reaplicadas." : ""}`
       : "✓ Já está na versão mais recente.";
+    out.innerHTML = `Instalada: v${esc(r.version)} · No GitHub: v${esc(r.remote)}<br><br>` + out.innerHTML;
   });
   applyBtn.onclick = e => act(e.target, async () => {
     out.textContent = "Baixando e instalando... não feche esta aba.";
