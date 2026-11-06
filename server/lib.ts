@@ -95,3 +95,37 @@ export function resolveChoices(i: { format: any; style?: any; skill?: any; pace?
     sources: { format: 'format', look: style ? 'style' : 'none', rhythm: pace ? 'toggle' : hint ? 'hint' : 'default', colors: site ? 'site' : 'brand' },
   };
 }
+
+// A cloned reel as a skill (SPEC-v9 §2.3): the flat style.json split into the three drawers. camera.framing and camera.transitions are how the
+// speaker is shot (format); the rest of the camera, the palette, recipes and sounds are the look; pace and beats are the rhythm. A skill that does not
+// know the reel's speaker shots leaves `format.planos` out, so the chosen format keeps deciding them.
+export function styleToSkill(s: any) {
+  const { id, name, description, camera, guide, motif, palette, motionRecipes, sfxRules, sfxGainDb, sfxForbidden, giantCase, speakerShadow,
+    pace, beats, sfxPerMinute, clonedFrom, refineLog, ...rest } = s;
+  const { framing, transitions, ...lookCam } = camera ?? {};
+  return { id, name, description,
+    format: framing || transitions ? { camera: { framing, transitions } } : {},
+    look: { guide, motif, palette, ...(camera ? { camera: lookCam } : {}), motionRecipes, sfxRules, sfxGainDb, sfxForbidden, giantCase, speakerShadow, ...rest },
+    rhythm: { pace, beats, sfxPerMinute },
+    colorsLocked: false, clonedFrom, ...(refineLog ? { refineLog } : {}) };
+}
+// ... and back: the flat shape styleBrief and the refine step read
+export function skillAsStyle(k: any) {
+  const { camera: lookCam, ...look } = k.look ?? {};
+  const cam = { ...(lookCam ?? {}), ...(k.format?.camera ?? {}) };
+  return { id: k.id, name: k.name, description: k.description, ...look, ...(Object.keys(cam).length || lookCam ? { camera: cam } : {}),
+    pace: k.rhythm?.pace, beats: k.rhythm?.beats, sfxPerMinute: k.rhythm?.sfxPerMinute, clonedFrom: k.clonedFrom, ...(k.refineLog ? { refineLog: k.refineLog } : {}) };
+}
+// the look of a flat clone and nothing else: a style cloned "only for the visual" carries no shots, rhythm or origin
+export function lookOnly(s: any) {
+  const { beats: _b, pace: _p, sfxPerMinute: _s, clonedFrom: _c, refineLog: _r, ...rest } = s;
+  if (rest.camera) { const { framing: _f, transitions: _t, ...cam } = rest.camera; rest.camera = cam; }
+  return rest;
+}
+// compose.json pace of a skill: its measured seconds per cut is `every`; the other limits follow the nearest toggle
+export function paceFromSkill(k: any): (typeof PACE)[Pace] | null {
+  const p = Number(k?.rhythm?.pace);
+  if (!(p > 0)) return null;
+  // shortcut: pace is seconds per CUT, and a continuous take (the 18 s Build) has few cuts yet many graphics, so `every` never gets slower than lento
+  return { ...PACE[p <= 1.8 ? 'dinamico' : p <= 2.8 ? 'normal' : 'lento'], every: Math.min(p, PACE.lento.every) };
+}

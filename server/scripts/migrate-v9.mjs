@@ -1,6 +1,7 @@
 // SPEC-v9 §7: rewrites workspace/formats/*/format.json to the planos + agenda schema. Run with the server stopped: node scripts/migrate-v9.mjs
-// Idempotent (a format that already has `planos`, or a style folder that exists, is left alone). Phase 5 adds the skills part here.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Idempotent (a format that already has `planos`, or a style folder that exists, is left alone). The skills part moves the four video clones out of styles/.
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { styleToSkill } from '../lib.ts';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -67,7 +68,28 @@ export function migrateStyles(ws = WS, kit = KIT) {
   return done;
 }
 
+// Skills (SPEC-v9 §2.3, §7.3): the four clones of one video leave styles/ for skills/<id>/skill.json. refs/ and skill.md go along; the old
+// style.json stays in refs/style-v8.json so the refine `match` can be compared with the old schema's.
+export const CLONES = ['build', 'black-rd', 'didatico', 'textos-dinamicos-flat'];
+export function migrateSkills(ws = WS) {
+  const done = [];
+  for (const id of CLONES) {
+    const from = join(ws, 'styles', id), to = join(ws, 'skills', id);
+    if (!existsSync(join(from, 'style.json')) || existsSync(to)) continue;
+    const flat = JSON.parse(readFileSync(join(from, 'style.json'), 'utf8'));
+    mkdirSync(to, { recursive: true });
+    if (existsSync(join(from, 'refs'))) renameSync(join(from, 'refs'), join(to, 'refs')); else mkdirSync(join(to, 'refs'));
+    if (existsSync(join(from, 'skill.md'))) renameSync(join(from, 'skill.md'), join(to, 'skill.md'));
+    copyFileSync(join(from, 'style.json'), join(to, 'refs', 'style-v8.json'));
+    writeFileSync(join(to, 'skill.json'), JSON.stringify(styleToSkill({ ...flat, id }), null, 2));
+    rmSync(from, { recursive: true, force: true });
+    done.push(id);
+  }
+  return done;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log('formatos migrados:', migrateFormats().join(', ') || 'nenhum (já estavam no esquema novo)');
   console.log('estilos criados:', migrateStyles().join(', ') || 'nenhum (já existiam)');
+  console.log('skills migradas:', migrateSkills().join(', ') || 'nenhuma');
 }

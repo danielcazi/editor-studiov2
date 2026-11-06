@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { agent, ask, type Cost, MAX_TURNS_HIT } from './models.ts';
-import { cutWindows, deepMerge, FORMATS, PACE, pickFormats, remapWords, resolveChoices, safeId, shortcutPlan, spansFromWords, type Pace, type Plan, type Word } from './lib.ts';
+import { cutWindows, deepMerge, FORMATS, lookOnly, PACE, pickFormats, paceFromSkill, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, spansFromWords, styleToSkill, type Pace, type Plan, type Word } from './lib.ts';
 import { CAPTION_PRESETS, validateCaptionStyle, validateFont, validateFormat, validateIcon } from './validate.ts';
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
 import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
@@ -56,6 +56,7 @@ type State = {
   completed?: boolean;
   completedAt?: number;
   approvedAt?: number;   // the reviewer approved the AI composition (Revisão); cleared by any new AI pass, not by manual edits
+  skillId?: string;                    // a cloned video (workspace/skills/<id>/): locks format shots, look and rhythm
   pace?: Pace;                         // rhythm toggle (PACE table); absent = dinamico, the pace every reel had before the toggle
   styleId?: string;                    // motion style (workspace/styles/<id>/) chosen at creation or in Revisão; none = the director picks from the list in the brief
   broll?: boolean;                     // "Inserir b-roll": the asset fetch also takes named people, brands and events (photos, YouTube clips, no license filter) and a music bed
@@ -131,6 +132,8 @@ const load = (id: string): State => {
   if (!safeId(id) || !existsSync(join(projDir(id), 'state.json'))) fail(`no project ${id}`);
   const st: State = readJSON(join(projDir(id), 'state.json'));
   if (st.step === 'storyboard') st.step = 'script';   // step removed: projects that stopped there go back to the script
+  // v9: the four video clones moved from styles/ to skills/ under the same id
+  if (st.styleId && !st.skillId && !existsSync(join(WS, 'styles', st.styleId, 'style.json')) && existsSync(join(WS, 'skills', st.styleId, 'skill.json'))) { st.skillId = st.styleId; delete st.styleId; }
   return st;
 };
 const save = (st: State) => writeJSON(join(projDir(st.id), 'state.json'), st);
@@ -1210,13 +1213,15 @@ async function analyseVideoReference(id: string, st: State, url: string, P: stri
 function formatGuide(st: State): string {
   let f: any;
   try { f = getFormat(st.formatId || 'business-reels'); } catch { return ''; }
-  const z = f.safeZones, r = paceOf(st);
+  let skill: any = null; if (st.skillId) try { skill = getSkill(st.skillId); } catch {}
+  if (skill) f = resolveChoices({ format: f, skill }).format;
+  const z = f.safeZones, r = effectivePace(st);
   const lines = [
     `Format: ${f.name} (${f.aspectRatio ?? '9:16'}${f.speaker === false ? ', no speaker on screen' : ''})`,
     f.planos?.length && `Speaker shots this format allows: ${f.planos.join(', ')} (cut = cut-out full screen, panel = raw video in a bottom panel, panel-top = raw video on top, raw = raw full screen, none = animation only, react = reference video beside the speaker)`,
     f.regras && `When each shot is used: ${f.regras}`,
     f.janelas?.cut && `The speaker is cut out only in these windows (seconds; "tail" = counted from the end): ${JSON.stringify(f.janelas.cut)}`,
-    `Rhythm (${st.pace ?? 'dinamico'}): something new on screen about every ${r.every}s, scenes of ${r.scene[0]}-${r.scene[1]}s`,
+    `Rhythm (${skill ? 'locked by the skill' : st.pace ?? 'dinamico'}): something new on screen about every ${r.every}s, scenes of ${r.scene[0]}-${r.scene[1]}s`,
     z && `Keep graphics inside the safe zones (px): top ${z.top}, bottom ${z.bottom}, left ${z.left}, right ${z.right}`,
   ].filter(Boolean);
   return `# Format brief (chosen by the user, follow it)\n${lines.join('\n')}\n` +
@@ -1325,6 +1330,52 @@ export function styleRefFile(id: string, f: string) {
 const styleSkill = (id: string): string => { try { const f = join(styleDir(id), 'skill.md'); return existsSync(f) ? readFileSync(f, 'utf8') : ''; } catch { return ''; } };
 const styleRefs = (id: string): string[] => { const d = join(styleDir(id), 'refs'); return existsSync(d) ? readdirSync(d).filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort().map(f => join(d, f)) : []; };
 
+// ---- skills (workspace/skills/<id>/: skill.json with format · look · rhythm, refs/ with the frames it came from, optional skill.md) ------------
+// A skill is ONE cloned video, locked as a whole: its format shots, its look and its rhythm replace the three selectors of a project.
+const skillDir = (s: string) => safeId(s) ? join(WS, 'skills', s) : fail('skill id: letters, digits, - and _ only');
+export const listSkills = (): string[] => existsSync(join(WS, 'skills')) ? readdirSync(join(WS, 'skills')).filter(d => existsSync(join(WS, 'skills', d, 'skill.json'))).sort() : [];
+const skillRefs = (id: string): string[] => { const d = join(skillDir(id), 'refs'); return existsSync(d) ? readdirSync(d).filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort().map(f => join(d, f)) : []; };
+const skillMd = (id: string): string => { try { const f = join(skillDir(id), 'skill.md'); return existsSync(f) ? readFileSync(f, 'utf8') : ''; } catch { return ''; } };
+export function getSkill(id: string) {
+  const file = join(skillDir(id), 'skill.json');
+  if (!existsSync(file)) fail(`skill ${id} não encontrada`);
+  return { ...JSON.parse(readFileSync(file, 'utf8')), refs: skillRefs(id).map(f => basename(f)) };
+}
+// what the UI and the shared style views read: the three drawers plus the flat style shape (guide, beats, camera...) of the same skill
+export const getSkillView = (id: string) => { const k = getSkill(id); return { ...k, ...skillAsStyle(k), refs: k.refs }; };
+export function createSkill(id: string, data: any) {
+  const dir = skillDir(id);
+  if (existsSync(dir)) fail(`skill ${id} já existe`);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('skill must be an object');
+  const { refs: _r, ...fields } = data;
+  if (fields.format?.planos) { const bad = validateFormat({ panel: { top: 0.5 }, ...fields.format }); if (bad.length) fail(bad.join('; ')); }
+  mkdirSync(dir, { recursive: true });
+  const base = { name: id, format: {}, look: {}, rhythm: {}, colorsLocked: false, ...fields, id };
+  writeFileSync(join(dir, 'skill.json'), JSON.stringify(base, null, 2));
+  return base;
+}
+export function updateSkill(id: string, data: any) {
+  const file = join(skillDir(id), 'skill.json');
+  if (!existsSync(file)) fail(`skill ${id} não encontrada`);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('skill must be an object');
+  const { refs: _r, guide, ...fields } = data;   // `guide` is the flat name the shared style views send: it lives in look.guide
+  const next = { ...deepMerge(JSON.parse(readFileSync(file, 'utf8')), guide !== undefined ? { ...fields, look: { ...(fields.look ?? {}), guide } } : fields), id };
+  if (next.format?.planos) { const bad = validateFormat({ panel: { top: 0.5 }, ...next.format }); if (bad.length) fail(bad.join('; ')); }
+  writeFileSync(file, JSON.stringify(next, null, 2));
+  return next;
+}
+export function deleteSkill(id: string) {
+  const dir = skillDir(id);
+  if (!existsSync(dir)) fail(`skill ${id} não encontrada`);
+  rmSync(dir, { recursive: true, force: true });
+  return { ok: true, deleted: id };
+}
+export function skillRefFile(id: string, f: string) {
+  getSkill(id);
+  if (!/^[\w.-]+\.(jpe?g|png|webp)$/i.test(f) || f.includes('..') || !existsSync(join(skillDir(id), 'refs', f))) fail(`no ref ${f}`);
+  return join(skillDir(id), 'refs', f);
+}
+
 // World-camera limits of kit.py (GUIDE.md "Câmera de mundo"): out of range is a lint error in the composer, so a cloned move is kept inside them.
 const CAM_LIMIT: Record<string, [number, number]> = { push: [0.9, 1.35], pull: [0.9, 1.35], pan: [-120, 120], crane: [-120, 120], tilt: [-8, 8], orbit: [-8, 8], roll: [-6, 6] };
 const camUnit = (kind: string) => kind === 'push' || kind === 'pull' ? ' scale' : kind === 'pan' || kind === 'crane' ? ' px' : '°';
@@ -1338,7 +1389,7 @@ export function clampCamera(cam: any) {
 }
 
 // The style's brief, read by the motion model (after the format brief) and by the agent composer (brief.md).
-function styleBrief(s: any, refs: string[] = []): string {
+function styleBrief(s: any, refs: string[] = [], userSkill: string = styleSkill(s.id)): string {
   const cam = s.camera ?? {};
   const lines = [
     s.guide && `Style guide: ${s.guide}`,
@@ -1359,11 +1410,15 @@ function styleBrief(s: any, refs: string[] = []): string {
     s.sfxRules?.length && `Sound effects of this style (names from sfx/manifest.json):\n- ${s.sfxRules.map((r: any) => `${r.when} → ${r.sfx || 'no matching sound'} (${r.level})`).join('\n- ')}`,
     (s.sfxGainDb || s.sfxForbidden?.length) && `Sound effects: ${s.sfxGainDb ? `overall gain ${s.sfxGainDb} dB. ` : ''}${s.sfxForbidden?.length ? `Never use: ${s.sfxForbidden.join(', ')}.` : ''}`,
     s.motionRecipes?.length && `Motion recipes of this style (GSAP, adapt SEL and values):\n- ${s.motionRecipes.map((r: any) => `${r.name} (${r.use}): ${r.gsap}`).join('\n- ')}`,
-    styleSkill(s.id) && `Skill of this style (the user's own rules, they win):\n${styleSkill(s.id)}`,
+    userSkill && `Skill of this style (the user's own rules, they win):\n${userSkill}`,
   ].filter(Boolean);
   return lines.join('\n');
 }
 export function styleGuide(st: State): string {
+  if (st.skillId) try {
+    const k = getSkill(st.skillId);
+    return `# Skill brief (a cloned video the user chose; it locks the speaker's shots, the look and the rhythm, follow it to the letter; the brand still decides colours and fonts${k.colorsLocked ? ', except the palette this skill locks' : ''})\n${styleBrief(skillAsStyle(k), skillRefs(k.id), skillMd(k.id))}\n\n`;
+  } catch { /* a skill that vanished: fall through to the style */ }
   if (!st.styleId) return '';
   let s: any;
   try { s = getStyle(st.styleId); } catch { return ''; }
@@ -1371,9 +1426,13 @@ export function styleGuide(st: State): string {
 }
 
 // Clone a motion style: reference videos (links or files) and images become workspace/styles/<id>/.
-export async function cloneStyle(body: { id: string; name?: string; urls?: string[]; paths?: string[]; note?: string; skill?: string }) {
-  const id = body?.id, dir = styleDir(id);
-  if (existsSync(dir)) fail(`estilo ${id} já existe`);
+type CloneBody = { id: string; name?: string; urls?: string[]; paths?: string[]; note?: string; skill?: string };
+// "clonar só o visual": the look of the reel, saved as a style (no shots, no rhythm); cloneSkill keeps the whole video as a skill
+export const cloneStyle = (body: CloneBody) => cloneRef('style', body);
+export const cloneSkill = (body: CloneBody) => cloneRef('skill', body);
+async function cloneRef(kind: 'style' | 'skill', body: CloneBody) {
+  const id = body?.id, dir = kind === 'skill' ? skillDir(id) : styleDir(id);
+  if (existsSync(dir)) fail(`${kind === 'skill' ? 'skill' : 'estilo'} ${id} já existe`);
   const urls = (body.urls ?? []).map(u => String(u).trim()).filter(Boolean), paths = (body.paths ?? []).map(expandHome);
   const videos = paths.filter(p => VIDEO_EXT.includes(extname(p).toLowerCase())), images = paths.filter(p => IMAGE_EXT.includes(extname(p).toLowerCase()));
   if (!urls.length && !videos.length && !images.length && !body.skill?.trim()) fail('envie ao menos um vídeo, link, imagem ou skill de referência');
@@ -1440,7 +1499,7 @@ export async function cloneStyle(body: { id: string; name?: string; urls?: strin
         sfxGainDb: num, sfxForbidden: { type: 'array', items: str }, sceneSeconds: num,
         motionRecipes: { type: 'array', items: obj({ name: str, use: str, gsap: str }) },
       }),
-    }, c => console.log(`[cloneStyle ${id}] ${c.model} in=${c.in} out=${c.out}`));
+    }, c => console.log(`[clone ${kind} ${id}] ${c.model} in=${c.in} out=${c.out}`));
     // secondsPerCut only means something when the video has cuts; a continuous take has none, so the model's sceneSeconds stands in
     const cutCount = stats.reduce((a, x) => a + x.cuts, 0);
     const pace = cutCount && avg ? Math.min(6, Math.max(0.5, avg)) : res.sceneSeconds > 0 ? Math.min(12, Math.max(0.5, res.sceneSeconds)) : 0;
@@ -1451,9 +1510,10 @@ export async function cloneStyle(body: { id: string; name?: string; urls?: strin
       sfxPerMinute: stats.length ? Math.round(stats.reduce((a, x) => a + (x.sfxHits?.length ?? 0) / Math.max(1, x.duration), 0) / stats.length * 60) : 0, motionRecipes: res.motionRecipes,
       clonedFrom: { urls, measured: stats, note: body.note ?? '' },
     };
-    if (skill) writeFileSync(join(dir, 'skill.md'), skill);   // also given verbatim to every project that uses the style
-    writeFileSync(join(dir, 'style.json'), JSON.stringify(base, null, 2));   // refs/ stays beside it: the images and frames the style came from
-    return base;
+    if (skill) writeFileSync(join(dir, 'skill.md'), skill);   // also given verbatim to every project that uses it
+    const out = kind === 'skill' ? styleToSkill(base) : lookOnly(base);
+    writeFileSync(join(dir, kind === 'skill' ? 'skill.json' : 'style.json'), JSON.stringify(out, null, 2));   // refs/ stays beside it: the images and frames it came from
+    return out;
   } catch (e) {
     rmSync(dir, { recursive: true, force: true });
     throw e;
@@ -1462,9 +1522,11 @@ export async function cloneStyle(body: { id: string; name?: string; urls?: strin
 
 // Compares a render made with a cloned style (frames) against the beats, camera and frames the style was cloned from, and rewrites the guide where they differ.
 // The render is made by the user in a normal project; the loop here is compare -> fix the style -> render again.
-export async function refineStyle(id: string, body: { path?: string; note?: string }) {
-  const dir = styleDir(id), file = join(dir, 'style.json'), refs = join(dir, 'refs');
-  if (!existsSync(file) || !existsSync(refs)) fail(`estilo ${id} não foi criado por clone`);
+export const refineStyle = (id: string, body: { path?: string; note?: string }) => refineRef('style', id, body);
+export const refineSkill = (id: string, body: { path?: string; note?: string }) => refineRef('skill', id, body);
+async function refineRef(kind: 'style' | 'skill', id: string, body: { path?: string; note?: string }) {
+  const dir = kind === 'skill' ? skillDir(id) : styleDir(id), file = join(dir, kind === 'skill' ? 'skill.json' : 'style.json'), refs = join(dir, 'refs');
+  if (!existsSync(file) || !existsSync(refs)) fail(`${kind === 'skill' ? 'skill' : 'estilo'} ${id} não foi criado por clone`);
   const clip = expandHome(String(body?.path ?? ''));
   if (!VIDEO_EXT.includes(extname(clip).toLowerCase()) || !existsSync(clip)) fail('path: caminho de um vídeo (.mp4 .mov) renderizado com este estilo');
   const dur = Number((await execP('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clip])).trim()) || 0;
@@ -1477,7 +1539,7 @@ export async function refineStyle(id: string, body: { path?: string; note?: stri
     test.push(f);
   }
   const orig = readdirSync(refs).filter(f => /^v\d+_\d+\.jpg$/.test(f)).slice(0, 8).map(f => join(refs, f));
-  const cur = JSON.parse(readFileSync(file, 'utf8'));
+  const raw = JSON.parse(readFileSync(file, 'utf8')), cur = kind === 'skill' ? skillAsStyle(raw) : raw;
   const res = await ask<any>('cloneFormat', 'style:refine', {
     system: 'You compare a render made with a cloned motion style against the reference it was cloned from. Read every frame of both sets, list concrete differences ' +
       '(typography, colours, layout, element types, camera and motion you can infer, density), then rewrite the guide so the next render is closer. Keep what already matches. match is a 0-10 similarity score. Write in Brazilian Portuguese.',
@@ -1486,9 +1548,10 @@ export async function refineStyle(id: string, body: { path?: string; note?: stri
       (body.note ? `\nUser feedback on the render (priority): ${body.note}\n` : ''),
     schema: obj({ match: num, differences: { type: 'array', items: str }, guide: str,
       motionRecipes: { type: 'array', items: obj({ name: str, use: str, gsap: str }) } }),
-  }, c => console.log(`[refineStyle ${id}] ${c.model} in=${c.in} out=${c.out}`));
-  const next = { ...cur, guide: res.guide, motionRecipes: res.motionRecipes,
-    refineLog: [...(cur.refineLog ?? []), { at: new Date().toISOString(), match: res.match, differences: res.differences }] };
+  }, c => console.log(`[refine ${kind} ${id}] ${c.model} in=${c.in} out=${c.out}`));
+  const refineLog = [...(cur.refineLog ?? []), { at: new Date().toISOString(), match: res.match, differences: res.differences }];
+  const next = kind === 'skill' ? { ...raw, look: { ...raw.look, guide: res.guide, motionRecipes: res.motionRecipes }, refineLog }
+    : { ...cur, guide: res.guide, motionRecipes: res.motionRecipes, refineLog };
   writeFileSync(file, JSON.stringify(next, null, 2));
   return { match: res.match, differences: res.differences };
 }
@@ -1528,6 +1591,7 @@ export async function createProject(o: {
   formats?: string[];
   styleId?: string;                    // motion style id (workspace/styles/<id>/); validated here
   pace?: string;                       // 'lento' | 'normal' | 'dinamico' (default); validated here
+  skillId?: string;                    // skill id (workspace/skills/<id>/); validated here
   broll?: boolean;                     // "Inserir b-roll" at creation: the script step fetches people, clips and music (no license filter)
   /** Text → voice: the script is spoken as written; replaces the video. `voice` falls back to the brand's `voice`. */
   text?: string;
@@ -1629,7 +1693,7 @@ export async function createProject(o: {
       return `assets/user/${name}`;
     });
     if (userImages.length) appendProjectLog(id, `🖼️ Imagens importadas: ${userImages.length}`);
-    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], ...(o.styleId ? { styleId: getStyle(o.styleId).id } : {}), ...(o.pace ? { pace: checkPace(o.pace) } : {}), ...(o.broll === true ? { broll: true } : {}), ...(o.character ? { character: o.character } : {}) };
+    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], ...(o.styleId ? { styleId: getStyle(o.styleId).id } : {}), ...(o.pace ? { pace: checkPace(o.pace) } : {}), ...(o.skillId ? { skillId: getSkill(o.skillId).id } : {}), ...(o.broll === true ? { broll: true } : {}), ...(o.character ? { character: o.character } : {}) };
     save(st);
     await run(id, 'git', ['init', '-q', P]);
     await run(id, 'git', ['-C', P, 'config', 'core.autocrlf', 'false']);
@@ -1686,6 +1750,18 @@ export const setPace = (id: string, pace: unknown) => {
   save(st);
   return { ok: true, pace: st.pace };
 };
+// the pace the reel is made at: the skill's measured seconds per cut when it has one, otherwise the toggle
+export const effectivePace = (st: State) => { if (st.skillId) try { const p = paceFromSkill(getSkill(st.skillId)); if (p) return p; } catch {} return paceOf(st); };
+// one call for the four selectors (SPEC-v9 §5); a field left out is left alone, null clears the optional ones
+export function setChoices(id: string, b: { formatId?: string; styleId?: string | null; skillId?: string | null; pace?: unknown }) {
+  const st = load(id);
+  if (b?.formatId !== undefined) { getFormat(b.formatId); st.formatId = b.formatId; }
+  if (b?.styleId !== undefined) st.styleId = b.styleId ? getStyle(b.styleId).id : undefined;
+  if (b?.skillId !== undefined) st.skillId = b.skillId ? getSkill(b.skillId).id : undefined;
+  if (b?.pace !== undefined) st.pace = checkPace(b.pace);
+  save(st);
+  return { ok: true, formatId: st.formatId, styleId: st.styleId ?? null, skillId: st.skillId ?? null, pace: st.pace ?? 'dinamico' };
+}
 export const setStyle = (id: string, styleId?: string | null) => {
   const st = load(id);
   st.styleId = styleId ? getStyle(styleId).id : undefined;
@@ -2615,7 +2691,7 @@ export const composeDirOf = (P: string, st: State, aspect?: string | null) => jo
 // media=false: scaffold without waiting for the cutout (treatment and illustrations need none of cut.webm, plate.mp4 or voice.m4a);
 // the caller re-runs it with media=true before the compose call, which then gets the real faceX and the speaker files
 export async function composeScaffold(id: string, motion = false, aspect?: string | null, media = true) {
-  const P = projDir(id), st = readJSON(join(P, 'state.json')), C = join(P, composeDirName(st, aspect, motion)), A = join(C, 'assets');
+  const P = projDir(id), st = load(id), C = join(P, composeDirName(st, aspect, motion)), A = join(C, 'assets');
   // no speaker on screen: the só-motion test, or a format with speaker: false (Só Motion); the folder name only follows the test
   const noSpeaker = motion || (() => { try { return getFormat(st.formatId || 'business-reels').speaker === false; } catch { return false; } })();
   await ensureComposeIgnored(id);
@@ -2723,6 +2799,12 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   // the motion style (workspace/styles/<id>/style.json): read here because compose.json takes giantCase and speakerShadow from it
   let style: any = null;
   if (st.styleId) try { style = getStyle(st.styleId); } catch { style = null; }
+  // a skill locks the three drawers (SPEC-v9 §1): its format shots over the chosen format, its look instead of the style, its measured rhythm instead of the toggle
+  let skill: any = null;
+  if (st.skillId) try { skill = getSkill(st.skillId); } catch { skill = null; }
+  if (skill) style = null;
+  const ch = resolveChoices({ format: fmt, style, skill, pace: st.pace, site: !!siteRef(st) });
+  const fmtR: any = ch.format, pc = effectivePace(st), look: any = skill ? skillAsStyle(skill) : style;
   // join times of the cut on the master clock: kit.py snaps the cutout to an alternating zoom there, so a jump cut reads as a change of shot
   const edl = existsSync(join(P, 'edl.json')) ? readJSON(join(P, 'edl.json')) : null, speed = edl?.speed ?? (edl ? (await pacing(id)).speed : 1);
   const cuts: number[] = []; let acc = 0;
@@ -2735,16 +2817,16 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     safeZone: safeZones,
     DUR: Math.round(duration * 100) / 100,
     faceX,
-    pace: paceOf(st),
+    pace: pc,
     speaker: !noSpeaker && (media || (existsSync(join(A, 'cut.webm')) && !cutoutJobs.has(id))),
-    ...(!noSpeaker && fmt.planos ? { planos: fmt.planos } : {}),
-    ...(!noSpeaker && fmt.panel ? { panel: fmt.panel } : {}),
-    ...(!noSpeaker && fmt.janelas?.cut ? { cutWindows: cutWindows(fmt.janelas.cut, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
+    ...(!noSpeaker && fmtR.planos ? { planos: fmtR.planos } : {}),
+    ...(!noSpeaker && fmtR.panel ? { panel: fmtR.panel } : {}),
+    ...(!noSpeaker && fmtR.janelas?.cut ? { cutWindows: cutWindows(fmtR.janelas.cut, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
     colors,
     fonte: { w: width, h: height },
     // from the motion style (set by hand in style.json): giantCase 'lower' and speakerShadow true for product styles like Insula Build
-    ...(style?.giantCase ? { giantCase: style.giantCase } : {}),
-    ...(style?.speakerShadow ? { speakerShadow: true } : {}),
+    ...(look?.giantCase ? { giantCase: look.giantCase } : {}),
+    ...(look?.speakerShadow ? { speakerShadow: true } : {}),
     layoutCheck: join(ROOT, 'server/layout_check.mjs')
   });
   writeJSON(join(C, 'hyperframes.json'), { $schema: 'https://hyperframes.heygen.com/schema/hyperframes.json', registry: 'https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry',
@@ -2765,13 +2847,15 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const refFile = join(P, 'reference.json'), refAnalysis = existsSync(refFile) ? Object.entries(readJSON(refFile)).map(([k, v]) => `- ${k}: ${v}`).join('\n') : '';
   const imgFiles = existsSync(join(A, 'img')) ? readdirSync(join(A, 'img')).filter(f => !f.startsWith('.')) : [];
   // the noSpeaker style: chosen (followed to the letter, with the frames it came from) or, if none, the list the director picks from
-  const styleList = style ? [] : listMotionStyles().map(sid => { try { return getStyle(sid); } catch { return null; } }).filter(Boolean);
+  const styleList = style || skill ? [] : listMotionStyles().map(sid => { try { return getStyle(sid); } catch { return null; } }).filter(Boolean);
   // illustration packs (SPEC-v9 §2.2): the chosen style's pack becomes ESTILO.md; with none chosen the director reads the ones listed in estilos/
   const packOf = (x: any): string | null => x?.pack && safeId(x.pack) && existsSync(join(K, 'estilos', x.pack)) ? join(K, 'estilos', x.pack) : null;
   if (style && packOf(style)) copyFileSync(packOf(style)!, join(C, 'ESTILO.md'));
-  else if (!style) for (const x of styleList) if (packOf(x)) { mkdirSync(join(C, 'estilos'), { recursive: true }); copyFileSync(packOf(x)!, join(C, 'estilos', x.pack)); }
+  else if (!style && !skill) for (const x of styleList) if (packOf(x)) { mkdirSync(join(C, 'estilos'), { recursive: true }); copyFileSync(packOf(x)!, join(C, 'estilos', x.pack)); }
   const imgDesc = imgFiles.length ? `img/ (${imgFiles.length} imagens da referência disponíveis: ${imgFiles.join(', ')}; olhe cada uma com Read antes de usar, e mostre com <img src="assets/img/..."> em back/front)` : 'img/ (vazio)';
 
+  const fmtBlock = `## Formato${skill?.format?.planos ? ' (travado pela skill)' : ` escolhido (${fmt.name})`}\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmtR.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmtR.regras ? `\nQuando: ${fmtR.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`;
+  const rhythmBlock = `## Ritmo (${skill ? 'medido na skill' : st.pace ?? 'dinamico'})\nAlgo novo na tela a cada ~${pc.every} s; cenas de ${pc.scene[0]} a ${pc.scene[1]} s${noSpeaker ? '' : `; enquadramento do locutor muda a cada ${pc.framing[0]} a ${pc.framing[1]} s e o kit avisa locutor parado por mais de ${pc.hold} s`}. Os mesmos números estão em compose.json (pace). Isto vale no lugar de qualquer número de ritmo dos outros guias.`;
   writeFileSync(join(C, 'brief.md'), [`# Briefing: ${st.name}`,
     `Formato ${targetAspect} (${targetW}×${targetH}), ${Math.round(duration * 100) / 100} s, 30 fps. Centro do rosto do locutor: x≈${faceX} de ${width} (já em compose.json).`,
     other && existsSync(join(P, 'compose', 'scenes.py')) ? `## Adaptação do Formato Original\nA composição original do formato primário já foi pré-carregada em scenes.py. Adapte enquadramentos de câmera (FR), tamanhos de fontes, margens, zonas de segurança e posições/tamanhos de texto e elementos para a resolução ${targetW}×${targetH} (${targetAspect}).` : '',
@@ -2779,12 +2863,13 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     noSpeaker ? `## Referência visual: site da marca\nSem locutor na tela. Leia ref_site/site.md e olhe as imagens de ref_site/ (Read). Paleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site.`
       : siteRef(st) ? `## Marca (${st.brand}) e site\nPaleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site, que é a campanha atual: ela vence as cores do brand.md. Do brand.md valem só o tom e a fonte.\nOlhe ../ref/top_mobile.png e ../ref/top_desktop.png com Read: o print mostra qual cor é fundo, destaque e botão.\n${referenceGuide(st)}\n\n${brandMd.replace(/## Cores[\s\S]*?(?=\n## |$)/, '')}`
       : `## Marca (${st.brand})\nPaleta mapeada em compose.json (RED, RED2, AMB, BLK, CRM; ajuste se o brand.md pedir outra).\n\n${brandMd}`,
-    !noSpeaker && fmt.janelas?.cut ? (() => { const w = cutWindows(fmt.janelas.cut, duration) ?? [], top = Math.round(targetH * (fmt.panel?.top ?? 0.42)); return `## Locutor: Speech Screen\nO recorte do locutor (cut.webm) só existe nas janelas ${w.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} (fora delas o alfa é vazio). Cena dentro de uma janela: câmera normal (M/L/XL/XXL) com texto gigante atrás; a CTA (cta=True) fica na última janela. Toda outra cena usa \`cam='panel'\`: o vídeo bruto do locutor (assets/talk.mp4) ocupa o painel de baixo (de y=${top} até o rodapé, sem recorte) e TODA a animação (3D, ilustrações, tipografia, imagens do site) fica na área de cima, acima de y=${top}; ou \`cam=None\` para tela cheia sem locutor. O kit reprova recorte fora das janelas.`; })() : '',
+    !noSpeaker && fmtR.janelas?.cut ? (() => { const w = cutWindows(fmtR.janelas.cut, duration) ?? [], top = Math.round(targetH * (fmtR.panel?.top ?? 0.42)); return `## Locutor: Speech Screen\nO recorte do locutor (cut.webm) só existe nas janelas ${w.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} (fora delas o alfa é vazio). Cena dentro de uma janela: câmera normal (M/L/XL/XXL) com texto gigante atrás; a CTA (cta=True) fica na última janela. Toda outra cena usa \`cam='panel'\`: o vídeo bruto do locutor (assets/talk.mp4) ocupa o painel de baixo (de y=${top} até o rodapé, sem recorte) e TODA a animação (3D, ilustrações, tipografia, imagens do site) fica na área de cima, acima de y=${top}; ou \`cam=None\` para tela cheia sem locutor. O kit reprova recorte fora das janelas.`; })() : '',
     !noSpeaker ? `## Liberdade e limites\nSem cotas: quantas imagens, movimentos de câmera e tipografias cada cena tem é decisão sua pelo que a fala pede; uma cena limpa com a peça certa vale mais que três genéricas. O que não se negocia: fluidez (toda entrada com ease-out e saída com ease-in, algo sempre em movimento lento, passagens desenhadas entre cenas); texto inteiro dentro da zona segura (topo ${safeZones.top}, base ${safeZones.bottom}, laterais ${safeZones.left} px); nada sobre o rosto ou o queixo do locutor; o locutor reenquadrado com o rosto em faceX (centro do quadro) em toda troca de enquadramento, e enquadramento trocando com a fala (M, L, XL, XXL). Fundo das cenas: NUNCA o vídeo do locutor desfocado ou replicado (bg='plate' é erro no kit); use cor sólida ou gradiente da marca, imagem da biblioteca ou do site.` : '',
-    `## Formato escolhido (${fmt.name})\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmt.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmt.regras ? `\nQuando: ${fmt.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`,
-    `## Ritmo (${st.pace ?? 'dinamico'})\nAlgo novo na tela a cada ~${paceOf(st).every} s; cenas de ${paceOf(st).scene[0]} a ${paceOf(st).scene[1]} s${noSpeaker ? '' : `; enquadramento do locutor muda a cada ${paceOf(st).framing[0]} a ${paceOf(st).framing[1]} s e o kit avisa locutor parado por mais de ${paceOf(st).hold} s`}. Os mesmos números estão em compose.json (pace). Isto vale no lugar de qualquer número de ritmo dos outros guias.`,
+    skill ? `## Skill (${skill.name})\nUm vídeo clonado, travado inteiro: formato, visual e ritmo vêm dela e substituem as três escolhas do projeto. Siga à risca${ch.sources.colors === 'skill' ? '; as cores desta skill (paleta abaixo) valem no lugar da marca' : '; cores e fontes continuam da marca (ou do site de referência)'}.\n${fmtBlock}\n${rhythmBlock}\n${ch.sources.colors === 'skill' && look.palette?.length ? `Paleta travada (use estes hex no lugar dos da marca): ${look.palette.map((c: any) => `${c.hex} = ${c.role}`).join(', ')}\n` : ''}${styleBrief(look, skillRefs(skill.id), skillMd(skill.id))}` : '',
+    skill ? '' : fmtBlock,
+    skill ? '' : rhythmBlock,
     style ? `## Estilo escolhido (${style.name})\nSiga-o: tipografia, câmera, beats, sons e receitas vêm dele; o formato decide o layout e a marca decide cores e fontes.\n${styleBrief(style, styleRefs(style.id))}` : '',
-    !style && styleList.length ? `## Estilos disponíveis\nNenhum foi escolhido: escolha o que serve ao assunto e à marca, diga qual e por quê no treatment e siga o style.json dele (Read). Para seguir um à risca em todos os renders, o usuário escolhe no projeto.\n${styleList.map((x: any) => `- ${x.id}: ${x.name}. ${x.description ?? ''}${x.motif ? ` Motivo: ${x.motif}.` : ''}${x.camera?.signature ? ` Câmera: ${x.camera.signature}.` : ''}${x.pack ? ` Pacote: estilos/${x.pack}${x.engine ? ` (engine='${x.engine}')` : ''}.` : ''} (${join(styleDir(x.id), 'style.json')})`).join('\n')}` : '',
+    !skill && !style && styleList.length ? `## Estilos disponíveis\nNenhum foi escolhido: escolha o que serve ao assunto e à marca, diga qual e por quê no treatment e siga o style.json dele (Read). Para seguir um à risca em todos os renders, o usuário escolhe no projeto.\n${styleList.map((x: any) => `- ${x.id}: ${x.name}. ${x.description ?? ''}${x.motif ? ` Motivo: ${x.motif}.` : ''}${x.camera?.signature ? ` Câmera: ${x.camera.signature}.` : ''}${x.pack ? ` Pacote: estilos/${x.pack}${x.engine ? ` (engine='${x.engine}')` : ''}.` : ''} (${join(styleDir(x.id), 'style.json')})`).join('\n')}` : '',
     !noSpeaker && refAnalysis && !siteRef(st) ? `## Análise da referência (reference.json)\nÉ o estilo a reproduzir. Olhe os quadros em ../ref/ com Read antes de escrever.\n${refAnalysis}` : '',
     `## Imagens e objetos\nA peça visual de cada cena vem, nesta ordem: 1) a biblioteca do reel e a compartilhada (seções abaixo) e as imagens do site; 2) objetos 3D (\`obj3d\` com um .glb da biblioteca, ou os tipos prontos do kit); 3) desenho em código (\`canvas()\` / \`scene3d()\`) só quando nada pronto mostra o que a fala diz. Cada peça demonstra a frase em que entra (mockup, objeto, gravura, ícone com material e sombra), nunca enfeite. Proibido: emoji, balão ou card com texto de exemplo, texto em outra língua que a fala não diz, ícone de linha fina chapado sem sombra nem material. Decida a câmera de cada plano pelo DIRETOR.md e escreva treatment.md antes do scenes.py.`,
     manifest.length ? `## Biblioteca do reel (assets/manifest.json)\nBaixada da internet para os momentos do roteiro, com licença e autor. Abra cada imagem com Read antes de usar (o nome não diz o que ela mostra); .svg entra como <img> ou inline; .glb entra com obj3d(p, 'assets/3d/arquivo.glb', x, y, size, at, d).${manifest.some(e => e.kind === 'video') ? ` Vídeo (assets/video/, 15 s, mudo) entra com footage(p, src, x, y, w, h, d, at, start): janela com cantos redondos na cena do momento, nunca sobre o rosto; confira o trecho (start) com ffmpeg antes de usar.` : ''}${manifest.some(e => e.kind === 'audio') ? ` A trilha (assets/music/) entra uma vez no scenes.py com music('assets/music/arquivo.mp3', vol=.16): baixa, sob a voz.` : ''}\n${manifest.map(e => `- assets/${e.file} · ${e.kind === 'audio' ? 'trilha' : `momento ${e.moment}`} · "${e.query}" · ${e.provider} · ${e.license}${e.author ? ` · ${e.author}` : ''}`).join('\n')}` : '',

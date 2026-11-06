@@ -3125,6 +3125,7 @@
       <a href="#/brands" class="nav-tab" id="nav-brands">Brandkits</a>
       <a href="#/formats" class="nav-tab" id="nav-formats">Formatos</a>
       <a href="#/styles" class="nav-tab" id="nav-styles">Estilos</a>
+      <a href="#/skills" class="nav-tab" id="nav-skills">Skills</a>
       <a href="#/cortes" class="nav-tab" id="nav-cortes">Cortes</a>
       <a href="#/config" class="nav-tab" id="nav-config">Configurações</a>
     </nav>
@@ -5846,11 +5847,12 @@ let dashBrand = '';
 let dashSearch = '';
 
 async function projects() {
-  let [overviewList, bl, flIds, motionStyles] = await Promise.all([
+  let [overviewList, bl, flIds, motionStyles, skillList] = await Promise.all([
     api('GET', '/projects/overview').catch(() => []),
     api('GET', '/brands').catch(() => []),
     api('GET', '/formats').catch(() => []),
-    api('GET', '/styles').then(ids => Promise.all(ids.map(i => api('GET', `/styles/${i}`).catch(() => null)))).then(l => l.filter(Boolean)).catch(() => [])
+    api('GET', '/styles').then(ids => Promise.all(ids.map(i => api('GET', `/styles/${i}`).catch(() => null)))).then(l => l.filter(Boolean)).catch(() => []),
+    api('GET', '/skills').then(ids => Promise.all(ids.map(i => api('GET', `/skills/${i}`).catch(() => null)))).then(l => l.filter(Boolean)).catch(() => [])
   ]);
   globalProjectsData = overviewList;
 
@@ -6376,6 +6378,13 @@ async function projects() {
                 </select>
             </div>
             <div class="np-field">
+              <label class="np-field-label"><span>Skill</span><span class="opt">(um vídeo clonado: trava o estilo, o ritmo e, se ela traz planos, o formato)</span></label>
+              <select class="np-select" name="skillId" id="npSkillSelect">
+                <option value="">Nenhuma</option>
+                ${skillList.map(k => `<option value="${esc(k.id)}" data-planos="${k.format?.planos ? '1' : ''}" title="${esc(k.description || '')}">${esc(k.name || k.id)}${k.rhythm?.pace ? ` · ~${k.rhythm.pace} s por corte` : ''}</option>`).join('')}
+              </select>
+            </div>
+            <div class="np-field">
               <label class="np-field-label"><span>Ritmo</span><span class="opt">(a cada quantos segundos algo novo entra na tela)</span></label>
               <div style="display:flex;gap:6px;flex-wrap:wrap" id="npPaceBar">
                 <button type="button" class="np-brand-pill active" data-pace="dinamico"><span>⚡ Dinâmico · ~1,5 s</span></button>
@@ -6498,7 +6507,7 @@ async function projects() {
         statusText.textContent = 'Pronto para iniciar a esteira';
         const vidCountText = videoPaths.length === 1 ? '1 vídeo selecionado' : `${videoPaths.length} vídeos (${multiMode === 'batch' ? 'em lote' : 'sequenciais'})`;
         const subText = subtitlePath ? ' · com legenda' : '';
-        const styleId = $('#npMotionStyleSelect')?.value, pace = $('#npPaceSelect')?.value;
+        const styleId = $('#npSkillSelect')?.value || $('#npMotionStyleSelect')?.value, pace = $('#npSkillSelect')?.value ? '' : $('#npPaceSelect')?.value;
         statusSub.textContent = `${vidCountText} · ${selectedBrand} · ${fmtLabel}${styleId ? ' · ' + styleId : ''}${pace && pace !== 'dinamico' ? ' · ' + pace : ''}${composerTag}${subText}${recalled ? ` · como "${recalled}"` : ''}`;
         btnCreate.style.opacity = '1';
       }
@@ -6549,6 +6558,9 @@ async function projects() {
     $('#npFormatGrid').querySelectorAll('[data-format]').forEach(t => t.onclick = () => { formatSelect.value = t.dataset.format; pickTile($('#npFormatGrid'), 'format', t.dataset.format); updateFormatPreview(); });
     $('#npStyleGrid').querySelectorAll('[data-style]').forEach(t => t.onclick = () => { $('#npMotionStyleSelect').value = t.dataset.style; pickTile($('#npStyleGrid'), 'style', t.dataset.style); updateFooterStatus(); });
     $('#npPaceBar').querySelectorAll('[data-pace]').forEach(b => b.onclick = () => { $('#npPaceSelect').value = b.dataset.pace; $('#npPaceBar').querySelectorAll('[data-pace]').forEach(x => x.classList.toggle('active', x === b)); updateFooterStatus(); });
+    // a skill locks style, rhythm and (when it carries shots) the format: the selectors stay visible but cannot be changed
+    const lock = (el, on) => { el.style.opacity = on ? '.4' : ''; el.style.pointerEvents = on ? 'none' : ''; };
+    $('#npSkillSelect').onchange = () => { const o = $('#npSkillSelect').selectedOptions[0], on = !!o.value; lock($('#npStyleGrid'), on); lock($('#npPaceBar'), on); lock($('#npFormatGrid'), on && !!o.dataset.planos); updateFooterStatus(); };
     updateFormatPreview();   // the first format starts selected
     // Relembrar projeto anterior: batch production repeats the brand, references, format, style and pace of the last reel
     $('#npRecall').onchange = async e => {
@@ -6941,7 +6953,7 @@ async function projects() {
           name: nameInput.value.trim() || 'novo-video', text: speechEl.value, voice: { provider: provEl.value, voice: voiceEl.value }, character: charEl.value ? { name: charEl.value } : undefined,
           referenceUrl: refUrlInput.value.trim() || undefined, referenceNote: $('#npRefNote').value.trim() || undefined,
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
-          styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
+          styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
         });
         sessionStorage.removeItem('npDraft');
         location.hash = `#/p/${st.id}`;
@@ -6976,7 +6988,7 @@ async function projects() {
             brand,
             formatId,
             images: imagePaths,
-            styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
+            styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
           });
           api('POST', `/projects/${st.id}/ingest`).catch(() => {});
         }
@@ -7001,7 +7013,7 @@ async function projects() {
         brand,
         formatId,
         images: imagePaths,
-        styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
+        styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
       });
 
       sessionStorage.removeItem('npDraft');
@@ -7364,11 +7376,18 @@ async function project(id) {
     if (badgesEl) {
       badgesEl.innerHTML = `
         ${st.brand ? `<span style="background:var(--panel2);border:1px solid var(--line);padding:2px 8px;border-radius:4px;font:600 11px var(--sans);color:var(--cream)">${esc(st.brand)}</span>` : ''}
-        <select id="pt-style-select" title="Estilo de motion deste projeto (aba Estilos): vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
+        <select id="pt-format-select" title="Formato deste projeto (quais planos do locutor existem): vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
+          <option value="${esc(st.formatId || '')}" selected>📐 ${esc(st.formatId || 'formato')}</option>
+        </select>
+        <select id="pt-skill-select" title="Skill deste projeto (aba Skills): um vídeo clonado que trava estilo e ritmo; vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
+          <option value="">🧬 skill: nenhuma</option>
+          ${st.skillId ? `<option value="${esc(st.skillId)}" selected>🧬 ${esc(st.skillId)}</option>` : ''}
+        </select>
+        <select id="pt-style-select" ${st.skillId ? 'disabled' : ''} title="Estilo de motion deste projeto (aba Estilos): vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
           <option value="">🎞 motion: diretor decide</option>
           ${st.styleId ? `<option value="${esc(st.styleId)}" selected>🎞 ${esc(st.styleId)}</option>` : ''}
         </select>
-        <select id="pt-pace-select" title="Ritmo deste projeto: vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
+        <select id="pt-pace-select" ${st.skillId ? 'disabled' : ''} title="Ritmo deste projeto: vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
           ${[['dinamico', 'dinâmico'], ['normal', 'normal'], ['lento', 'lento']].map(([v, n]) => `<option value="${v}"${(st.pace || 'dinamico') === v ? ' selected' : ''}>⏱ ritmo: ${n}</option>`).join('')}
         </select>
         ${st.completed ? `<span class="badge-done-pill" style="display:inline-flex;align-items:center;gap:5px;background:rgba(0,230,118,0.12);color:#00e676;border:1px solid rgba(0,230,118,0.3);padding:3px 9px;border-radius:12px;font:700 11px var(--mono)">✓ CONCLUÍDO</span>` : ''}
@@ -7384,11 +7403,21 @@ async function project(id) {
         api('POST', `/projects/${id}/motion`).catch(err => { running = null; line(`ERRO ao recompor: ${err.message}`); render(); });
       };
       const paceSel = $('#pt-pace-select');
-      if (paceSel) paceSel.onchange = async () => { await api('PUT', `/projects/${id}/pace`, { pace: paceSel.value }); render(); };
+      if (paceSel) paceSel.onchange = async () => { await api('PUT', `/projects/${id}/choices`, { pace: paceSel.value }); render(); };
+      const fmtSel = $('#pt-format-select');
+      if (fmtSel) {
+        api('GET', '/formats').then(ids => { for (const fid of ids) if (![...fmtSel.options].some(o => o.value === fid)) fmtSel.add(new Option(`📐 ${fid}`, fid)); }).catch(() => {});
+        fmtSel.onchange = async () => { await api('PUT', `/projects/${id}/choices`, { formatId: fmtSel.value }); render(); };
+      }
+      const skillSel = $('#pt-skill-select');
+      if (skillSel) {
+        api('GET', '/skills').then(ids => { for (const kid of ids) if (![...skillSel.options].some(o => o.value === kid)) skillSel.add(new Option(`🧬 ${kid}`, kid)); }).catch(() => {});
+        skillSel.onchange = async () => { await api('PUT', `/projects/${id}/choices`, { skillId: skillSel.value || null }); render(); };
+      }
       const styleSel = $('#pt-style-select');
       if (styleSel) {
         api('GET', '/styles').then(ids => { for (const sid of ids) if (![...styleSel.options].some(o => o.value === sid)) styleSel.add(new Option(`🎞 ${sid}`, sid)); }).catch(() => {});
-        styleSel.onchange = async () => { await api('PUT', `/projects/${id}/style`, { styleId: styleSel.value || null }); render(); };
+        styleSel.onchange = async () => { await api('PUT', `/projects/${id}/choices`, { styleId: styleSel.value || null }); render(); };
       }
     }
     const actionsEl = $('#pt-actions');
@@ -9673,28 +9702,29 @@ async function formats() {
 }
 
 // Estilos: o motion design clonado de referências (workspace/styles/<id>/). O formato decide a edição; o estilo, o movimento.
-async function stylesView() {
-  const ids = await api('GET', '/styles');
-  const all = (await Promise.all(ids.map(id => api('GET', `/styles/${id}`).catch(() => null)))).filter(x => x && x.id);
-  const cover = x => x.refs?.length ? `<img src="/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(x.refs.find(f => /^x\d+_0\./.test(f)) || x.refs[0])}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`
+async function stylesView(kind = 'styles') {
+  const API = kind, KEY = kind === 'skills' ? 'skill' : 'style', ONE = kind === 'skills' ? 'skill' : 'estilo', ALL = kind === 'skills' ? 'Skills' : 'Estilos';
+  const ids = await api('GET', `/${API}`);
+  const all = (await Promise.all(ids.map(id => api('GET', `/${API}/${id}`).catch(() => null)))).filter(x => x && x.id);
+  const cover = x => x.refs?.length ? `<img src="/${API}/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(x.refs.find(f => /^x\d+_0\./.test(f)) || x.refs[0])}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font:700 40px var(--serif);color:var(--ay);background:var(--stage)">${esc((x.name || x.id).slice(0, 1))}</div>`;
   app.innerHTML = `
     <div class="fmt-gallery-wrap">
       <div class="fmt-gallery-head">
         <div>
-          <h2 class="fmt-gallery-title">Estilos <span class="fmt-gallery-count">${all.length} estilos</span></h2>
+          <h2 class="fmt-gallery-title">${ALL} <span class="fmt-gallery-count">${all.length} ${kind === 'skills' ? 'skills' : 'estilos'}</span></h2>
           <p class="fmt-gallery-desc">
-            Estilos de motion design clonados de referências: tipografia, paleta, câmera e profundidade, beats, sons e receitas GSAP.
-            Escolha um ao criar o projeto (ou no cabeçalho dele) para o compositor seguir à risca; sem escolha, o diretor decide entre os da lista.
+            ${kind === 'skills' ? 'Skills: um vídeo clonado inteiro (como o locutor é enquadrado, o visual e o ritmo medido). Ao escolher uma no projeto ela trava formato, estilo e ritmo; as cores e fontes continuam da marca (ou do site de referência).'
+              : 'Estilos: só a linguagem visual (tipografia, paleta, câmera e profundidade, sons e receitas GSAP, pacotes de ilustração). Escolha um ao criar o projeto (ou no cabeçalho dele) para o compositor seguir à risca; sem escolha, o diretor decide entre os da lista.'}
           </p>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <button id="styCloneBtn" class="quiet-button" style="font-size:12px;padding:8px 14px">✨ Clonar estilo</button>
+          <button id="styCloneBtn" class="quiet-button" style="font-size:12px;padding:8px 14px">${kind === 'skills' ? '✨ Clonar vídeo' : '✨ Clonar só o visual'}</button>
           <button id="styImportBtn" class="quiet-button" style="font-size:12px;padding:8px 14px">📥 Importar (.json)</button>
           <input type="file" id="styImportFile" accept=".json" style="display:none">
         </div>
       </div>
-      ${all.length ? '' : '<p class="muted">Nenhum estilo ainda. Clone um a partir de vídeos, links ou imagens de referência.</p>'}
+      ${all.length ? '' : `<p class="muted">Nenhum${kind === 'skills' ? 'a skill' : ' estilo'} ainda. Clone ${kind === 'skills' ? 'uma' : 'um'} a partir de vídeos, links ou imagens de referência.</p>`}
       <div class="fmt-grid">
         ${all.map(x => `
           <article class="fmt-style-card" data-sty-id="${esc(x.id)}">
@@ -9717,32 +9747,33 @@ async function stylesView() {
       </div>
     </div>
     <div id="fmtModalHost"></div>`;
-  $('#styCloneBtn').onclick = () => openCloneModal();
+  $('#styCloneBtn').onclick = () => openCloneModal(kind);
   $('#styImportBtn').onclick = () => $('#styImportFile').click();
   $('#styImportFile').onchange = async e => {
     const file = e.target.files[0];
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text());
-      const chosen = prompt('Identificador (ID) do estilo importado:', parsed.id || file.name.replace(/\.json$/i, ''));
+      const chosen = prompt('Identificador (ID) importado:', parsed.id || file.name.replace(/\.json$/i, ''));
       if (!chosen) return;
       const id = chosen.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
       if (!id) return alert('ID inválido');
-      await api('POST', '/styles', { id, style: { ...parsed, id } });
-      stylesView();
+      await api('POST', `/${API}`, { id, [KEY]: { ...parsed, id } });
+      stylesView(kind);
     } catch (err) { alert(`Erro ao importar estilo: ${err.message || err}`); } finally { e.target.value = ''; }
   };
-  const exportStyle = x => { const { refs, ...rest } = x; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(rest, null, 2)], { type: 'application/json' })); a.download = `estilo-${x.id}.json`; a.click(); URL.revokeObjectURL(a.href); };
-  const del = async (id, name) => { if (!confirm(`Excluir o estilo "${name}"? Os quadros de referência vão junto.`)) return; await api('DELETE', `/styles/${id}`); location.hash === '#/styles' ? stylesView() : location.hash = '#/styles'; };
+  const exportStyle = x => { const { refs, ...rest } = x; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(rest, null, 2)], { type: 'application/json' })); a.download = `${ONE}-${x.id}.json`; a.click(); URL.revokeObjectURL(a.href); };
+  const del = async (id, name) => { if (!confirm(`Excluir ${ONE === 'skill' ? 'a skill' : 'o estilo'} "${name}"? Os quadros de referência vão junto.`)) return; await api('DELETE', `/${API}/${id}`); location.hash === `#/${API}` ? stylesView(kind) : location.hash = `#/${API}`; };
   app.querySelectorAll('.fmt-quick-btn.export').forEach(btn => btn.onclick = e => { e.stopPropagation(); exportStyle(all.find(x => x.id === btn.dataset.styId)); });
   app.querySelectorAll('.fmt-quick-btn.delete').forEach(btn => btn.onclick = e => { e.stopPropagation(); del(btn.dataset.styId, btn.dataset.styName); });
-  app.querySelectorAll('.fmt-style-card').forEach(card => card.onclick = () => openStyleModal(card.dataset.styId, exportStyle, del));
+  app.querySelectorAll('.fmt-style-card').forEach(card => card.onclick = () => openStyleModal(card.dataset.styId, exportStyle, del, kind));
 }
 
-async function openStyleModal(id, exportStyle, del) {
+async function openStyleModal(id, exportStyle, del, kind = 'styles', reload = () => stylesView(kind)) {
+  const API = kind, KEY = kind === 'skills' ? 'skill' : 'style';
   const host = $('#fmtModalHost');
   if (!host) return;
-  const x = await api('GET', `/styles/${id}`);
+  const x = await api('GET', `/${API}/${id}`);
   const cam = x.camera || {}, unit = k => k === 'push' || k === 'pull' ? ' scale' : k === 'pan' || k === 'crane' ? ' px' : '°';
   const sec = (title, body) => `<div class="fmt-section-box"><h5 class="fmt-section-title">${title}</h5>${body}</div>`;
   const kv = (k, v) => v ? `<div style="font-size:12px"><b style="color:var(--cream)">${k}:</b> <span class="muted">${esc(String(v))}</span></div>` : '';
@@ -9752,7 +9783,7 @@ async function openStyleModal(id, exportStyle, del) {
         <button class="fmt-modal-close" id="styMdlClose" title="Fechar">&times;</button>
         <div class="fmt-modal-preview">
           <div style="width:230px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            ${(x.refs || []).filter(f => /^(v\d+_\d+|img\d+|x\d+_\d+)\./.test(f)).slice(0, 8).map(f => `<img src="/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(f)}" style="width:100%;border-radius:6px;border:1px solid var(--line)" alt="">`).join('')}
+            ${(x.refs || []).filter(f => /^(v\d+_\d+|img\d+|x\d+_\d+)\./.test(f)).slice(0, 8).map(f => `<img src="/${API}/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(f)}" style="width:100%;border-radius:6px;border:1px solid var(--line)" alt="">`).join('')}
           </div>
         </div>
         <div class="fmt-modal-content">
@@ -9790,16 +9821,16 @@ async function openStyleModal(id, exportStyle, del) {
   $('#styMdlOverlay').onclick = e => { if (e.target.id === 'styMdlOverlay') close(); };
   $('#sty_export').onclick = () => exportStyle(x);
   $('#sty_delete').onclick = () => del(id, x.name || id);
-  $('#sty_save').onclick = e => act(e.target, async () => { await api('PUT', `/styles/${id}`, { style: { guide: $('#sty_guide').value } }); close(); stylesView(); });
+  $('#sty_save').onclick = e => act(e.target, async () => { await api('PUT', `/${API}/${id}`, { [KEY]: { guide: $('#sty_guide').value } }); close(); reload(); });
   if ($('#sty_refine')) $('#sty_refine').onclick = e => act(e.target, async () => {
     $('#sty_refine_out').textContent = 'Comparando...';
-    const r = await api('POST', `/styles/${id}/refine`, { path: $('#sty_refine_path').value.trim(), note: $('#sty_refine_note').value.trim() });
+    const r = await api('POST', `/${API}/${id}/refine`, { path: $('#sty_refine_path').value.trim(), note: $('#sty_refine_note').value.trim() });
     $('#sty_refine_out').innerHTML = `Semelhança ${esc(String(r.match))}/10. Guia atualizado.<br>` + r.differences.map(d => '• ' + esc(d)).join('<br>');
   });
 }
 
 // Clonar estilo de motion: vídeos (link ou arquivo) + imagens de referência -> workspace/styles/<id>/ escrito pelo Opus
-function openCloneModal() {
+function openCloneModal(kind = 'styles') {
   const host = $('#fmtModalHost');
   if (!host) return;
 
@@ -10266,7 +10297,7 @@ function openCloneModal() {
       loadTitle.textContent = '✨ Claude Opus 5.5 analisando referências...';
       loadMsg.innerHTML = 'Extraindo frames de corte, ritmo e alinhamento sonoro (SFX)...<br><span style="font-size:11px;opacity:0.8">Esta análise profunda pode levar entre 30 e 90 segundos.</span>';
 
-      await api('POST', '/styles/clone', {
+      await api('POST', `/${kind}/clone`, {
         id,
         urls: urlsList,
         paths,
@@ -10275,12 +10306,12 @@ function openCloneModal() {
       });
 
       // Sucesso
-      loadTitle.innerHTML = '🎉 Estilo clonado com sucesso!';
-      loadMsg.textContent = `O estilo "${id}" agora está disponível na aba Estilos.`;
+      loadTitle.innerHTML = kind === 'skills' ? '🎉 Skill clonada com sucesso!' : '🎉 Estilo clonado com sucesso!';
+      loadMsg.textContent = kind === 'skills' ? `A skill "${id}" agora está disponível na aba Skills.` : `O estilo "${id}" agora está disponível na aba Estilos.`;
       
       setTimeout(() => {
         close();
-        location.hash = '#/styles';
+        location.hash = `#/${kind}`;
       }, 1000);
 
     } catch (e) {
@@ -11308,15 +11339,17 @@ function route() {
   const b = h.match(/^\/brands\/?(.*)$/);
   const f = h.match(/^\/formats\/?(.*)$/);
   const sty = h.match(/^\/styles\/?(.*)$/);
+  const skl = h.match(/^\/skills\/?(.*)$/);
   const cfg = h.match(/^\/config\/?(.*)$/);
   const ct = h.match(/^\/cortes\/?(.*)$/);
   $("#nav-cortes")?.classList.toggle("active", !!ct);
 
   // Atualiza destaque na top navbar
-  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !cfg && !m && !ct);
+  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !skl && !cfg && !m && !ct);
   $("#nav-brands")?.classList.toggle("active", !!b);
   $("#nav-formats")?.classList.toggle("active", !!f);
   $("#nav-styles")?.classList.toggle("active", !!sty);
+  $("#nav-skills")?.classList.toggle("active", !!skl);
   $("#nav-config")?.classList.toggle("active", !!cfg);
 
   // Garante que o trigger do Cmd+K esteja ativo
@@ -11336,6 +11369,8 @@ function route() {
       brands(b[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (f) {
       formats(f[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
+    } else if (skl) {
+      stylesView('skills').catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (sty) {
       stylesView().catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (ct) {

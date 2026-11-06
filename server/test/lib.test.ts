@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cutWindows, deepMerge, PACE, pickFormats, remapWords, resolveChoices, safeId, shortcutPlan, spansFromWords } from '../lib.ts';
+import { cutWindows, deepMerge, lookOnly, PACE, paceFromSkill, pickFormats, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, spansFromWords, styleToSkill } from '../lib.ts';
 
 test('formats render in a fixed order and reject unknown ones', () => {
   assert.deepEqual(pickFormats(['4:5', '1:1', '9:16']), ['9:16', '1:1', '4:5']);
@@ -68,4 +68,24 @@ test('resolveChoices: a skill locks format, look and rhythm; without one the thr
   assert.deepEqual(n.rhythm, PACE.dinamico); assert.equal(n.look, null); assert.deepEqual(n.sources, { format: 'format', look: 'none', rhythm: 'default', colors: 'brand' });
   assert.deepEqual(resolveChoices({ format, style }).rhythm, PACE.lento);   // paceHint is only the starting value
   assert.deepEqual(resolveChoices({ format, style, pace: 'normal' }).rhythm, PACE.normal);   // the toggle wins once set
+});
+
+test('styleToSkill splits a flat clone in three drawers and skillAsStyle gives every field back', () => {
+  const flat = { id: 'build', name: 'Build', description: 'd', guide: 'g', motif: 'm', palette: [{ hex: '#fff', role: 'fundo' }],
+    camera: { world: [{ kind: 'push', amount: 1.1, when: 'x' }], framing: 'só M', transitions: 'wipe', depth: 'flat', signature: 's' },
+    beats: [{ from: 0, to: 2 }], pace: 2.4, sfxRules: [{ when: 'a', sfx: 'b', level: 'subtle' }], sfxPerMinute: 20, motionRecipes: [{ name: 'n', use: 'u', gsap: 'g' }],
+    giantCase: 'lower', speakerShadow: true, clonedFrom: { urls: ['u'], measured: [], note: '' }, refineLog: [{ match: 7 }] };
+  const k = styleToSkill(flat);
+  assert.deepEqual(k.format, { camera: { framing: 'só M', transitions: 'wipe' } });   // no planos: the chosen format keeps the speaker's shots
+  assert.equal(k.look.camera.framing, undefined); assert.equal(k.look.camera.depth, 'flat'); assert.equal(k.rhythm.pace, 2.4); assert.equal(k.colorsLocked, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(skillAsStyle(k))), flat);   // nothing lost on the way there and back
+  const l = lookOnly(flat);
+  assert.ok(!('beats' in l) && !('pace' in l) && !('clonedFrom' in l) && !('framing' in l.camera) && l.camera.depth === 'flat' && l.guide === 'g');
+});
+
+test('paceFromSkill: the skill\'s seconds per cut pick the nearest toggle limits, capped at lento', () => {
+  assert.deepEqual(paceFromSkill({ rhythm: { pace: 1.3 } }), { ...PACE.dinamico, every: 1.3 });
+  assert.deepEqual(paceFromSkill({ rhythm: { pace: 2.4 } }), { ...PACE.normal, every: 2.4 });
+  assert.equal(paceFromSkill({ rhythm: { pace: 18 } })!.every, PACE.lento.every);
+  assert.equal(paceFromSkill({ rhythm: {} }), null);
 });
