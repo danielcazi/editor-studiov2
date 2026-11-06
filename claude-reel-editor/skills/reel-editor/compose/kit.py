@@ -19,6 +19,7 @@ CUTS = CFG.get('cuts', [])          # emendas do corte (s, no relógio do reel):
 PANEL = CFG.get('panel')            # Speech Screen: {'top': fração de H}; cena com cam='panel' mostra o vídeo bruto (assets/talk.mp4) no painel de baixo
 PANEL_TOP = round(H * PANEL['top']) if PANEL else None
 PACE = CFG.get('pace') or {'every': 1.5, 'scene': [1.2, 3], 'framing': [2, 4], 'hold': 4}   # the reel's pace toggle (server PACE table); the default is dinamico
+PLANOS = CFG.get('planos') or ['cut', 'panel', 'none']   # the format's speaker shots (scene cam=); a scene outside them is an error
 CUT_WINDOWS = CFG.get('cutWindows')  # [[a, b], ...] s: só aqui existe recorte; cena com câmera M/L/XL fora delas é erro (use 'panel' ou None)
 
 # Relógio por palavra: toda batida cai numa palavra da fala, nunca num segundo digitado. assets/transcript.json vem do master.
@@ -259,9 +260,12 @@ def lint_variety(src, html, js):
         out.append(f'fluidez: {short} de {len(durs)} tweens duram ≤ 0,3 s (animação travada); entradas de .4–.7 s com power3.out/expo.out, saídas de .25–.4 s com power2.in, e movimento sustentado (> 1 s) em cada cena')
     return out
 
+def plano(cam): return 'cut' if isinstance(cam, tuple) else 'none' if cam is None else cam
+
 def lint_static():
     for s in S:
         n, cam = s['n'], s['cam']
+        if plano(cam) not in PLANOS: erro(f'cena {n}: plano {plano(cam)!r} fora dos planos deste formato {PLANOS} (compose.json planos)'); continue
         if s['bg'] == 'plate': erro(f'cena {n}: fundo "plate" (o vídeo do locutor replicado/desfocado) é proibido: use imagem do site, sólido ou gradiente da marca, ou ilustração')
         elif s['bg'] not in BG_NAMES: erro(f'cena {n}: fundo {s["bg"]!r} desconhecido (use {", ".join(BG_NAMES)})')
         if cam == 'panel':
@@ -285,6 +289,9 @@ def lint_static():
     for x, y in zip(S, S[1:]):
         if isinstance(x['cam'], tuple) and isinstance(y['cam'], tuple) and x['cam'][0] == y['cam'][0]:
             aviso(f'cenas {x["n"]} e {y["n"]}: mesmo enquadramento {x["cam"][0]} em cenas vizinhas (alterne XL, L, M)')
+    if len(PLANOS) > 1 and CUT_WINDOWS is None:   # free agenda: the same shot twice in a row is a missed change (with fixed windows a long panel stretch is the design)
+        for x, y in zip(S, S[1:]):
+            if plano(x['cam']) == plano(y['cam']) != 'cut': aviso(f'cenas {x["n"]} e {y["n"]}: mesmo plano {plano(x["cam"])} em cenas vizinhas (planos do formato: {PLANOS})')
 
 def render():
     # sanidade: cenas encostadas cobrindo 0..DUR

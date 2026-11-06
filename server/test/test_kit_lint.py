@@ -53,6 +53,14 @@ def hold_warn():
     return [a for a in kit.AVISOS if 'locutor parado' in a]
 assert hold_warn(); kit.PACE['hold'] = 8; assert not hold_warn(); kit.PACE['hold'] = 4
 kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
+# planos do formato: cam fora de compose.json planos é erro; o mesmo plano em cenas vizinhas (agenda livre) é aviso
+assert kit.PLANOS == ['cut', 'panel', 'none']   # sem `planos` no compose.json valem os três de antes
+kit.PLANOS[:] = ['cut', 'none']
+kit.S.clear(); kit.scene(1, 0, 3, 'red', 'panel'); kit.scene(2, 3, 6, 'black', None); kit.scene(3, 6, 10, 'amber', None); kit.lint_static()
+assert any('cena 1' in e and "'panel'" in e and 'fora dos planos' in e for e in kit.ERROS), kit.ERROS
+assert not any('cena 2' in e or 'cena 3' in e for e in kit.ERROS) and any('cenas 2 e 3' in a and 'mesmo plano none' in a for a in kit.AVISOS), (kit.ERROS, kit.AVISOS)
+kit.PLANOS[:] = ['cut', 'panel', 'none']
+kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
 # motores por estilo: engine() lê engines/<nome>.js uma vez, canvas(engine=) marca o uso da cena, e cada motor é JS válido
 import subprocess
 shutil.copytree(KIT / "engines", Path(d) / "engines")

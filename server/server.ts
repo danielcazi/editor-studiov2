@@ -154,6 +154,8 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && lv) return file(P.liveFile(decodeURIComponent(lv[1]), decodeURIComponent(lv[2])), req, res);
     const hf = path.match(/^\/hf\/([^/]+)$/);
     if (req.method === 'GET' && hf) return file(P.hfFile(hf[1]), req, res);
+    const fr = path.match(/^\/formats\/([^/]+)\/frames\/([^/]+)$/);
+    if (req.method === 'GET' && fr) return file(P.formatFrameFile(decodeURIComponent(fr[1]), decodeURIComponent(fr[2])), req, res);
     const sr = path.match(/^\/styles\/([^/]+)\/refs\/([^/]+)$/);
     if (req.method === 'GET' && sr) return file(P.styleRefFile(decodeURIComponent(sr[1]), decodeURIComponent(sr[2])), req, res);
     const ff = path.match(/^\/brands\/([^/]+)\/fonts\/([^/]+)$/);

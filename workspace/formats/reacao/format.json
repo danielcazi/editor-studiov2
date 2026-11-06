@@ -1,0 +1,24 @@
+{
+  "id": "reacao",
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "speaker": true,
+  "refVideo": true,
+  "safeZones": {
+    "top": 200,
+    "bottom": 380,
+    "left": 70,
+    "right": 70
+  },
+  "name": "Reação",
+  "order": 7,
+  "hidden": true,
+  "description": "Vídeo de referência numa metade, locutor cru na outra. Precisa do plano react (fase 6).",
+  "planos": [
+    "react",
+    "cut"
+  ],
+  "janelas": null,
+  "regras": "Vídeo de referência numa metade e o locutor reagindo na outra; o recorte entra para comentar."
+}

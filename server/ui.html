@@ -2428,23 +2428,26 @@
   .np-floating-badges:hover .np-float-badge:nth-child(3) { transform: rotate(18deg) translateY(2px) translateX(4px); }
 
   /* 2-Columns Grid Layout */
-  .np-columns-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    align-items: start;
-  }
-  @media (max-width: 900px) {
-    .np-columns-grid {
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-  }
-  .np-col {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
+  /* Três etapas: Arquivos → Marca → Edição */
+  .np-steps { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .np-step { font: 600 11.5px var(--mono); color: var(--mute); background: transparent; border: 1px solid var(--line); border-radius: 99px; padding: 5px 12px; cursor: pointer; }
+  .np-step b { display: inline-block; width: 16px; height: 16px; line-height: 16px; border-radius: 50%; background: var(--line); color: var(--cream); font-size: 10px; text-align: center; margin-right: 4px; }
+  .np-step.active { color: var(--cream); border-color: var(--accent); }
+  .np-step.active b { background: var(--accent); color: #000; }
+  .np-step-sep { color: var(--mute); }
+  .np-recall { margin-left: auto; width: auto; max-width: 280px; }
+  .np-step-panel { display: flex; flex-direction: column; gap: 12px; }
+  .np-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .np-tile { text-align: left; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; cursor: pointer; color: var(--mute); font: 500 12px var(--sans); transition: border-color 0.15s ease; }
+  .np-tile:hover { border-color: var(--line-strong); color: var(--cream); }
+  .np-tile.active { border-color: var(--accent); color: var(--cream); box-shadow: 0 0 0 1px var(--accent); }
+  .np-tile-add { display: flex; align-items: center; justify-content: center; text-decoration: none; min-height: 120px; }
+  .np-thumb { height: 150px; width: 100%; border-radius: 6px; background: var(--panel); display: flex; align-items: center; justify-content: center; text-align: center; font: 600 22px var(--sans); overflow: hidden; margin-bottom: 6px; }
+  .np-thumb span { font: 500 11px var(--mono); color: var(--mute); }
+  .np-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+  .np-tile-name { font: 600 12.5px var(--sans); color: inherit; }
+  .np-tile-sub { font: 400 10.5px var(--mono); color: var(--mute); margin-top: 2px; display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+  .np-sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.25); }
 
   /* Dropzone (Compact) */
   .np-dropzone {
@@ -5210,6 +5213,7 @@ async function brands(sel, initialTab = 'identidade') {
   const list = await api('GET', '/brands');
   sel ??= list[0];
   app.innerHTML = `<div class="brands"><div class="box">
+      ${sessionStorage.getItem('npDraft') ? '<a href="#/" class="np-back-btn" id="btnBackToNew" style="display:inline-flex;margin-bottom:12px">← Voltar para a criação</a>' : ''}
       <h4>Brands</h4>${list.map(b => `<a class="bitem ${b === sel ? 'on' : ''}" href="#/brands/${esc(b)}">${esc(b)}</a>`).join('') || '<p class="muted">nenhuma</p>'}
       <div class="newb"><input id="nb" placeholder="nova-brand"><button id="nbb">+ Criar</button></div>
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
@@ -5221,6 +5225,7 @@ async function brands(sel, initialTab = 'identidade') {
     <div class="box" id="be"></div></div>`;
   $('#nbb').onclick = e => act(e.target, async () => { await api('POST', '/brands', { id: $('#nb').value }); location.hash = `#/brands/${$('#nb').value}`; });
   $('#btnOpenCloneBrand').onclick = () => openCloneBrandModal();
+  $('#btnBackToNew')?.addEventListener('click', () => { dashCurrentTab = 'new'; });   // the form reads the draft back
   if (!sel) return;
 
   const [b, md] = await Promise.all([api('GET', `/brands/${sel}`), api('GET', `/brands/${sel}/md`)]);
@@ -5850,15 +5855,15 @@ async function projects() {
   globalProjectsData = overviewList;
 
   const formatsDetails = await Promise.all(flIds.map(f => api('GET', `/formats/${f}`).catch(() => null)));
+  const brandsDetails = Object.fromEntries(await Promise.all(bl.map(async b => [b, await api('GET', `/brands/${b}`).catch(() => ({}))])));   // create dialog: brand cards
   const ORDER = [
+    'recorte',
     'business-reels',
-    'personal-reels',
-    'split-reel',
-    'fitted-captions',
-    'image-cluster',
-    'cutout-backdrop',
-    'ranking-format',
-    'explainer-panel'
+    'speech-screen',
+    'split-bottom',
+    'so-motion',
+    'split-top',
+    'reacao'
   ];
   const validFormats = formatsDetails.filter(f => f && f.id);
   validFormats.sort((a, b) => {
@@ -5869,7 +5874,7 @@ async function projects() {
     if (idxB !== -1) return 1;
     return (a.order ?? 999) - (b.order ?? 999);
   });
-  const fl = validFormats.filter(f => ORDER.includes(f.id) || f.cutout !== undefined);
+  const fl = validFormats.filter(f => f.planos);
 
   // Se não houver projetos ainda, abre direto na tela de novo vídeo
   if (overviewList.length === 0) {
@@ -6062,7 +6067,6 @@ async function projects() {
 
                   <div class="pcard-format">
                     <span>📐 ${esc(fmtName)}</span>
-                    ${fmtObj?.cutout ? '· <span style="color:#00e676">✂ Cut-out</span>' : ''}
                     ${isCompleted ? '· <span style="color:#00e676;font-weight:700">✓ Concluído</span>' : ''}
                   </div>
 
@@ -6112,13 +6116,15 @@ async function projects() {
   }
 
   function renderNewVideoForm() {
-    let videoPaths = [];
+    let draft = null;   // the form as it was when the user left for Brandkits (or any other page): restored below
+    try { draft = JSON.parse(sessionStorage.getItem('npDraft') || 'null'); } catch {}
+    let videoPaths = draft?.videoPaths || [];
     let videoProbes = {};
-    let subtitlePath = '';
-    let imagePaths = [];
-    let selectedBrand = (bl && bl.length) ? bl[0] : 'Insula';
-    let selectedPre = '1';
-    let multiMode = 'concat';
+    let subtitlePath = draft?.subtitlePath || '';
+    let imagePaths = draft?.imagePaths || [];
+    let selectedBrand = (draft?.brand && bl.includes(draft.brand)) ? draft.brand : (bl && bl.length) ? bl[0] : 'Insula';
+    let selectedPre = draft?.selectedPre || '1';
+    let multiMode = draft?.multiMode || 'concat';
 
     app.innerHTML = `
       <div class="np-page-wrapper">
@@ -6145,10 +6151,20 @@ async function projects() {
             </div>
           </div>
 
-          <!-- 2 Colunas lado a lado sem necessidade de scroll -->
-          <div class="np-columns-grid">
-            <!-- COLUNA DA ESQUERDA -->
-            <div class="np-col">
+          <div class="np-steps" id="npSteps">
+            <button type="button" class="np-step active" data-step="1"><b>1</b>Arquivos</button>
+            <span class="np-step-sep">›</span>
+            <button type="button" class="np-step" data-step="2"><b>2</b>Marca</button>
+            <span class="np-step-sep">›</span>
+            <button type="button" class="np-step" data-step="3"><b>3</b>Edição</button>
+            <select class="np-select np-recall" id="npRecall" title="Copia marca, referências, formato, estilo e ritmo de um projeto anterior: só falta subir os arquivos">
+              <option value="">↺ Relembrar projeto anterior</option>
+              ${[...overviewList].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 15).map(p => `<option value="${esc(p.id)}">${esc(p.name || p.id)}${p.brand ? ` · ${esc(p.brand)}` : ''}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- ETAPA 1: nome e arquivos -->
+          <div class="np-step-panel" data-panel="1">
               <!-- 1. Nome do Projeto -->
               <div class="np-field">
                 <label class="np-field-label">
@@ -6233,6 +6249,7 @@ async function projects() {
                 </div>
               </div>
 
+
               <!-- 4. Legenda -->
               <div class="np-subtitle-strip" id="npSubtitleStrip">
                 <input type="file" id="npSubFileInput" accept=".srt,.vtt" style="display:none">
@@ -6252,31 +6269,43 @@ async function projects() {
                 </div>
                 <button type="button" class="np-subtitle-strip-btn" id="btnPickImages">+ Escolher Imagens</button>
               </div>
-            </div>
 
-            <!-- COLUNA DA DIREITA -->
-            <div class="np-col">
-              <!-- 1. Brandkits -->
+              <!-- 4. Vídeo já pré-editado? (Cortes de fala) -->
               <div class="np-field">
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                  <label class="np-field-label">
-                    <span>Brandkits</span>
-                    <span class="req">*</span>
-                  </label>
-                  <a href="#/brands" class="np-brand-bar-extra" title="Gerenciar Brandkits">
-                    <span>⚙️ Brandkits</span>
-                  </a>
-                </div>
-                <div class="np-brand-bar" id="npBrandBar">
-                  ${bl.map(b => `
-                    <button type="button" class="np-brand-pill ${b === selectedBrand ? 'active' : ''}" data-brand="${esc(b)}">
-                      <span class="pill-dot"></span>
-                      <span>${esc(b)}</span>
-                    </button>
-                  `).join('')}
+                <label class="np-field-label">
+                  <span>Vídeo já pré-editado? (Cortes de fala)</span>
+                  <span class="req">*</span>
+                </label>
+                <div class="np-segmented-toggle" id="npPreToggle">
+                  <button type="button" class="np-seg-btn active" data-val="1">
+                    <span>✂️ Sim (já cortado)</span>
+                  </button>
+                  <button type="button" class="np-seg-btn" data-val="0">
+                    <span>🎙️ Não (vídeo bruto)</span>
+                  </button>
                 </div>
               </div>
+          </div>
 
+          <!-- ETAPA 2: marca e referências -->
+          <div class="np-step-panel" data-panel="2" hidden>
+            <div class="np-field">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <label class="np-field-label">
+                  <span>Brandkit</span>
+                  <span class="req">*</span>
+                </label>
+              </div>
+              <div class="np-tile-grid" id="npBrandBar">
+                ${bl.map(b => { const d = brandsDetails[b] || {}; const cols = [...new Set([d.colors?.main, d.colors?.pop, d.colors?.light, d.colors?.caption_accent].filter(Boolean))]; const chars = (d.animation?.characters || []).filter(c => c.poses?.length).length; return `
+                <button type="button" class="np-tile ${b === selectedBrand ? 'active' : ''}" data-brand="${esc(b)}">
+                  <div class="np-thumb" style="background:${esc(d.colors?.light || '')};color:${esc(d.colors?.main || '')}">Aa</div>
+                  <div class="np-tile-name">${esc(b)}</div>
+                  <div class="np-tile-sub">${cols.map(c => `<i class="np-sw" style="background:${esc(c)}"></i>`).join('')} ${esc(d.fonts?.head?.family || '')}${chars ? ` · ${chars} personagem${chars > 1 ? 's' : ''}` : ''}</div>
+                </button>`; }).join('')}
+                <a href="#/brands" class="np-tile np-tile-add" title="Gerenciar Brandkits">⚙️ Gerenciar brandkits</a>
+              </div>
+            </div>
               <!-- 2. Link de referência ao lado de Observação (caixa de texto maior) -->
               <div class="np-refs-row">
                 <!-- Links de referência -->
@@ -6297,29 +6326,63 @@ async function projects() {
                   <textarea class="np-textarea-compact" name="referenceNote" id="npRefNote" placeholder="ex.: priorizar as imagens dos produtos, logos e paleta de cores do site..."></textarea>
                 </div>
               </div>
+          </div>
 
-              <!-- 3. Formato de Edição -->
-              <div class="np-field">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                  <label class="np-field-label" style="margin-bottom:0;">
-                    <span>Formato de Edição</span>
-                    <span class="req">*</span>
-                  </label>
-                  <span class="muted" style="font-size:11px">🤖 compositor agent</span>
-                </div>
-                <select class="np-select" name="formatId" id="npFormatSelect">
+          <!-- ETAPA 3: formato, estilo e ritmo -->
+          <div class="np-step-panel" data-panel="3" hidden>
+            <div class="np-field">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <label class="np-field-label" style="margin-bottom:0;">
+                  <span>Formato de Edição</span>
+                  <span class="req">*</span>
+                </label>
+                <span class="muted" style="font-size:11px">🤖 compositor agent · a prévia é o último reel feito nesse formato</span>
+              </div>
+              <div class="np-tile-grid" id="npFormatGrid">
+                ${fl.map((f, idx) => `
+                <button type="button" class="np-tile ${idx === 0 ? 'active' : ''}" data-format="${esc(f.id)}">
+                  <div class="np-thumb">${f.frames?.length ? `<img data-reel="${esc(JSON.stringify(f.frames.map(fr => `/formats/${encodeURIComponent(f.id)}/frames/${encodeURIComponent(fr)}`)))}" src="/formats/${encodeURIComponent(f.id)}/frames/${encodeURIComponent(f.frames[0])}" alt="">` : `<span>${esc(f.aspectRatio || '9:16')}<br>sem prévia ainda</span>`}</div>
+                  <div class="np-tile-name">${esc(f.name || f.id)}</div>
+                  <div class="np-tile-sub">${f.speaker === false ? 'sem locutor' : esc((f.planos || []).join(' · '))}</div>
+                </button>`).join('')}
+              </div>
+                <select class="np-select" hidden style="display:none" name="formatId" id="npFormatSelect">
                   ${fl.map((f, idx) => `
-                    <option value="${esc(f.id)}" ${idx === 0 ? 'selected' : ''} data-composer="${esc(f.composer || '')}" data-cutout="${f.cutout ? '1' : '0'}">
-                      ${esc(f.name || f.id)} (${esc(f.aspectRatio || '9:16')})${f.cutout ? ' · ✂ Cut-out' : ''}
+                    <option value="${esc(f.id)}" ${idx === 0 ? 'selected' : ''} title="${esc(f.regras || f.description || '')}">
+                      ${esc(f.name || f.id)} (${esc(f.aspectRatio || '9:16')})
                     </option>
                   `).join('')}
                 </select>
-                <div class="np-format-preview" id="npFmtPreview"></div>
-                <select class="np-select" name="styleId" id="npMotionStyleSelect" title="Estilo de motion: um estilo clonado na aba Estilos que o compositor segue à risca; automático deixa o diretor escolher">
+              <div class="np-format-preview" id="npFmtPreview"></div>
+            </div>
+            <div class="np-field">
+              <label class="np-field-label"><span>Estilo de motion</span><span class="opt">(automático deixa o diretor escolher)</span></label>
+              <div class="np-tile-grid" id="npStyleGrid">
+                <button type="button" class="np-tile active" data-style="">
+                  <div class="np-thumb"><span>automático</span></div>
+                  <div class="np-tile-name">O diretor escolhe</div>
+                  <div class="np-tile-sub">entre os estilos da lista</div>
+                </button>
+                ${motionStyles.map(x => { const refs = (x.refs || []).map(fr => `/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(fr)}`); return `
+                <button type="button" class="np-tile" data-style="${esc(x.id)}" title="${esc(x.description || '')}">
+                  <div class="np-thumb">${refs.length ? `<img data-reel="${esc(JSON.stringify(refs))}" src="${refs[0]}" alt="">` : `<span>sem quadros</span>`}</div>
+                  <div class="np-tile-name">${esc(x.name || x.id)}</div>
+                  <div class="np-tile-sub">${esc(x.motif || x.description || '').slice(0, 60)}</div>
+                </button>`; }).join('')}
+              </div>
+                <select class="np-select" hidden style="display:none" name="styleId" id="npMotionStyleSelect" title="Estilo de motion: um estilo clonado na aba Estilos que o compositor segue à risca; automático deixa o diretor escolher">
                   <option value="">Estilo: automático (o diretor escolhe entre os estilos)</option>
                   ${motionStyles.map(s => `<option value="${esc(s.id)}" title="${esc(s.description || '')}">Estilo: ${esc(s.name || s.id)}</option>`).join('')}
                 </select>
-                <select class="np-select" name="pace" id="npPaceSelect" title="Ritmo: a cada quantos segundos algo novo entra na tela">
+            </div>
+            <div class="np-field">
+              <label class="np-field-label"><span>Ritmo</span><span class="opt">(a cada quantos segundos algo novo entra na tela)</span></label>
+              <div style="display:flex;gap:6px;flex-wrap:wrap" id="npPaceBar">
+                <button type="button" class="np-brand-pill active" data-pace="dinamico"><span>⚡ Dinâmico · ~1,5 s</span></button>
+                <button type="button" class="np-brand-pill" data-pace="normal"><span>Normal · ~2,2 s</span></button>
+                <button type="button" class="np-brand-pill" data-pace="lento"><span>Lento · ~3,5 s</span></button>
+              </div>
+                <select class="np-select" hidden style="display:none" name="pace" id="npPaceSelect" title="Ritmo: a cada quantos segundos algo novo entra na tela">
                   <option value="dinamico">Ritmo: dinâmico (algo novo a cada ~1,5 s)</option>
                   <option value="normal">Ritmo: normal (a cada ~2,2 s)</option>
                   <option value="lento">Ritmo: lento (a cada ~3,5 s)</option>
@@ -6328,23 +6391,6 @@ async function projects() {
                   <input type="checkbox" id="npBroll" style="margin-top:3px">
                   <span>🎞 Inserir b-roll <span class="muted" style="display:block;font-size:11px">Fotos e clipes do YouTube das pessoas, marcas e eventos citados, mais uma trilha. Aumenta o tempo de produção em alguns minutos.</span></span>
                 </label>
-              </div>
-
-              <!-- 4. Vídeo já pré-editado? (Cortes de fala) -->
-              <div class="np-field">
-                <label class="np-field-label">
-                  <span>Vídeo já pré-editado? (Cortes de fala)</span>
-                  <span class="req">*</span>
-                </label>
-                <div class="np-segmented-toggle" id="npPreToggle">
-                  <button type="button" class="np-seg-btn active" data-val="1">
-                    <span>✂️ Sim (já cortado)</span>
-                  </button>
-                  <button type="button" class="np-seg-btn" data-val="0">
-                    <span>🎙️ Não (vídeo bruto)</span>
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -6358,8 +6404,9 @@ async function projects() {
               </div>
             </div>
             <div class="np-footer-buttons">
-              <button type="button" class="np-btn-cancel" id="btnCancelForm">Cancelar</button>
-              <button type="button" class="np-btn-submit" id="btnCreate">
+              <button type="button" class="np-btn-cancel" id="btnBackStep">Cancelar</button>
+              <button type="button" class="np-btn-submit" id="btnNextStep"><span>Avançar</span><span>→</span></button>
+              <button type="button" class="np-btn-submit" id="btnCreate" hidden>
                 <span>Criar e Analisar</span>
                 <span>⚡</span>
               </button>
@@ -6374,10 +6421,33 @@ async function projects() {
       dashCurrentTab = 'esteira';
       renderView();
     });
-    $('#btnCancelForm')?.addEventListener('click', () => {
-      dashCurrentTab = 'esteira';
-      renderView();
+    // Three steps: Arquivos → Marca → Edição. Everything is read at submit, so a step only shows and hides its panel.
+    let step = 1, recalled = '';
+    const panels = [...app.querySelectorAll('.np-step-panel')];
+    const showStep = n => {
+      step = n;
+      panels.forEach(p => p.hidden = +p.dataset.panel !== n);
+      $('#npSteps').querySelectorAll('.np-step').forEach(b => b.classList.toggle('active', +b.dataset.step <= n));
+      $('#btnBackStep').textContent = n === 1 ? 'Cancelar' : '← Voltar';
+      $('#btnNextStep').hidden = n === 3;
+      $('#btnCreate').hidden = n !== 3;
+      updateFooterStatus();
+    };
+    $('#btnNextStep').onclick = e => act(e.target, async () => {
+      if (step === 1) {
+        if (!$('#npProjectName').value.trim()) throw new Error('Dê um nome ao projeto.');
+        if (textMode ? !speechEl.value.trim() : !videoPaths.length) throw new Error(textMode ? 'Cole o roteiro da narração.' : 'Envie ou escolha pelo menos um vídeo.');
+      }
+      showStep(step + 1);
     });
+    $('#btnBackStep').onclick = () => { if (step === 1) { sessionStorage.removeItem('npDraft'); dashCurrentTab = 'esteira'; renderView(); } else showStep(step - 1); };
+    $('#npSteps').querySelectorAll('.np-step').forEach(b => b.onclick = () => { if (+b.dataset.step < step) showStep(+b.dataset.step); });
+    // preview loop: next frame every 500 ms (~12 frames at 24 fps) on the format and style cards
+    const reels = [...app.querySelectorAll('.np-thumb img[data-reel]')].map(img => ({ img, urls: JSON.parse(img.dataset.reel), i: 0 }));
+    const reelTimer = setInterval(() => {
+      if (!document.contains($('#npSteps'))) return clearInterval(reelTimer);
+      for (const r of reels) { r.i = (r.i + 1) % r.urls.length; r.img.src = r.urls[r.i]; }
+    }, 500);
 
     // Elements
     const filesListEl = $('#npFilesList');
@@ -6428,75 +6498,30 @@ async function projects() {
         statusText.textContent = 'Pronto para iniciar a esteira';
         const vidCountText = videoPaths.length === 1 ? '1 vídeo selecionado' : `${videoPaths.length} vídeos (${multiMode === 'batch' ? 'em lote' : 'sequenciais'})`;
         const subText = subtitlePath ? ' · com legenda' : '';
-        statusSub.textContent = `${vidCountText} · ${selectedBrand} · ${fmtLabel}${composerTag}${subText}`;
+        const styleId = $('#npMotionStyleSelect')?.value, pace = $('#npPaceSelect')?.value;
+        statusSub.textContent = `${vidCountText} · ${selectedBrand} · ${fmtLabel}${styleId ? ' · ' + styleId : ''}${pace && pace !== 'dinamico' ? ' · ' + pace : ''}${composerTag}${subText}${recalled ? ` · como "${recalled}"` : ''}`;
         btnCreate.style.opacity = '1';
       }
     };
 
     // Format Differences & Guidance Map
-    const FORMAT_DIFFS = {
-      'business-reels': {
-        tag: '⚡ Ritmo ~2s',
-        focus: 'Autoridade & Negócios',
-        diferencial: 'Alternância entre 4 modos visuais: tela cheia no gancho/CTA, tela dividida para passos/listas e overlays compactos para dados e números sem cobrir o locutor.'
-      },
-      'motion-completo': {
-        tag: '🎬 Motion Máximo',
-        focus: 'Alta Retenção',
-        diferencial: 'Motion design em densidade máxima: palavras gigantes atrás da cabeça do locutor recortado, cards dinâmicos, B-rolls e fundos animados a cada 1,5s.'
-      },
-      'personal-reels': {
-        tag: '🎙️ Diário / Vlog',
-        focus: 'Conexão Pessoal',
-        diferencial: 'Cortes rápidos sem silêncios, alternando o locutor recortado com B-rolls do cotidiano (ou ilustrações de IA) e legendas de uma palavra em destaque.'
-      },
-      'cutout-backdrop': {
-        tag: '🖼️ Cenário Imersivo',
-        focus: 'Fundo 100% Cenário',
-        diferencial: 'Locutor recortado em primeiro plano sobre cenários e imagens temáticas em tela cheia que se transformam dinamicamente a cada nova ideia falada.'
-      },
-      'explainer-panel': {
-        tag: '📐 Split 60/40',
-        focus: 'Aulas & Didática',
-        diferencial: 'Painel dividido: 60% superiores para animações explicativas e esquemas conceituais, com o locutor em vídeo natural no painel arredondado na base (sem recorte).'
-      },
-      'split-reel': {
-        tag: '⚖️ Split 50/50 • Onetake',
-        focus: 'Diagramas Fluidos',
-        diferencial: 'Divisão meio a meio: locutor fixo em cima e diagrama embaixo em estilo onetake (movimentos contínuos de pan, tilt e rotação sem cortes, revelando informações com cortes invisíveis).'
-      },
-      'ranking-format': {
-        tag: '🏆 Tier List',
-        focus: 'Classificações Interativas',
-        diferencial: 'Tabela de classificação (S, A, B, C...) fixada na base enquanto você fala em tela cheia e preenche cada posição card por card durante a argumentação.'
-      },
-      'fitted-captions': {
-        tag: '🔤 Tipografia Editorial',
-        focus: 'Revista Cinética',
-        diferencial: 'Foco total no poder do texto: uma palavra-chave gigante domina a tela com o resto da frase encaixado em volta, sem poluição de imagens extras.'
-      },
-      'image-cluster': {
-        tag: '✨ Cluster Flutuante',
-        focus: 'Conceitual & Imagens',
-        diferencial: 'Locutor na base e um grupo orbital de 3 a 5 imagens geradas com leve rotação e sombra suave flutuando acima da cabeça com legendas discretas.'
-      }
-    };
+    const FORMAT_DIFFS = {};   // v9: the format's own planos, regras and description are shown instead of hand-written blurbs
 
     // Format Preview update (campo expandido explicativo)
     const updateFormatPreview = () => {
       const chosen = fl.find(f => f.id === formatSelect.value);
       if (chosen) {
         const diff = FORMAT_DIFFS[chosen.id] || {
-          tag: chosen.aspectRatio || '9:16',
+          tag: (chosen.planos || []).join(' · '),
           focus: chosen.name || 'Padrão',
-          diferencial: chosen.promptGuide
-            ? (chosen.promptGuide.length > 210 ? chosen.promptGuide.slice(0, 207) + '...' : chosen.promptGuide)
-            : (chosen.description || 'Formato otimizado para esta proporção com ritmo dinâmico e enquadramento inteligente.')
+          diferencial: chosen.regras
+            ? (chosen.regras.length > 210 ? chosen.regras.slice(0, 207) + '...' : chosen.regras)
+            : (chosen.description || 'Planos do locutor definidos pelo formato.')
         };
-        const cutoutBadge = chosen.cutout
-          ? '<span class="np-fmt-badge np-fmt-cutout">✂ Recorte Alpha Ativo</span>'
-          : '<span class="np-fmt-badge np-fmt-nocutout">👤 Vídeo Direto (Sem Recorte)</span>';
-        const layoutBadge = chosen.layout ? `<span class="np-fmt-badge">📐 ${esc(chosen.layout)}</span>` : '';
+        const cutoutBadge = chosen.speaker === false
+          ? '<span class="np-fmt-badge np-fmt-nocutout">Sem locutor</span>'
+          : (chosen.planos || []).map(p => `<span class="np-fmt-badge${p === 'cut' ? ' np-fmt-cutout' : ''}">${p === 'cut' ? '✂ ' : ''}${esc(p)}</span>`).join('');
+        const layoutBadge = '';
         const composerBadge = '<span class="np-fmt-badge" style="background:rgba(168,85,247,0.22);color:#d8b4fe;border:1px solid rgba(168,85,247,0.45)">🤖 Agente Composer</span>';
 
         fmtPreview.innerHTML = `
@@ -6520,14 +6545,29 @@ async function projects() {
       }
       updateFooterStatus();
     };
-    if (formatSelect) {
-      formatSelect.onchange = () => {
-        const chosen = fl.find(f => f.id === formatSelect.value);
-        updateFormatPreview();
-      };
-      // Alinhamento inicial com o primeiro formato
-      updateFormatPreview();
-    }
+    const pickTile = (grid, attr, val) => grid.querySelectorAll('.np-tile').forEach(t => t.classList.toggle('active', t.dataset[attr] === val));
+    $('#npFormatGrid').querySelectorAll('[data-format]').forEach(t => t.onclick = () => { formatSelect.value = t.dataset.format; pickTile($('#npFormatGrid'), 'format', t.dataset.format); updateFormatPreview(); });
+    $('#npStyleGrid').querySelectorAll('[data-style]').forEach(t => t.onclick = () => { $('#npMotionStyleSelect').value = t.dataset.style; pickTile($('#npStyleGrid'), 'style', t.dataset.style); updateFooterStatus(); });
+    $('#npPaceBar').querySelectorAll('[data-pace]').forEach(b => b.onclick = () => { $('#npPaceSelect').value = b.dataset.pace; $('#npPaceBar').querySelectorAll('[data-pace]').forEach(x => x.classList.toggle('active', x === b)); updateFooterStatus(); });
+    updateFormatPreview();   // the first format starts selected
+    // Relembrar projeto anterior: batch production repeats the brand, references, format, style and pace of the last reel
+    $('#npRecall').onchange = async e => {
+      const id = e.target.value;
+      if (!id) return;
+      try {
+        const p = await api('GET', `/projects/${id}`);
+        if (p.brand && bl.includes(p.brand)) $('#npBrandBar').querySelector(`[data-brand="${CSS.escape(p.brand)}"]`)?.click();
+        if (p.formatId) $('#npFormatGrid').querySelector(`[data-format="${CSS.escape(p.formatId)}"]`)?.click();
+        $('#npStyleGrid').querySelector(`[data-style="${CSS.escape(p.styleId || '')}"]`)?.click();
+        $('#npPaceBar').querySelector(`[data-pace="${CSS.escape(p.pace || 'dinamico')}"]`)?.click();
+        $('#npBroll').checked = !!p.broll;
+        refUrlInput.value = [p.referenceUrl, ...(p.extraReferenceUrls || [])].filter(Boolean).join('\n');
+        $('#npRefNote').value = p.referenceNote || '';
+        preToggle.querySelector(`[data-val="${p.preEdited === false ? '0' : '1'}"]`)?.click();
+        recalled = p.name || id;
+        updateFooterStatus();
+      } catch (err) { alert(`Não deu para relembrar o projeto: ${err.message}`); }
+    };
 
     // Probe videos to get resolution and duration
     const probeAllVideos = async () => {
@@ -6686,7 +6726,7 @@ async function projects() {
     $('#npBrandBar')?.querySelectorAll('[data-brand]').forEach(btn => {
       btn.onclick = () => {
         selectedBrand = btn.dataset.brand;
-        $('#npBrandBar').querySelectorAll('.np-brand-pill').forEach(b => b.classList.remove('active'));
+        $('#npBrandBar').querySelectorAll('.np-tile').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         updateFooterStatus();
         window.loadNpCharacters?.();
@@ -6903,6 +6943,7 @@ async function projects() {
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
           styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
         });
+        sessionStorage.removeItem('npDraft');
         location.hash = `#/p/${st.id}`;
         api('POST', `/projects/${st.id}/ingest`).catch(() => {});
         return;
@@ -6940,6 +6981,7 @@ async function projects() {
           api('POST', `/projects/${st.id}/ingest`).catch(() => {});
         }
         alert(`Criados ${videoPaths.length} projetos em lote com sucesso!`);
+        sessionStorage.removeItem('npDraft');
         dashCurrentTab = 'esteira';
         location.hash = '#/';
         return;
@@ -6962,9 +7004,33 @@ async function projects() {
         styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
       });
 
+      sessionStorage.removeItem('npDraft');
       location.hash = `#/p/${st.id}`;
       api('POST', `/projects/${st.id}/ingest`).catch(() => {});
     });
+
+    // Draft: saved on every click, input or change in the card, so leaving for Brandkits (or any page) loses nothing
+    const saveDraft = () => document.contains(nameInput) && sessionStorage.setItem('npDraft', JSON.stringify({   // not after Cancelar replaced the form
+      step, recalled, videoPaths, subtitlePath, imagePaths, multiMode, selectedPre, brand: selectedBrand,
+      name: nameInput.value, textMode, speech: speechEl.value, voiceProv: provEl.value,
+      refs: refUrlInput.value, note: $('#npRefNote').value,
+      format: formatSelect.value, style: $('#npMotionStyleSelect').value, pace: $('#npPaceSelect').value, broll: $('#npBroll').checked,
+    }));
+    for (const ev of ['click', 'input', 'change']) $('#npCard').addEventListener(ev, saveDraft);
+    if (draft) {
+      nameInput.value = draft.name || '';
+      refUrlInput.value = draft.refs || '';
+      $('#npRefNote').value = draft.note || '';
+      $('#npBroll').checked = !!draft.broll;
+      recalled = draft.recalled || '';
+      if (draft.textMode) { provEl.value = draft.voiceProv || provEl.value; $('#npModeBar [data-mode="text"]').click(); speechEl.value = draft.speech || ''; updateSpeechInfo(); }
+      $('#npFormatGrid').querySelector(`[data-format="${CSS.escape(draft.format || '')}"]`)?.click();
+      $('#npStyleGrid').querySelector(`[data-style="${CSS.escape(draft.style || '')}"]`)?.click();
+      $('#npPaceBar').querySelector(`[data-pace="${CSS.escape(draft.pace || 'dinamico')}"]`)?.click();
+      updateMultiMode(multiMode);
+      if (videoPaths.length) probeAllVideos();
+      showStep(Math.min(3, Math.max(1, draft.step || 1)));
+    }
 
     // Initial render
     renderFilesList();
@@ -9542,7 +9608,6 @@ async function formats() {
                 <h4 class="fmt-card-name">${esc(f.name || f.id)}</h4>
                 <div class="fmt-card-tags">
                   <span class="badge-fmt">${esc(f.aspectRatio || "9:16")}</span>
-                  ${f.cutout ? `<span class="badge-cutout">✂ Cut-out</span>` : ''}
                 </div>
               </div>
               <p class="fmt-card-desc">${esc(f.description || "Estilo dinâmico com cortes e legendas cinéticas.")}</p>
@@ -10252,7 +10317,6 @@ async function openFormatModal(id) {
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
                 <h2 style="margin:0;color:var(--cream);font-size:22px">${esc(f.name || f.id)}</h2>
                 <span class="badge-fmt">${esc(f.aspectRatio || '9:16')}</span>
-                ${f.cutout ? `<span class="badge-cutout">✂ Cut-out Ativo</span>` : ''}
               </div>
               <p style="margin:0;font-size:13px;color:var(--mute);line-height:1.5">${esc(f.description || '')}</p>
             </div>
@@ -10267,28 +10331,15 @@ async function openFormatModal(id) {
           </div>
 
           <div class="fmt-section-box">
-            <h5 class="fmt-section-title">Diretrizes de Layout & Ritmo</h5>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
-              <div><b style="color:var(--cream)">Layout:</b> <span class="muted">${esc(f.layout || 'split-dynamic')}</span></div>
-              <div><b style="color:var(--cream)">Legendas:</b> <span class="muted">${esc(f.captionsStyle || 'one-word')}</span></div>
-              <div><b style="color:var(--cream)">Câmera:</b> <span class="muted">${esc(f.camera?.mode || 'face-center')}</span></div>
-              <div><b style="color:var(--cream)">Ritmo:</b> <span class="muted">${esc(f.editingStyle?.pacing || 'dynamic')}</span></div>
+            <h5 class="fmt-section-title">Planos do locutor & agenda</h5>
+            <div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:12px">
+              <div><b style="color:var(--cream)">Planos:</b> <span class="muted">${esc((f.planos || []).join(', '))}</span></div>
+              <div><b style="color:var(--cream)">Janelas de recorte:</b> <span class="muted">${esc(f.janelas ? JSON.stringify(f.janelas.cut) : 'agenda livre (só as regras)')}</span></div>
             </div>
-            <div style="font-size:11.5px;color:var(--mute);margin-top:4px">
-              <i>${esc(f.promptGuide || '')}</i>
-            </div>
-          </div>
-
-          <!-- Comentários e Notas do Estilo -->
-          <div class="fmt-section-box">
-            <h5 class="fmt-section-title">Comentários & Notas de Direção</h5>
-            <p class="muted" style="margin:0;font-size:11px">Adicione instruções específicas para orientar a IA quando este formato for aplicado.</p>
-            <textarea id="mdl_comments" rows="3" style="width:100%;font-size:12.5px;resize:vertical;border-radius:8px" placeholder="Ex: Priorizar cores quentes, dar zoom nas palavras-chave do roteiro...">${esc(f.comments || '')}</textarea>
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
-                <input type="checkbox" id="mdl_toggle_cutout" ${f.cutout ? 'checked' : ''}> Acionar Cut-out (Apple Vision)
-              </label>
-              <button class="primary" id="mdl_save_comments">💾 Salvar Comentários</button>
+            <p class="muted" style="margin:6px 0 2px;font-size:11px">Regras: só o <i>quando</i> de cada plano (gancho, CTA, método). Ritmo e visual não entram aqui: o ritmo é o seletor do projeto e o visual é o estilo.</p>
+            <textarea id="mdl_regras" rows="3" style="width:100%;font-size:12.5px;resize:vertical;border-radius:8px">${esc(f.regras || '')}</textarea>
+            <div style="display:flex;justify-content:flex-end">
+              <button class="primary" id="mdl_save_regras">💾 Salvar regras</button>
             </div>
           </div>
 
@@ -10343,12 +10394,10 @@ async function openFormatModal(id) {
   if ($('#mdl_delete_btn')) $('#mdl_delete_btn').onclick = handleDelete;
   if ($('#mdl_delete_btn_sec')) $('#mdl_delete_btn_sec').onclick = handleDelete;
 
-  // Salvar comentários e toggle de cutout
-  $('#mdl_save_comments').onclick = e => act(e.target, async () => {
-    const comments = $('#mdl_comments').value.trim();
-    const cutout = $('#mdl_toggle_cutout').checked;
-    await api('PUT', `/formats/${id}`, { format: { ...f, comments, cutout } });
-    alert('Comentários e configurações do formato atualizados!');
+  // Salvar as regras do formato
+  $('#mdl_save_regras').onclick = e => act(e.target, async () => {
+    await api('PUT', `/formats/${id}`, { format: { regras: $('#mdl_regras').value.trim() } });
+    alert('Regras do formato atualizadas!');
     formats();
   });
 
@@ -10356,15 +10405,12 @@ async function openFormatModal(id) {
   $('#mdl_create_preset').onclick = e => act(e.target, async () => {
     const newId = $('#mdl_new_id').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
     if (!newId) return alert('Digite um nome/identificador para o novo preset.');
-    const comments = $('#mdl_comments').value.trim();
-    const cutout = $('#mdl_toggle_cutout').checked;
-    
     const clone = {
       ...f,
       id: newId,
       name: `${f.name} (Custom)`,
-      comments,
-      cutout,
+      regras: $('#mdl_regras').value.trim(),
+      hidden: false,
       order: 100
     };
     await api('POST', '/formats', { id: newId, format: clone });
@@ -10482,7 +10528,7 @@ async function configSettings(sel) {
   if (!sel) return;
   const f = await api("GET", `/formats/${sel}`);
   const fe = $("#fe");
-  const sz = f.visualAssets?.safeZones || { top: 200, bottom: 380, left: 70, right: 70 };
+  const sz = f.safeZones || { top: 200, bottom: 380, left: 70, right: 70 };
   const w = f.width || 1080, h = f.height || 1920;
   const aspectH = 340;
   const aspectW = Math.round(aspectH * (w / h));
@@ -10519,19 +10565,6 @@ async function configSettings(sel) {
       </div>
 
       <div class="fmt-prop-card">
-        <h5>Câmera & Tracking</h5>
-        <label>Modo de Câmera
-          <select id="f_cam_mode" style="width:100%">
-            <option value="face-center" ${f.camera?.mode === "face-center" ? "selected" : ""}>face-center (Apple Vision nose.swift)</option>
-            <option value="fixed-center" ${f.camera?.mode === "fixed-center" ? "selected" : ""}>fixed-center (Centro Fixo)</option>
-            <option value="custom-pan" ${f.camera?.mode === "custom-pan" ? "selected" : ""}>custom-pan</option>
-          </select>
-        </label>
-        <label>Headroom (% do topo) <input type="number" id="f_headroom" value="${f.camera?.headroomPercent || 18}" style="width:100%"></label>
-        <label>Zoom Factor <input type="number" step="0.05" id="f_zoom" value="${f.camera?.zoomFactor || 1.15}" style="width:100%"></label>
-      </div>
-
-      <div class="fmt-prop-card">
         <h5>Safe Zones (Margens em px)</h5>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <label>Topo (px) <input type="number" id="f_sz_top" value="${sz.top || 200}" style="width:100%"></label>
@@ -10542,49 +10575,37 @@ async function configSettings(sel) {
       </div>
 
       <div class="fmt-prop-card">
-        <h5>Estilo de Edição & Cards</h5>
-        <label>Ritmo de Tela <input id="f_pacing" value="${esc(f.editingStyle?.pacing || "dynamic")}" style="width:100%"></label>
-        <div style="display:flex;gap:8px">
-          <label style="flex:1">Duração Mín Card (s) <input type="number" step="0.5" id="f_card_min" value="${f.editingStyle?.cardMinDuration || 2.5}" style="width:100%"></label>
-          <label style="flex:1">Duração Máx Card (s) <input type="number" step="0.5" id="f_card_max" value="${f.editingStyle?.cardMaxDuration || 4.5}" style="width:100%"></label>
-        </div>
-        <label><input type="checkbox" id="f_punch_en" ${f.editingStyle?.punchIns?.enabled ? "checked" : ""}> Punch-ins de Zoom automáticos</label>
+        <h5>Planos do locutor</h5>
+        ${[['cut', 'cut: recortado, câmera M/L/XL/XXL'], ['panel', 'panel: vídeo cru no painel de baixo'], ['none', 'none: só animação'], ['panel-top', 'panel-top: cru em cima (fase 6)'], ['raw', 'raw: cru em tela cheia (fase 6)'], ['react', 'react: vídeo de referência ao lado (fase 6)']].map(([p, label]) =>
+          `<label><input type="checkbox" class="f_plano" value="${p}" ${(f.planos || []).includes(p) ? 'checked' : ''}> ${esc(label)}</label>`).join('')}
+        <label>Painel: altura do topo (fração de H) <input type="number" step="0.01" id="f_panel_top" value="${f.panel?.top ?? ''}" style="width:100%"></label>
+      </div>
+
+      <div class="fmt-prop-card">
+        <h5>Agenda</h5>
+        <label>Janelas de recorte (JSON, vazio = livre) <input id="f_janelas" value="${esc(f.janelas?.cut ? JSON.stringify(f.janelas.cut) : '')}" placeholder='[[0,5],[15,20],["tail",5]]' style="width:100%"></label>
+        <label>Regras (o quando de cada plano) <textarea id="f_regras" rows="4" style="width:100%">${esc(f.regras || '')}</textarea></label>
       </div>
     </div>
   `;
 
   $("#btnSaveFmt").onclick = e => act(e.target, async () => {
+    const jan = $("#f_janelas").value.trim(), ptop = $("#f_panel_top").value.trim();
     const updated = {
       ...f,
       name: $("#f_name").value.trim(),
       aspectRatio: $("#f_aspect").value.trim(),
       width: Number($("#f_w").value),
       height: Number($("#f_h").value),
-      camera: {
-        mode: $("#f_cam_mode").value,
-        headroomPercent: Number($("#f_headroom").value),
-        zoomFactor: Number($("#f_zoom").value),
-        smoothSamples: 5
-      },
-      visualAssets: {
-        ...(f.visualAssets || {}),
-        safeZones: {
-          top: Number($("#f_sz_top").value),
-          bottom: Number($("#f_sz_bot").value),
-          left: Number($("#f_sz_left").value),
-          right: Number($("#f_sz_right").value)
-        }
-      },
-      editingStyle: {
-        ...(f.editingStyle || {}),
-        pacing: $("#f_pacing").value.trim(),
-        cardMinDuration: Number($("#f_card_min").value),
-        cardMaxDuration: Number($("#f_card_max").value),
-        punchIns: {
-          enabled: $("#f_punch_en").checked,
-          intervalSeconds: [4.0, 7.0],
-          zoomScale: 1.25
-        }
+      planos: [...document.querySelectorAll(".f_plano:checked")].map(c => c.value),
+      janelas: jan ? { cut: JSON.parse(jan) } : null,
+      regras: $("#f_regras").value.trim(),
+      panel: ptop ? { side: f.panel?.side || "bottom", top: Number(ptop) } : undefined,
+      safeZones: {
+        top: Number($("#f_sz_top").value),
+        bottom: Number($("#f_sz_bot").value),
+        left: Number($("#f_sz_left").value),
+        right: Number($("#f_sz_right").value)
       }
     };
     await api("PUT", `/formats/${sel}`, { format: updated });

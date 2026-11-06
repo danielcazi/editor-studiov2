@@ -23,7 +23,7 @@ const call = (method: string, path: string, headers: Record<string, string>, bod
 });
 
 test('a page on another site cannot drive the server', async () => {
-  const body = JSON.stringify({ id: 'evil', format: { name: 'x' } });
+  const body = JSON.stringify({ id: 'evil', format: { name: 'x', planos: ['cut', 'none'] } });
   const foreign = await call('POST', '/formats', { ...JSON_HDR, origin: 'https://evil.example' }, body);
   assert.equal(foreign.status, 400); assert.match(foreign.body, /forbidden origin/);
   const plain = await call('POST', '/formats', { 'content-type': 'text/plain' }, body);
@@ -36,7 +36,7 @@ test('a page on another site cannot drive the server', async () => {
 
 test('a request body keeps its accents however many chunks it arrives in', async () => {
   const name = 'ç'.repeat(300_000);
-  const res = await call('POST', '/formats', JSON_HDR, JSON.stringify({ id: 'utf8', format: { name } }));
+  const res = await call('POST', '/formats', JSON_HDR, JSON.stringify({ id: 'utf8', format: { name, planos: ['cut', 'none'] } }));
   assert.equal(JSON.parse(res.body).name, name);
 });
 

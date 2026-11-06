@@ -7,8 +7,8 @@ import { homedir } from 'node:os';
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { agent, ask, type Cost, MAX_TURNS_HIT } from './models.ts';
-import { cutWindows, deepMerge, FORMATS, pickFormats, remapWords, safeId, shortcutPlan, spansFromWords, type Plan, type Word } from './lib.ts';
-import { CAPTION_PRESETS, validateCaptionStyle, validateFont, validateIcon } from './validate.ts';
+import { cutWindows, deepMerge, FORMATS, PACE, pickFormats, remapWords, resolveChoices, safeId, shortcutPlan, spansFromWords, type Pace, type Plan, type Word } from './lib.ts';
+import { CAPTION_PRESETS, validateCaptionStyle, validateFont, validateFormat, validateIcon } from './validate.ts';
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
 import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
 import { synthesize, synthesizeLong } from './voice.ts';
@@ -964,9 +964,11 @@ export async function ensureComposeIgnored(id: string) {
 
 // brand max_seconds is qa.py's length gate: measured on master.mp4 right after the cut and again before any render,
 // so an over-long reel is caught in seconds instead of after minutes of Opus and Chrome.
-// Speech Screen: the format says where the speaker is cut out (cutWindows) and where he sits in a panel (panel.top, fraction of H)
+// Speech Screen: the format says where the speaker is cut out (janelas.cut) and where he sits in a panel (panel.top, fraction of H)
+// how a shot is written in scenes.py: scene(..., cam=)
+const PLANO_CAM: Record<string, string> = { cut: "cam=('M'|'L'|'XL'|'XXL', modo, final), locutor recortado", panel: "cam='panel', vídeo cru no painel de baixo", 'panel-top': "cam='panel-top', vídeo cru em cima", raw: "cam='raw', vídeo cru em tela cheia", none: 'cam=None, só animação', react: "cam='react', vídeo de referência ao lado do locutor" };
 const fmtOf = (st: State): any => { try { return getFormat(st.formatId || 'business-reels'); } catch { return {}; } };
-const cutWindowsOf = (st: State, dur: number) => cutWindows(fmtOf(st).cutWindows, dur);
+const cutWindowsOf = (st: State, dur: number) => cutWindows(fmtOf(st).janelas?.cut, dur);
 async function overLength(id: string, P: string, brand: any): Promise<string | null> {
   const max = Number(brand.max_seconds ?? 60), dur = await duration(id, join(P, 'master.mp4'));
   return dur > max ? `o vídeo tem ${dur.toFixed(1)} s e o limite da marca é ${max} s (max_seconds no brandkit)` : null;
@@ -1062,7 +1064,20 @@ export function listFormats(): string[] {
 export function getFormat(id: string) {
   const file = join(formatDir(id), "format.json");
   if (!existsSync(file)) fail(`formato ${id} não encontrado`);
-  return JSON.parse(readFileSync(file, "utf8"));
+  return { ...JSON.parse(readFileSync(file, "utf8")), frames: formatFrames(id) };   // frames: the last reel rendered with it, for the create dialog
+}
+// <format>/frames/N.jpg: written by final() from the primary final of the last project that used the format
+const formatFrames = (id: string): string[] => { const d = join(formatDir(id), 'frames'); return existsSync(d) ? readdirSync(d).filter(f => /^\d+\.jpg$/.test(f)).sort((a, b) => parseInt(a) - parseInt(b)) : []; };
+export function formatFrameFile(id: string, f: string) {
+  if (!formatFrames(id).includes(f)) fail(`no frame ${f}`);
+  return join(formatDir(id), 'frames', f);
+}
+async function sampleFormatFrames(id: string, formatId: string, video: string, n = 6) {
+  const dir = join(formatDir(formatId), 'frames');
+  const dur = (await probeMedia(video)).duration || 0;
+  if (!dur) return;
+  rmSync(dir, { recursive: true, force: true }); mkdirSync(dir);
+  for (let k = 0; k < n; k++) await run(id, 'ffmpeg', ['-v', 'error', '-y', '-ss', ((k + 0.5) * dur / n).toFixed(2), '-i', video, '-frames:v', '1', '-vf', 'scale=270:-2', join(dir, `${k}.jpg`)]);
 }
 
 // Creative brief of the format picked on the first screen, appended to the script prompt.
@@ -1195,25 +1210,17 @@ async function analyseVideoReference(id: string, st: State, url: string, P: stri
 function formatGuide(st: State): string {
   let f: any;
   try { f = getFormat(st.formatId || 'business-reels'); } catch { return ''; }
-  const e = f.editingStyle ?? {}, c = f.camera ?? {}, z = f.visualAssets?.safeZones;
+  const z = f.safeZones, r = paceOf(st);
   const lines = [
-    `Format: ${f.name} (${f.aspectRatio ?? '9:16'}${f.cutout ? ', presenter cut out with Apple Vision' : ''})`,
-    f.promptGuide && `Creative guide: ${f.promptGuide}`,
-    f.comments && `Direction notes (follow strictly): ${f.comments}`,
-    f.layout && `Layout: ${f.layout}`,
-    f.layout === 'split-horizontal' && 'Layout geometry (1080x1920 stage): the presenter always fills y 0-960 (top half, stable video); the bottom half is dark with a soft glow. ' +
-      'Diagram animation style is ONETAKE: continuous virtual camera movement without visible cuts between revealed info (invisible cuts), always in fluid motion using pan, tilt, and rotation across the diagram canvas. ' +
-      'Put every diagram/custom card inside x 70-1010, y 1040-1580 (strictly on the bottom half, never over the presenter). Captions sit on the seam (y ~900-1000) and stay on while cards play, so cards must not repeat the spoken words.',
-    (f.id === 'feed-portrait-4-5' || f.id === 'youtube-16-9' || f.aspectRatio === '4:5' || f.aspectRatio === '16:9') &&
-      'Lateral positioning rule: Animated texts, cards, graphics and images MUST NEVER cover the presenter\'s face or body. Position them strictly on the lateral sides (left or right) or safe lower-thirds, keeping the centered presenter completely unobstructed.',
-    f.captionsStyle && `Captions style: ${f.captionsStyle}`,
-    e.pacing && `Pacing: ${e.pacing}, a new screen about every ${e.screenPacingSeconds}s, cards last ${e.cardMinDuration}-${e.cardMaxDuration}s, transitions: ${e.transitions ?? 'cut'}`,
-    e.punchIns && `Punch-in zooms: ${e.punchIns.enabled ? `yes, x${e.punchIns.zoomScale}` : 'no'}`,
-    c.headroomPercent != null && `Presenter framing: ${c.mode}, headroom ${c.headroomPercent}%`,
+    `Format: ${f.name} (${f.aspectRatio ?? '9:16'}${f.speaker === false ? ', no speaker on screen' : ''})`,
+    f.planos?.length && `Speaker shots this format allows: ${f.planos.join(', ')} (cut = cut-out full screen, panel = raw video in a bottom panel, panel-top = raw video on top, raw = raw full screen, none = animation only, react = reference video beside the speaker)`,
+    f.regras && `When each shot is used: ${f.regras}`,
+    f.janelas?.cut && `The speaker is cut out only in these windows (seconds; "tail" = counted from the end): ${JSON.stringify(f.janelas.cut)}`,
+    `Rhythm (${st.pace ?? 'dinamico'}): something new on screen about every ${r.every}s, scenes of ${r.scene[0]}-${r.scene[1]}s`,
     z && `Keep graphics inside the safe zones (px): top ${z.top}, bottom ${z.bottom}, left ${z.left}, right ${z.right}`,
   ].filter(Boolean);
   return `# Format brief (chosen by the user, follow it)\n${lines.join('\n')}\n` +
-    (siteRef(st) ? 'A site reference is attached below: its palette, images and facts win over the brand colours and over any "text only" rule of this format; the brand keeps fonts and tone; the format decides structure and rhythm.\n\n'
+    (siteRef(st) ? 'A site reference is attached below: its palette, images and facts win over the brand colours and over any "text only" rule of this format; the brand keeps fonts and tone; the format decides which shots the speaker gets and when, the rhythm toggle decides the pace.\n\n'
       : 'The brand rules above always win on colours, fonts, icons, tone and caption look; the format decides layout, structure and rhythm.\n\n') +
     styleGuide(st) + referenceGuide(st) + userImageGuide(st);
 }
@@ -1235,11 +1242,15 @@ export function createFormat(id: string, data?: any) {
     aspectRatio: "9:16",
     width: 1080,
     height: 1920,
-    camera: { mode: "face-center", headroomPercent: 18, zoomFactor: 1.15, smoothSamples: 5 },
-    visualAssets: { safeZones: { top: 200, bottom: 380, left: 70, right: 70 }, backgroundStyle: "blur-extend" },
-    editingStyle: { pacing: "dynamic", screenPacingSeconds: 1.5, cardMinDuration: 2.5, cardMaxDuration: 4.5, punchIns: { enabled: true, intervalSeconds: [4.0, 7.0], zoomScale: 1.25 }, transitions: "cut" }
+    speaker: true,
+    planos: ["cut", "none"],
+    janelas: null,
+    regras: "",
+    safeZones: { top: 200, bottom: 380, left: 70, right: 70 },
   };
   base.id = id;
+  const bad = validateFormat(base);
+  if (bad.length) { rmSync(dir, { recursive: true, force: true }); fail(bad.join('; ')); }
   writeFileSync(join(dir, "format.json"), JSON.stringify(base, null, 2));
   return base;
 }
@@ -1348,7 +1359,7 @@ export function styleGuide(st: State): string {
   if (!st.styleId) return '';
   let s: any;
   try { s = getStyle(st.styleId); } catch { return ''; }
-  return `# Style brief (motion style chosen by the user, follow it; the format decides layout and rhythm, the brand decides colours and fonts)\n${styleBrief(s)}\n\n`;
+  return `# Style brief (motion style chosen by the user, follow it; the format decides layout and the speaker's shots, the rhythm toggle decides the pace, the brand decides colours and fonts)\n${styleBrief(s)}\n\n`;
 }
 
 // Clone a motion style: reference videos (links or files) and images become workspace/styles/<id>/.
@@ -1479,7 +1490,10 @@ export function updateFormat(id: string, data: any) {
   if (!existsSync(file)) fail(`formato ${id} não encontrado`);
   if (!data || typeof data !== 'object' || Array.isArray(data)) fail('format must be an object');
   const cur = JSON.parse(readFileSync(file, "utf8"));
-  const next = { ...deepMerge(cur, data), id };   // deep: a partial editingStyle must not wipe the sibling fields the render needs
+  const { frames: _f, ...fields } = data;   // frames is what getFormat adds on read, not a field
+  const next = { ...deepMerge(cur, fields), id };   // deep: a partial safeZones must not wipe the sibling margins
+  const bad = validateFormat(next);
+  if (bad.length) fail(bad.join('; '));
   writeFileSync(file, JSON.stringify(next, null, 2));
   return next;
 }
@@ -1655,14 +1669,7 @@ export async function renameProject(id: string, name: unknown) {
   await commit(id, `rename: ${st.name}`);
   return getProject(id);
 }
-// Rhythm toggle. every = something new on screen every N s; scene = min/max scene length; framing = speaker reframe every N s; hold = warn when the speaker sits still longer than N s.
-// shortcut: lento and normal are first guesses, calibrate on the reference reel; dinamico is the pace every reel had before the toggle.
-export type Pace = 'lento' | 'normal' | 'dinamico';
-export const PACE: Record<Pace, { every: number; scene: [number, number]; framing: [number, number]; hold: number }> = {
-  lento: { every: 3.5, scene: [3, 5], framing: [5, 7], hold: 8 },
-  normal: { every: 2.2, scene: [2, 3.5], framing: [3, 5], hold: 6 },
-  dinamico: { every: 1.5, scene: [1.2, 3], framing: [2, 4], hold: 4 },
-};
+export { PACE };   // the table lives in lib.ts (resolveChoices needs it)
 export const checkPace = (p: unknown): Pace => (p === 'lento' || p === 'normal' || p === 'dinamico') ? p : fail('ritmo: lento, normal ou dinamico');
 export const paceOf = (st: { pace?: Pace }) => PACE[st.pace ?? 'dinamico'];
 export const setPace = (id: string, pace: unknown) => {
@@ -2335,6 +2342,7 @@ export const final = (id: string, formats?: unknown) => locked(id, 'final', asyn
   }
   Object.assign(st, { step: 'final' }); save(st);
   await commit(id, `step 5: final (${st.qa.pass ? 'QA pass' : 'QA fail'})`);
+  if (st.formatId && st.formats.includes(primary)) sampleFormatFrames(id, st.formatId, join(P, finalName(primary))).catch(e => emit(id, 'log', `⚠ prévia do formato não atualizada: ${e.message}`));   // a thumbnail never fails the delivery
   return st;
 });
 
@@ -2697,7 +2705,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const other = aspect && aspect !== primaryAspect(st) && !noSpeaker ? aspect : null;
   const targetAspect = other ?? fmt.aspectRatio ?? '9:16';
   const [targetW, targetH] = other ? ASPECT_SIZE[other] ?? fail(`formato sem tamanho: ${other}`) : [fmt.width ?? 1080, fmt.height ?? 1920];
-  const safeZones = !other && fmt.visualAssets?.safeZones || {
+  const safeZones = !other && fmt.safeZones || {
     top: Math.round(targetH * 0.104),
     bottom: Math.round(targetH * 0.198),
     left: Math.round(targetW * 0.065),
@@ -2721,8 +2729,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     faceX,
     pace: paceOf(st),
     speaker: !noSpeaker && (media || (existsSync(join(A, 'cut.webm')) && !cutoutJobs.has(id))),
+    ...(!noSpeaker && fmt.planos ? { planos: fmt.planos } : {}),
     ...(!noSpeaker && fmt.panel ? { panel: fmt.panel } : {}),
-    ...(!noSpeaker && fmt.cutWindows ? { cutWindows: cutWindows(fmt.cutWindows, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
+    ...(!noSpeaker && fmt.janelas?.cut ? { cutWindows: cutWindows(fmt.janelas.cut, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
     colors,
     fonte: { w: width, h: height },
     // from the motion style (set by hand in style.json): giantCase 'lower' and speakerShadow true for product styles like Insula Build
@@ -2759,9 +2768,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
       : siteRef(st) ? `## Marca (${st.brand}) e site\nPaleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site, que é a campanha atual: ela vence as cores do brand.md. Do brand.md valem só o tom e a fonte.\nOlhe ../ref/top_mobile.png e ../ref/top_desktop.png com Read: o print mostra qual cor é fundo, destaque e botão.\n${referenceGuide(st)}\n\n${brandMd.replace(/## Cores[\s\S]*?(?=\n## |$)/, '')}`
       : `## Marca (${st.brand})\nPaleta mapeada em compose.json (RED, RED2, AMB, BLK, CRM; ajuste se o brand.md pedir outra).\n\n${brandMd}`,
     `## Ritmo (${st.pace ?? 'dinamico'})\nAlgo novo na tela a cada ~${paceOf(st).every} s; cenas de ${paceOf(st).scene[0]} a ${paceOf(st).scene[1]} s${noSpeaker ? '' : `; enquadramento do locutor muda a cada ${paceOf(st).framing[0]} a ${paceOf(st).framing[1]} s e o kit avisa locutor parado por mais de ${paceOf(st).hold} s`}. Os mesmos números estão em compose.json (pace). Isto vale no lugar de qualquer número de ritmo dos outros guias.`,
-    !noSpeaker && fmt.cutWindows ? (() => { const w = cutWindows(fmt.cutWindows, duration) ?? [], top = Math.round(targetH * (fmt.panel?.top ?? 0.42)); return `## Locutor: Speech Screen\nO recorte do locutor (cut.webm) só existe nas janelas ${w.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} (fora delas o alfa é vazio). Cena dentro de uma janela: câmera normal (M/L/XL/XXL) com texto gigante atrás; a CTA (cta=True) fica na última janela. Toda outra cena usa \`cam='panel'\`: o vídeo bruto do locutor (assets/talk.mp4) ocupa o painel de baixo (de y=${top} até o rodapé, sem recorte) e TODA a animação (3D, ilustrações, tipografia, imagens do site) fica na área de cima, acima de y=${top}; ou \`cam=None\` para tela cheia sem locutor. O kit reprova recorte fora das janelas.`; })() : '',
-    !noSpeaker ? `## Liberdade e limites\nSem cotas: quantas imagens, movimentos de câmera e tipografias cada cena tem é decisão sua pelo que a fala pede; uma cena limpa com a peça certa vale mais que três genéricas. O que não se negocia: fluidez (toda entrada com ease-out e saída com ease-in, algo sempre em movimento lento, passagens desenhadas entre cenas); texto inteiro dentro da zona segura (topo 200, base 380, laterais 70 px); nada sobre o rosto ou o queixo do locutor; o locutor reenquadrado com o rosto em faceX (centro do quadro) em toda troca de enquadramento, e enquadramento trocando com a fala (M, L, XL, XXL). Fundo das cenas: NUNCA o vídeo do locutor desfocado ou replicado (bg='plate' é erro no kit); use cor sólida ou gradiente da marca, imagem da biblioteca ou do site.` : '',
-    `## Formato escolhido (${fmt.name})\nÉ a edição: onde fica o locutor, câmera, imagens e ritmo. Aplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.\n${(fmt.promptGuide ?? '').replace(/[^.]*(só texto|sem imagens)[^.]*\.\s*/gi, '')}`,
+    !noSpeaker && fmt.janelas?.cut ? (() => { const w = cutWindows(fmt.janelas.cut, duration) ?? [], top = Math.round(targetH * (fmt.panel?.top ?? 0.42)); return `## Locutor: Speech Screen\nO recorte do locutor (cut.webm) só existe nas janelas ${w.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} (fora delas o alfa é vazio). Cena dentro de uma janela: câmera normal (M/L/XL/XXL) com texto gigante atrás; a CTA (cta=True) fica na última janela. Toda outra cena usa \`cam='panel'\`: o vídeo bruto do locutor (assets/talk.mp4) ocupa o painel de baixo (de y=${top} até o rodapé, sem recorte) e TODA a animação (3D, ilustrações, tipografia, imagens do site) fica na área de cima, acima de y=${top}; ou \`cam=None\` para tela cheia sem locutor. O kit reprova recorte fora das janelas.`; })() : '',
+    !noSpeaker ? `## Liberdade e limites\nSem cotas: quantas imagens, movimentos de câmera e tipografias cada cena tem é decisão sua pelo que a fala pede; uma cena limpa com a peça certa vale mais que três genéricas. O que não se negocia: fluidez (toda entrada com ease-out e saída com ease-in, algo sempre em movimento lento, passagens desenhadas entre cenas); texto inteiro dentro da zona segura (topo ${safeZones.top}, base ${safeZones.bottom}, laterais ${safeZones.left} px); nada sobre o rosto ou o queixo do locutor; o locutor reenquadrado com o rosto em faceX (centro do quadro) em toda troca de enquadramento, e enquadramento trocando com a fala (M, L, XL, XXL). Fundo das cenas: NUNCA o vídeo do locutor desfocado ou replicado (bg='plate' é erro no kit); use cor sólida ou gradiente da marca, imagem da biblioteca ou do site.` : '',
+    `## Formato escolhido (${fmt.name})\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmt.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmt.regras ? `\nQuando: ${fmt.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`,
     style ? `## Estilo escolhido (${style.name})\nSiga-o: tipografia, câmera, beats, sons e receitas vêm dele; o formato decide o layout e a marca decide cores e fontes.\n${styleBrief(style, styleRefs(style.id))}` : '',
     !style && styleList.length ? `## Estilos disponíveis\nNenhum foi escolhido: escolha o que serve ao assunto e à marca, diga qual e por quê no treatment e siga o style.json dele (Read). Para seguir um à risca em todos os renders, o usuário escolhe no projeto.\n${styleList.map((x: any) => `- ${x.id}: ${x.name}. ${x.description ?? ''}${x.motif ? ` Motivo: ${x.motif}.` : ''}${x.camera?.signature ? ` Câmera: ${x.camera.signature}.` : ''} (${join(styleDir(x.id), 'style.json')})`).join('\n')}` : '',
     !noSpeaker && refAnalysis && !siteRef(st) ? `## Análise da referência (reference.json)\nÉ o estilo a reproduzir. Olhe os quadros em ../ref/ com Read antes de escrever.\n${refAnalysis}` : '',

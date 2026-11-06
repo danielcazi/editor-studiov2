@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAnim, validateCaptionStyle, validateFont, validateIcon } from '../validate.ts';
+import { validateAnim, validateCaptionStyle, validateFont, validateFormat, validateIcon } from '../validate.ts';
 
 const palette = ['#ED84B0', '#FFEEF5'];
 const custom = (o: object) => ({ type: 'custom', start: 1, end: 3, html: '<div class="b">oi</div>', css: '.b{color:var(--main)}', js: 'tl.from(el.querySelector(".b"),{y:40,top:10,duration:.3},T);', ...o });
@@ -62,3 +62,15 @@ test('anim-presets.json passes the validator', async () => {
   assert.deepEqual(presets['slide-scale'].in.from, { scale: 0, y: 40 }); // position e escala
 });
 
+
+test('format.json: planos from the kit vocabulary, janelas well formed, panel needed for panel shots', () => {
+  const ok = { planos: ['cut', 'panel', 'none'], janelas: { cut: [[0, 5], [15, 20], ['tail', 5]] }, panel: { top: 0.42 } };
+  assert.deepEqual(validateFormat(ok), []);
+  assert.deepEqual(validateFormat({ planos: ['cut', 'none'], janelas: null }), []);
+  assert.match(validateFormat({ planos: ['cut', 'zoom'] }).join(), /plano desconhecido: zoom/);
+  assert.ok(validateFormat({ planos: [] }).length && validateFormat({}).length);
+  assert.match(validateFormat({ planos: ['panel'] }).join(), /panel\.top/);
+  assert.match(validateFormat({ planos: ['cut'], janelas: { cut: [[5, 2]] } }).join(), /janela inválida/);
+  assert.match(validateFormat({ planos: ['none'], janelas: { cut: [[0, 5]] } }).join(), /sem o plano cut/);
+  assert.match(validateFormat({ planos: ['cut'], speaker: false }).join(), /sem locutor/);
+});

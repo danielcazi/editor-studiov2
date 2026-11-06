@@ -1,0 +1,23 @@
+{
+  "id": "recorte",
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "speaker": true,
+  "refVideo": false,
+  "safeZones": {
+    "top": 200,
+    "bottom": 380,
+    "left": 70,
+    "right": 70
+  },
+  "name": "Recorte tela cheia",
+  "order": 1,
+  "description": "Locutor recortado em tela cheia, com a animação por trás e à frente.",
+  "planos": [
+    "cut",
+    "none"
+  ],
+  "janelas": null,
+  "regras": "Locutor recortado em tela cheia na maior parte do reel; cena sem locutor (none) só quando a ilustração precisa da tela toda."
+}

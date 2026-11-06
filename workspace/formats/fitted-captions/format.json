@@ -1,46 +1,24 @@
 {
   "id": "fitted-captions",
-  "name": "Fitted Captions",
-  "order": 4,
-  "styleNumber": 8,
   "aspectRatio": "9:16",
   "width": 1080,
   "height": 1920,
-  "category": "Short form (9:16)",
-  "cutout": true,
+  "speaker": true,
+  "refVideo": false,
+  "safeZones": {
+    "top": 200,
+    "bottom": 380,
+    "left": 70,
+    "right": 70
+  },
+  "name": "Fitted Captions",
+  "order": 4,
   "description": "Uma palavra de destaque gigante, com o resto do texto encaixado em volta.",
-  "promptGuide": "Tipografia cinética estilo revista, só texto (sem imagens ou ícones extras). A cada frase, escolha UMA palavra-chave gigante: a que carrega a ideia da frase, preferindo verbo de ação ou número; sempre escolha uma. As demais palavras ficam menores e encaixadas em volta, no máximo 6 palavras por tela, sem poluir e coerentes com a frase. Só a palavra gigante usa a cor de destaque da marca. Alterne o posicionamento do texto entre: atrás do locutor recortado, por cima de tudo, e contornando o rosto. Texto que precisa ser lido fica até a fala terminar. Gancho nos 3 primeiros segundos.",
-  "comments": "",
-  "layout": "full-editorial",
-  "captionsStyle": "fitted-accent",
-  "camera": {
-    "mode": "face-center",
-    "headroomPercent": 18,
-    "zoomFactor": 1.15,
-    "smoothSamples": 5
-  },
-  "visualAssets": {
-    "safeZones": {
-      "top": 200,
-      "bottom": 380,
-      "left": 70,
-      "right": 70
-    },
-    "backgroundStyle": "blur-extend"
-  },
-  "editingStyle": {
-    "pacing": "dynamic",
-    "screenPacingSeconds": 1.5,
-    "cardMinDuration": 2,
-    "cardMaxDuration": 4,
-    "punchIns": {
-      "enabled": true,
-      "intervalSeconds": [
-        3.5,
-        6
-      ],
-      "zoomScale": 1.2
-    },
-    "transitions": "cut"
-  }
+  "planos": [
+    "cut",
+    "none"
+  ],
+  "janelas": null,
+  "regras": "",
+  "hidden": true
 }

@@ -94,3 +94,28 @@ export function validateAnim(a: any): string[] {
   }
   return e;
 }
+
+// format.json (SPEC-v9 §2.1): a palette of speaker shots plus an agenda. `cam` of every scene() in the kit is one of PLANOS.
+export const PLANOS = ['cut', 'panel', 'panel-top', 'raw', 'none', 'react'];
+export function validateFormat(f: any): string[] {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return ['formato: objeto esperado'];
+  const e: string[] = [];
+  if (!Array.isArray(f.planos) || !f.planos.length) e.push('planos: lista não vazia');
+  else {
+    for (const p of f.planos) if (!PLANOS.includes(p)) e.push(`plano desconhecido: ${p} (use ${PLANOS.join(', ')})`);
+    if (f.speaker === false && f.planos.some((p: string) => p !== 'none')) e.push('formato sem locutor só pode ter o plano none');
+    if (f.planos.some((p: string) => p === 'panel' || p === 'panel-top') && !(f.panel?.top > 0 && f.panel.top < 1)) e.push('panel.top: fração de 0 a 1 da altura (planos panel e panel-top)');
+  }
+  if (f.janelas != null) {
+    const cut = f.janelas.cut;
+    if (!Array.isArray(cut)) e.push('janelas.cut: lista de [início, fim] ou ["head"|"tail", segundos]');
+    else for (const w of cut) {
+      const ok = Array.isArray(w) && w.length === 2 && typeof w[1] === 'number' && w[1] > 0 &&
+        (w[0] === 'head' || w[0] === 'tail' || (typeof w[0] === 'number' && w[0] >= 0 && w[1] > w[0]));
+      if (!ok) e.push(`janela inválida: ${JSON.stringify(w)}`);
+    }
+    if (Array.isArray(cut) && cut.length && !f.planos?.includes('cut')) e.push('janelas.cut sem o plano cut');
+  }
+  if (f.regras != null && typeof f.regras !== 'string') e.push('regras: texto');
+  return e;
+}
