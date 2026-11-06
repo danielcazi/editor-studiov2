@@ -19,7 +19,7 @@ Sem `cut.webm`, sem `plate.mp4`, sem enquadramentos M/L/XL/XXL, sem regras de ro
 2. Infográficos de verdade: números que contam, barras e linhas que se desenham, comparações, listas que se preenchem, diagramas, mapas de trilhas. O dado vem da fala.
 3. Texto não sobrepõe texto. A mesma palavra gigante nunca aparece duas vezes seguidas.
 4. Zonas seguras: topo 200, base 380, laterais 70 px para texto importante.
-5. Ritmo: algo novo a cada ~1,5 s; cena de 1,2 a 3 s; nunca o mesmo tipo de cena duas vezes seguidas; gancho forte nos 3 primeiros segundos; passagem entre cenas pelo `tr=` de `scene()` (`push`, `fade`, `slide`, `wipe`; `cut` só na batida forte).
+5. Ritmo: siga `pace` do compose.json (`every` = algo novo a cada N s; `scene` = duração mínima e máxima da cena); nunca o mesmo tipo de cena duas vezes seguidas; gancho forte nos 3 primeiros segundos; passagem entre cenas pelo `tr=` de `scene()` (`push`, `fade`, `slide`, `wipe`; `cut` só na batida forte).
 6. CTA final: botão grande e URL legível.
 
 ## Ilustração em código (ILUSTRACAO.md)

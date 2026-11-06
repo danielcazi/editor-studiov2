@@ -9,7 +9,7 @@
   "category": "Short form (9:16)",
   "cutout": true,
   "description": "Motion design no máximo: todo tipo de card, B-roll, fundos e texto atrás do locutor.",
-  "promptGuide": "Edição com motion design em densidade máxima. Varie o repertório de cena a cena e nunca repita o mesmo tipo de visual duas vezes seguidas. Combine: texto e números grandes, ícones, imagens, B-roll em tela cheia, fundos atrás do locutor e palavras-chave gigantes passando atrás da cabeça. O locutor fica recortado em primeiro plano. Algo novo entra na tela a cada ~1,5 segundo; texto que precisa ser lido fica até a fala terminar. Os 3 primeiros segundos trazem o gancho com o visual mais forte. Cada visual dura 1,2 a 3 segundos; pode haver até dois por frase quando um deles está atrás do locutor.",
+  "promptGuide": "Edição com motion design em densidade máxima. Varie o repertório de cena a cena e nunca repita o mesmo tipo de visual duas vezes seguidas. Combine: texto e números grandes, ícones, imagens, B-roll em tela cheia, fundos atrás do locutor e palavras-chave gigantes passando atrás da cabeça. O locutor fica recortado em primeiro plano. Texto que precisa ser lido fica até a fala terminar. Os 3 primeiros segundos trazem o gancho com o visual mais forte. Pode haver até dois visuais por frase quando um deles está atrás do locutor.",
   "comments": "",
   "layout": "cutout-widgets",
   "captionsStyle": "one-word-pop",

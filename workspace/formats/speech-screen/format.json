@@ -9,7 +9,7 @@
   "category": "Short form (9:16)",
   "cutout": true,
   "description": "Locutor em vídeo no painel de baixo e a animação (3D, ilustrações, tipografia, imagens do site) em cima; recorte só no gancho, no meio e na CTA.",
-  "promptGuide": "Speech screen: o locutor aparece recortado só em três janelas (0–5 s, 15–20 s e os 5 s finais da CTA), com texto gigante atrás e câmera M/L/XL/XXL. No resto do reel o locutor fica em vídeo normal no painel de baixo (sem recorte) e os 42% de cima são a área de animação: ilustrações desenhadas, objetos 3D, tipografia cinética, imagens do site flutuando, listas que crescem, comparações e números grandes. Algo novo entra a cada ~1,5 s; texto que precisa ser lido fica até a fala terminar. Varie o repertório de cena a cena; nunca o mesmo tipo de visual duas vezes seguidas. Os 3 primeiros segundos trazem o gancho com o visual mais forte.",
+  "promptGuide": "Speech screen: o locutor aparece recortado só em três janelas (0–5 s, 15–20 s e os 5 s finais da CTA), com texto gigante atrás e câmera M/L/XL/XXL. No resto do reel o locutor fica em vídeo normal no painel de baixo (sem recorte) e os 42% de cima são a área de animação: ilustrações desenhadas, objetos 3D, tipografia cinética, imagens do site flutuando, listas que crescem, comparações e números grandes. Texto que precisa ser lido fica até a fala terminar. Varie o repertório de cena a cena; nunca o mesmo tipo de visual duas vezes seguidas. Os 3 primeiros segundos trazem o gancho com o visual mais forte.",
   "comments": "",
   "layout": "speech-screen",
   "captionsStyle": "one-word-pop",

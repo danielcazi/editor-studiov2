@@ -18,14 +18,14 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
 - A câmera de mundo (`scene(..., world=)`) move as quatro camadas juntas, com parallax: `push` (aproxima), `pull` (afasta), `pan` (lateral), `crane` (vertical), `tilt` (rotação X), `orbit` (rotação Y), `roll`. Varie: um reel de câmera parada ou de só push-in falhou; quantos movimentos e quais, a fala decide.
 - **Um plano-assinatura** (`signature=True`) que a pessoa lembra: um oner atravessando dois ou três beats sem corte, uma revelação de escala, uma transição feita do próprio meio.
 - **Transição desenhada no meio**, não fade padrão: passagens entre cenas em que algo da cena anterior vira a próxima (a cor inunda, o card cresce até preencher, a palavra sobe por máscara e vira título). O `tr=` de `scene()` é o fallback, não o padrão.
-- Enquadramento do locutor muda a cada 2 a 4 s (M, L, XL, XXL), e a mudança de enquadramento combina com o movimento de mundo, nunca contra ele.
+- Enquadramento do locutor muda no ritmo de `pace.framing` do compose.json (M, L, XL, XXL), e a mudança de enquadramento combina com o movimento de mundo, nunca contra ele.
 - Nos momentos-chave o destaque ocupa pelo menos um terço da altura do quadro, com silhueta legível.
 
 ## 4. Ritmo
 - **Varie o andamento:** alterne rápido e lento, inclua uma aceleração ou desaceleração clara e dê **uma respiração** (um plano longo ou uma pausa segurada) antes da virada ou da CTA. Reel na mesma velocidade do início ao fim falhou.
 - Um estímulo por batida da fala, mas não corte em toda batida: deixe tempo de ver.
 - Texto que entrou fica o tempo de ler: letras ÷ 15 + 1,5 s. Rápido se faz com menos palavras por tela, não cortando antes de ler.
-- Gancho forte nos 3 primeiros segundos; nada parado por mais de 1 s; nada sem mudança visual por mais de 3 s.
+- Gancho forte nos 3 primeiros segundos; nada parado por mais de 1 s; nada sem mudança visual por mais de 2 × `pace.every` (compose.json).
 
 ## 5. Encenação e som
 - **Antecipação, ação, acomodação** em todo movimento que importa: o card não desliza, ele chega. Entrada com ease-out, saída com ease-in, algo sempre andando devagar enquanto o texto fica.
