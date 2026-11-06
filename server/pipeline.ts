@@ -559,6 +559,8 @@ const runQuiet = (cmd: string, args: string[], ms = 60_000) => new Promise<void>
 const git = (...args: string[]) => execP('git', ['-C', ROOT, ...args]);
 const REPO = 'danielcazi/editor-studiov2', VERSION_FILE = join(ROOT, 'VERSION');   // VERSION holds the sha of the last tarball installed
 const isClone = () => existsSync(join(ROOT, '.git'));
+// VERSAO (tracked) is the human version shown next to "Editor 7.0"; bump it on every push to main.
+export const version = () => { try { return readFileSync(join(ROOT, 'VERSAO'), 'utf8').trim(); } catch { return '?'; } };
 
 async function githubCommits(): Promise<{ sha: string; message: string }[]> {
   const res = await fetch(`https://api.github.com/repos/${REPO}/commits?sha=main&per_page=30`, { headers: { 'user-agent': 'editor-7' } });
@@ -572,14 +574,16 @@ export async function checkUpdate() {
     const branch = (await git('rev-parse', '--abbrev-ref', 'HEAD')).trim();
     const log = (await git('log', '--format=%s', `HEAD..origin/${branch}`)).trim();
     const commits = log ? log.split('\n') : [];
-    return { branch, behind: commits.length, commits, dirty: (await git('status', '--porcelain', '--untracked-files=no')).trim() !== '' };
+    const remote = await git('show', `origin/${branch}:VERSAO`).then(v => v.trim(), () => '?');
+    return { branch, version: version(), remote, behind: commits.length, commits, dirty: (await git('status', '--porcelain', '--untracked-files=no')).trim() !== '' };
   }
   const all = await githubCommits();
   const installed = existsSync(VERSION_FILE) ? readFileSync(VERSION_FILE, 'utf8').trim() : '';
   const i = all.findIndex(c => c.sha === installed);
   // a ZIP download has no VERSION: everything listed counts as new until the first update writes it
   const commits = (i < 0 ? all : all.slice(0, i)).map(c => c.message);
-  return { branch: 'main', behind: commits.length, commits, dirty: false, latest: all[0]?.sha };
+  const remote = await fetch(`https://raw.githubusercontent.com/${REPO}/${all[0]?.sha}/VERSAO`).then(r => r.ok ? r.text() : '?', () => '?');
+  return { branch: 'main', version: version(), remote: remote.trim(), behind: commits.length, commits, dirty: false, latest: all[0]?.sha };
 }
 
 // Overlays the tarball on ROOT. User data is never touched: workspace/projects|uploads|scratch, .env, node_modules;
@@ -596,6 +600,13 @@ async function overlayTarball(sha: string) {
     const rel = relative(src, s).split(sep).join('/');
     return !skip.test(rel) && !(rel.startsWith('workspace/') && existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isFile());
   } });
+  // the overlay only adds and overwrites: files the previous update installed that this one no longer ships are removed here
+  // (only files listed by a previous update, so nothing the person made, and never under workspace/)
+  const files = (readdirSync(src, { recursive: true }) as string[]).map(f => f.split(sep).join('/'))
+    .filter(f => !f.startsWith('workspace/') && !skip.test(f) && statSync(join(src, f)).isFile());
+  const listFile = join(ROOT, '.arquivos-instalados'), keep = new Set(files);
+  if (existsSync(listFile)) for (const f of readFileSync(listFile, 'utf8').split('\n')) if (f && !keep.has(f)) rmSync(join(ROOT, f), { force: true });
+  writeFileSync(listFile, files.join('\n') + '\n');
   writeFileSync(VERSION_FILE, sha + '\n');
   rmSync(tmp, { recursive: true, force: true });
 }
@@ -2553,7 +2564,7 @@ export const askCard = (id: string, index: number, instruction: string) => locke
 });
 
 // ---- Step 5 review: the browser plays proj/index.html live (no render); notes pinned to a time and a spot on the frame ----
-export type Note = { id: string; t: number; end?: number; x?: number; y?: number; text: string; status: 'open' | 'done' | 'skipped'; reply?: string; round?: number };
+export type Note = { id: string; t: number; all?: boolean; end?: number; x?: number; y?: number; text: string; status: 'open' | 'done' | 'skipped'; reply?: string; round?: number };
 type Review = { notes: Note[]; round: number; version?: number };   // version: bumped on every write; a PUT must send the one it read
 const reviewFile = (id: string) => join(projDir(id), 'review.json');
 const readReview = (id: string): Review => existsSync(reviewFile(id)) ? readJSON(reviewFile(id)) : { notes: [], round: 0 };
@@ -2575,7 +2586,7 @@ function checkNote(n: any): Note {
   if (!text || text.length > 2000) fail('note text must be 1-2000 characters');
   const status = n.status ?? 'open';
   if (!['open', 'done', 'skipped'].includes(status)) fail('note status must be open, done or skipped');
-  return { id: n.id, t: n.t, ...(n.end != null ? { end: n.end } : {}), x: pct(n.x), y: pct(n.y), text, status, ...(typeof n.reply === 'string' ? { reply: n.reply } : {}), ...(Number.isFinite(n.round) ? { round: n.round } : {}) };
+  return { id: n.id, t: n.t, ...(n.all === true ? { all: true } : {}), ...(n.end != null ? { end: n.end } : {}), x: pct(n.x), y: pct(n.y), text, status, ...(typeof n.reply === 'string' ? { reply: n.reply } : {}), ...(Number.isFinite(n.round) ? { round: n.round } : {}) };
 }
 
 // No lock: saving notes must not wait for or block a step. Only a running review round writes review.json too.
@@ -2702,7 +2713,7 @@ export const applyReview = async (id: string) => {
   };
   // an agent-composed reel is changed by its composer, which takes the notes as one adjustment and renders out.mp4 itself
   if (composedByAgent(st0)) {
-    const note = open.map(n => `[${fmtT(n.t)}${n.end !== undefined ? `–${fmtT(n.end)}` : ''}${n.x !== undefined ? ` · ponto x=${n.x.toFixed(0)}% y=${n.y!.toFixed(0)}% do quadro` : ''}] ${n.text}`).join('\n');
+    const note = open.map(n => n.all ? `[vídeo todo] ${n.text}` : `[${fmtT(n.t)}${n.end !== undefined ? `–${fmtT(n.end)}` : ''}${n.x !== undefined ? ` · ponto x=${n.x.toFixed(0)}% y=${n.y!.toFixed(0)}% do quadro` : ''}] ${n.text}`).join('\n');
     const r = await compose(id, `Anotações da revisão (tempo no vídeo · ponto marcado no quadro · pedido):\n${note}`);
     // an interrupted composer (summary starts with ⚠) may not have read the notes: they stay open for the next round
     if (r.summary.startsWith('⚠')) emit(id, 'log', `As ${open.length} anotação(ões) continuam abertas: ${r.summary}`);
@@ -3036,7 +3047,8 @@ function headFracFromCutout(P: string): number | null {
   const cut = join(P, 'cutout.webm');
   if (!existsSync(cut)) return null;
   try {
-    const [w, h, dur] = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'csv=p=0', cut]).toString().trim().split(/[\n,]/).map(Number);
+    const pr = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', cut]).toString());  // json: ffprobe 9 repeats csv lines
+    const w = pr.streams[0].width, h = pr.streams[0].height, dur = Number(pr.format.duration);
     const y0 = Math.round(180 * h / 1080), y1 = Math.round(280 * h / 1080), xs: number[] = [];
     for (const t of [0.25, 0.5, 0.75].map(f => f * dur)) {
       const m = execFileSync('ffmpeg', ['-v', 'error', '-c:v', 'libvpx-vp9', '-ss', String(t), '-i', cut, '-frames:v', '1', '-vf', 'alphaextract,format=gray', '-f', 'rawvideo', '-'], { maxBuffer: 1 << 26 });
@@ -3300,9 +3312,12 @@ async function composeRun(id: string, st: State, note?: string, mode?: string, a
     'Read brief.md, DIRETOR.md, treatment.md (when it exists) and GUIDE.md first. Follow brief.md: build each scene from the script moments listed there, with the pieces the brief lists (the reel library in assets/manifest.json, assets/lib/, the site images, 3D objects through obj3d with a .glb or a kit kind) and code drawing only when nothing ready shows what the words say. HELPERS FIRST: build every scene from the kit.py helpers (both(), lintel, hang, slam, cascade, count, platform, aperture, floatimg, obj3d, phrase, pill, morph, iris, flood, glass, island, widget... GUIDE.md "Estilos prontos do kit", signatures in kit.py); write HTML/CSS and GSAP tweens by hand ONLY for a motion no helper does. Measured on the same excerpt: hand-written GSAP took 2.2x the time and 3x the code for the same result. Keep scenes.py lean (about 16 KB for a 90 s reel).Tipografias gigantes e elementos descritos como atrás do locutor DEVEM ser colocados em back (nunca em front sobrepondo o locutor). Never use artificial thick text strokes (-webkit-text-stroke) over the speaker when the text was planned behind him. Follow GUIDE.md for technical execution, framing, and deterministic GSAP. ' +
     'Loop: write scenes.py, run it (it also runs the speaker layout check: its errors stop the render, its warnings must be fixed or justified; the check writes review/recorte.png, the green-screen cut sheet to Read), run hyperframes check (fix all errors), take snapshots and LOOK at the contact sheets with Read, fix what you see' +
     (motion ? ', then render out.mp4. ' : '. Do NOT render a video: the reviewer plays index.html live, and the final render happens later. ') +
-    'Review rule: score the contact sheet 1-10 on hook (first 2 s), legibility at phone size, motion quality, variety, brand fidelity; fix the 3 worst; at most 2 review rounds, then stop and list what is still below 8 in your final paragraph. Every timed object must be hidden at the start of each seek so none lingers as a ghost. ' +
+    // a notes round touches only the noted scenes: the whole-reel scoring would send it to "fix the 3 worst" elsewhere
+    (note ? 'Review rule (notes round): snapshot only the noted times (snapshot --at with those seconds; a [vídeo todo] note: three spread times), check that each note is done and that nothing else moved; do not score, improve or retime any scene outside the notes. '
+      : 'Review rule: score the contact sheet 1-10 on hook (first 2 s), legibility at phone size, motion quality, variety, brand fidelity; fix the 3 worst; at most 2 review rounds, then stop and list what is still below 8 in your final paragraph. ') +
+    'Every timed object must be hidden at the start of each seek so none lingers as a ghost. ' +
     'Never touch assets/ except to add files. Finish with one short paragraph: what you built and any known issue.';
-  const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nCada anotação vale só para a cena (ou cenas) que cobre o tempo marcado nela: edite essas cenas em scenes.py e deixe as outras, o treatment e os tempos das demais cenas exatamente como estão; nada de refazer o reel. Depois edite scenes.py e rode \`${PYTHON} -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
+  const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nCada anotação vale só para a cena (ou cenas) que cobre o tempo marcado nela: edite essas cenas em scenes.py e deixe as outras, o treatment e os tempos das demais cenas exatamente como estão; nada de refazer o reel. Uma anotação [vídeo todo] é um ajuste global (grão, cor, fonte): faça no scenes.py, sem refazer cenas; o grão desliga com \`CFG['grain'] = 0\` antes de \`render()\` (compose.json é reescrito a cada rodada, não mexa nele). Depois edite scenes.py e rode \`${PYTHON} -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
     : motion ? 'Componha o reel completo agora. Termine com out.mp4 renderizado (npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery).'
     : other ? `Adapte a composição original (já pré-carregada em scenes.py a partir do formato primário) para o novo formato ${targetAspect} (${targetW}x${targetH}). Ajuste layouts, zonas de segurança, enquadramentos de câmera (FR) e posições/tamanhos de texto para esta proporção. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.`
     : 'Componha o reel completo agora. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.';
@@ -3332,7 +3347,7 @@ async function composeRun(id: string, st: State, note?: string, mode?: string, a
   let summary: string;
   setPhase(id, note ? 'ajustes' : 'composição');
   try {
-    summary = await agent('compose', { maxTurns: COMPOSE_MAX_TURNS, system: system + ` Orçamento: no máximo ${COMPOSE_MAX_TURNS} turnos de ferramenta (cerca de 12 min); escreva o scenes.py inteiro primeiro (helpers do kit, GSAP à mão só onde não há helper), rode, corrija os erros e só então revise snapshots.`, prompt: existsSync(join(C, 'treatment.md')) ? `Siga treatment.md (shot list, world= de cada cena, plano-assinatura e mapa de som); se mudar algo, atualize o treatment antes.${existsSync(join(C, 'engines', 'marca.js')) ? ' Os objetos do roteiro já estão desenhados em engines/marca.js (IL.*, demo em engines/demos/marca.py): use-os com canvas(..., engine="<slug>,marca") em vez de redesenhar ou trocar por faixas e retângulos; um objeto da shot list que ainda não existe em IL, desenhe no mesmo motor dentro de marca.js.' : ''} ${prompt}` : prompt, cwd: C, noRender: !motion }, logCost(st));
+    summary = await agent('compose', { maxTurns: COMPOSE_MAX_TURNS, system: system + ` Orçamento: no máximo ${COMPOSE_MAX_TURNS} turnos de ferramenta (cerca de 12 min); ${note ? 'edite só as cenas das anotações' : 'escreva o scenes.py inteiro primeiro'} (helpers do kit, GSAP à mão só onde não há helper), rode, corrija os erros e só então revise snapshots.`, prompt: !note && existsSync(join(C, 'treatment.md')) ? `Siga treatment.md (shot list, world= de cada cena, plano-assinatura e mapa de som); se mudar algo, atualize o treatment antes.${existsSync(join(C, 'engines', 'marca.js')) ? ' Os objetos do roteiro já estão desenhados em engines/marca.js (IL.*, demo em engines/demos/marca.py): use-os com canvas(..., engine="<slug>,marca") em vez de redesenhar ou trocar por faixas e retângulos; um objeto da shot list que ainda não existe em IL, desenhe no mesmo motor dentro de marca.js.' : ''} ${prompt}` : prompt, cwd: C, noRender: !motion }, logCost(st));
     if ((other || motion) && summary.startsWith(MAX_TURNS_HIT)) throw new Error(summary);   // an unadapted copy or a missing out.mp4 is not a result
   } catch (e) {
     // A first adaptation runs the copied primary scenes.py before adapting it: that index.html is the wrong aspect, and left

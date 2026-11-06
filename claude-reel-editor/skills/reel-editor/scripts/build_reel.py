@@ -94,7 +94,7 @@ DUR = round(dur_of(reel / "master.mp4") - 0.02, 2)
 
 # ---- crop: the camera covers the frame and the nose is the guide line for its centre (both axes, clamped to the picture)
 SW, SH = (int(x) for x in subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
-                                          "-of", "csv=p=0", str(reel / "master.mp4")], capture_output=True, text=True, check=True).stdout.strip().split(","))
+                                          "-of", "csv=p=0", str(reel / "master.mp4")], capture_output=True, text=True, check=True).stdout.split("\n")[0].strip().split(","))  # ffprobe 9 repeats the line
 def nose_track():
     """[[t, x, y]] of the nose (0-1) from nose.swift, cached in nose.json per master; [] without a face or without macOS Vision."""
     m = (reel / "master.mp4").stat(); key = f"{m.st_size}:{int(m.st_mtime)}"

@@ -248,9 +248,10 @@ function editScript(d: Layers, visual: (id: string) => boolean) {
   const data = JSON.stringify({ gaps, anims, caps, models, stills }).replace(/</g, '\\u003c');
   return `<script>(function(){var tl=window.__timelines&&window.__timelines.main;if(!tl||!window.gsap)return;var D=${data};
 D.stills.forEach(function(id){var el=document.getElementById(id);if(!el)return;var t=[el].concat(Array.prototype.slice.call(el.querySelectorAll('*')));
-tl.getTweensOf(t).forEach(function(w){if(w.duration()>0){w.progress(0);w.kill();}});
 var s=parseFloat(el.getAttribute('data-start')),e=s+parseFloat(el.getAttribute('data-duration'));if(!(e>s)){s=0;e=1e9;}
 var R={x:0,y:0,xPercent:0,yPercent:0,scale:1,rotation:0,rotationX:0,rotationY:0},K=['x','y','scale','scaleX','scaleY','rotation','rotationX','rotationY','xPercent','yPercent'];
+/* only the moves are killed: opacity/visibility tweens are the layer's show/hide and keep running (killing them left every fade-in scene at opacity 0: a black reel). A tween that starts with the layer settles at its end pose; later ones go back to their start. */
+tl.getTweensOf(t).forEach(function(w){if(w.duration()>0){var a=w.startTime();for(var q=w.parent;q&&q!==tl;q=q.parent)a+=q.startTime();w.progress(a<=s+.05?1:0);w.kill(null,K.join(','));}});
 for(var p=el.parentElement;p&&p!==document.body&&!p.hasAttribute('data-composition-id');p=p.parentElement){var at=[];
 tl.getTweensOf(p).forEach(function(w){var a=w.startTime();for(var q=w.parent;q&&q!==tl;q=q.parent)a+=q.startTime();var d=w.duration(),v=w.vars||{};
 if(d>0?(a>=e-.001||a+d<=s+.001):(a<s-.001||a>=e-.001))return;if(!K.some(function(k){return k in v;}))return;

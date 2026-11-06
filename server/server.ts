@@ -152,7 +152,7 @@ createServer(async (req, res) => {
       const out = path === '/upload' ? await P.upload(q.get('kind')!, q.get('name')!, req) : path === '/probe' ? await P.probeMedia(b.paths || b.path) : await P.pickFile(b.kind);
       return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out));
     }
-    if (req.method === 'GET' && path === '/') return res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(readFileSync(UI));
+    if (req.method === 'GET' && path === '/') return res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(readFileSync(UI, 'utf8').replace('{{VERSAO}}', P.version()));
     if (req.method === 'GET' && path === '/gsap.js') return res.writeHead(200, { 'content-type': 'text/javascript' }).end(readFileSync(P.GSAP));   // same file the render embeds
     const f = path.match(/^\/projects\/([^/]+)\/files\/([^/]+)$/);
     if (req.method === 'GET' && f) return file(P.projectFile(decodeURIComponent(f[1]), decodeURIComponent(f[2])), req, res);

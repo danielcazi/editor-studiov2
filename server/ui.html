@@ -85,7 +85,23 @@
   }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.75); } }
+  .now-bar { margin: -14px 0 20px; display: none; }
+  .now-bar.on { display: block; }
+  .now-bar .track { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; position: relative; }
+  .now-bar.running .track::after { content: ''; position: absolute; inset: 0; width: 40%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: shimmerBar 1.4s ease-in-out infinite; }
+  .now-bar .txt { font: 500 12px var(--mono); color: var(--mute); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now-bar.running .txt { color: var(--cream); }
   @keyframes shimmerBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+  /* a button whose step is running pulses with a spinner; one that just finished flashes green */
+  button.is-busy { cursor: progress; opacity: 1 !important; animation: btnPulse 1.4s ease-in-out infinite; }
+  button.is-busy::before { content: ''; display: inline-block; width: 11px; height: 11px; margin-right: 8px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+  button.is-ok { animation: btnOk .9s ease-out; }
+  @keyframes btnPulse { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 30%, transparent); } }
+  @keyframes btnOk { 0% { box-shadow: 0 0 0 0 #33d17a; transform: scale(.96); } 40% { transform: scale(1.04); } 100% { box-shadow: 0 0 0 12px transparent; transform: none; } }
+  #busy-explain:empty { display: none; }
+  #busy-explain { margin: 4px 0 12px; padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel2); }
+  #busy-explain b { color: var(--cream); }
+  #busy-explain p { margin: 4px 0 0; font-size: 13px; }
   .step-spinner {
     display: inline-block; width: 10px; height: 10px;
     border: 2px solid rgba(242, 230, 0, .25); border-top-color: var(--accent);
@@ -2161,6 +2177,9 @@
   .rv-bar button { padding: 6px 10px; font: 600 12px var(--mono); }
   .rv-tc { font: 600 15px var(--mono); letter-spacing: .02em; padding: 5px 10px; border: 1px solid #3a3e3a; border-radius: 8px; background: #101210; color: #f4f1e0; }
   .rv-tc small { color: #8a8d84; font-weight: 400; }
+  .rv-av { display: inline-flex; align-items: center; gap: 6px; }
+  .rv-av input[type=range] { width: 80px; padding: 0; }
+  .rv-bar button[data-av=loop].on { background: var(--yellow); color: #0c0d0c; border-color: var(--yellow); }
   .rv-speeds { display: flex; gap: 4px; margin-left: auto; }
   .rv-speeds button.on { background: var(--yellow); color: #0c0d0c; border-color: var(--yellow); }
   .rv-scrub { position: relative; width: 100%; height: 26px; cursor: pointer; touch-action: none; }
@@ -2172,6 +2191,10 @@
   .rv-scrub .rg.done { background: rgba(61,220,75,.4); } .rv-scrub .rg.skipped { background: rgba(255,90,77,.4); }
   .rv-scrub .mk.done { background: var(--green); }
   .rv-scrub .mk.skipped { background: var(--red); }
+  .rv-scrub .mk.open { cursor: grab; } .rv-scrub .mk.open::before { content: ''; position: absolute; inset: -3px -3px; }
+  .rv-scrub .ext { position: absolute; top: -4px; margin-left: 2px; padding: 0 4px; font: 13px/1 sans-serif; color: var(--yellow); cursor: e-resize; user-select: none; }
+  .rv-scrub .ext.draft { color: #fff; }
+  .rv-scrub .mk.draft { background: #fff; } .rv-scrub .rg.draft { background: rgba(255,255,255,.35); }
   .rv-notes { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; max-height: calc(min(68vh, 720px) + 120px); }
   .rv-notes-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
   .rv-notes-head b { font-size: 13px; color: var(--cream); }
@@ -2251,7 +2274,7 @@
   .ed-insp { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; max-height: calc(var(--ed-h, 56vh) + 70px); overflow: auto; }
   .ed-insp h4 { margin: 0; padding: 5px 10px; font: 700 11px var(--mono); letter-spacing: .08em; color: var(--mute); border-top: 1px solid var(--line); background: var(--panel2); }
   .ed-insp .sec { padding: 6px 10px; display: grid; grid-template-columns: 78px 1fr; gap: 4px 8px; align-items: center; font-size: 11px; color: var(--mute); }
-  .ed-insp .grps { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .ed-insp .grps { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
   .ed-insp .grp { border-right: 1px solid var(--line); min-width: 0; }
   .ed-box.crop { border-style: dashed; } .ed-box.crop i { border-radius: 2px; background: var(--yellow); }
   .ed-insp .sec.col { grid-template-columns: 1fr; }
@@ -2260,6 +2283,7 @@
   .ed-insp input[type=color] { width: 44px; height: 28px; padding: 2px; }
   .ed-insp input[type=range] { padding: 0; }
   .ed-insp .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ed-insp .fontrow select, .ed-insp .fontrow input { width: auto; } .ed-insp .fontrow select[data-ft=family] { flex: 1; }
   .ed-insp .head { padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
   .ed-insp .head b { color: var(--cream); font-size: 14px; }
   .ed-insp .head .kind { font: 600 10px var(--mono); padding: 2px 6px; border-radius: 5px; color: #0c0d0c; }
@@ -3107,7 +3131,7 @@
 <body>
 <header>
     <div style="display:flex;align-items:center;gap:12px">
-      <b>Editor <i>7.0</i></b>
+      <b>Editor <i>7.0</i></b> <span class="muted" style="font-size:11px;font-family:var(--mono)" title="Versão instalada">v{{VERSAO}}</span>
       <button id="sidebar-toggle" class="sidebar-toggle-btn" type="button" title="Alternar outros projetos ativos" style="display:none">
         <span class="sidebar-toggle-icon">◫</span>
         <span class="sidebar-toggle-label">Outros Projetos</span>
@@ -3191,6 +3215,28 @@ function formatLogMessage(s) {
   return `[${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' })}] ${s}`;
 }
 
+// one-line "what is happening now" under the steps: the latest readable log entry (not a "$ cmd" echo), first line, no timestamp
+function setNowLine(entries) {
+  const el = document.getElementById('now-txt');
+  if (!el) return;
+  const txt = entries.map(e => String(e).replace(/^\[[^\]]*\]\s*/, '').split('\n')[0].trim()).findLast(t => t && !t.startsWith('$ '));
+  if (!txt) return;
+  el.textContent = humanLog(txt);
+  el.parentElement.classList.add('on');
+  const now = document.getElementById('busy-now');
+  if (now) now.textContent = humanLog(txt);
+}
+// terse server log lines → a sentence a user understands (the raw line stays in the log below)
+const HUMAN_LOG = [
+  [/^embrulho (.+): renderizando$/, (_, n) => `Renderizando o embrulho "${n}": o reel está sendo colocado dentro da moldura.`],
+  [/^embrulhos: corrigindo (\d+)/, (_, n) => `A IA está corrigindo ${n} problema(s) na copy dos embrulhos antes de renderizar.`],
+  [/^🎬 Renderizando a composição (\S+?)\.*$/, (_, f) => `Renderizando o vídeo ${f} quadro a quadro em alta definição.`],
+  [/^clipe \S*?([^/\s]+) \((\d+) quadros\)/, (_, f, n) => `After Effects: gravando a peça "${f}" como clipe com transparência (${n} quadros).`],
+  [/^(size|duration|loudness|overlap|words|pace)\b/, () => 'O QA automático está conferindo tamanho, duração, volume e ritmo do vídeo.'],
+  [/^(PASS|FAIL)\b/, (_, r) => r === 'PASS' ? 'QA concluído: o vídeo passou.' : 'QA concluído: o vídeo tem pontos a melhorar (veja o relatório).'],
+];
+const humanLog = t => { for (const [re, f] of HUMAN_LOG) { const m = t.match(re); if (m) return f(...m); } return t; };
+
 function appendToProjectLog(projId, message, persistToServer = false) {
   if (!projId || !message) return;
   const formatted = formatLogMessage(message);
@@ -3207,6 +3253,7 @@ function appendToProjectLog(projId, message, persistToServer = false) {
       logEl.textContent += formatted + '\n';
       logEl.scrollTop = logEl.scrollHeight;
     }
+    setNowLine([formatted]);
   }
 
   if (persistToServer) {
@@ -3256,7 +3303,17 @@ const app = $('#app');
 async function act(btn, fn) {
   const out = btn.parentElement.querySelector('.err') ?? btn.insertAdjacentElement('afterend', Object.assign(document.createElement('div'), { className: 'err' }));
   out.textContent = ''; btn.disabled = true;
-  try { await fn(); } catch (e) { out.textContent = e.message; } finally { btn.disabled = false; }
+  try { await fn(); } catch (e) { out.textContent = e.message; } finally { if (!btn.classList.contains('is-busy')) btn.disabled = false; }
+}
+// a step was started from a button: spinner on the button, a toast, and the page scrolls to Progresso
+function stepStarted(btn, label, msg) {
+  if (btn) { btn.classList.add('is-busy'); btn.disabled = true; btn.textContent = label; }
+  showToast({ title: '✓ Iniciado', message: msg, type: 'info', duration: 5000 });
+  document.getElementById('progress-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function stepOk(btn, label) {
+  btn.classList.remove('is-busy', 'is-ok'); btn.textContent = label;
+  void btn.offsetWidth; btn.classList.add('is-ok');   // reflow restarts the flash animation
 }
 
 // Generic form for a nested brand object: hex → colour picker, number → number, boolean → checkbox, known keys → select,
@@ -7064,9 +7121,23 @@ const STEP_INFO = {
   final: {
     index: 5,
     name: '5 Entrega',
-    title: 'Etapa 5 em andamento: Renderização Final',
-    desc: 'Compilando os formatos finais em alta definição com áudio masterizado...',
+    title: 'Renderização final',
+    desc: 'Cada formato marcado é renderizado em alta definição, um de cada vez. Depois o áudio é masterizado e o QA automático confere tamanho, duração, volume e ritmo. O vídeo aparece na Entrega quando terminar.',
     short: 'Render Final'
+  },
+  ae: {
+    index: 5,
+    name: '5 Entrega',
+    title: 'Exportando para o After Effects',
+    desc: 'O reel é tocado quadro a quadro num navegador invisível e cada peça vira uma camada do After: textos ficam editáveis, imagens e vídeos entram como arquivos e o resto vira clipe com transparência. Se o After estiver aberto, ele monta o .aep no fim.',
+    short: 'After Effects'
+  },
+  embrulhos: {
+    index: 5,
+    name: '5 Entrega',
+    title: 'Gerando os embrulhos',
+    desc: 'A IA lê o texto do vídeo, escolhe até 3 molduras, escreve a copy de cada uma e renderiza o reel dentro da janela de cada moldura.',
+    short: 'Embrulhos'
   }
 };
 
@@ -7135,14 +7206,21 @@ async function project(id) {
   }
 
   function updateBusyStatus() {
+    $('#now')?.classList.toggle('running', !!running);
+    if (running) $('#now')?.classList.add('on');
     const b = $('#busy');
     if (!b) return;
     if (running) {
       const info = STEP_INFO[running.step] || { short: running.step };
       b.innerHTML = `<span class="live-pill"><span class="pulse-dot"></span> rodando: <b>${esc(info.short)}</b>${running.phase ? ` · ${esc(running.phase)}` : ''} (<span id="busy-timer">0s</span>)</span>`;
+      const ex = $('#busy-explain');
+      if (ex && info.title) {
+        ex.innerHTML = `<b>${esc(info.title)}</b><p class="muted">${esc(info.desc || '')}</p><p>Agora: <span id="busy-now">${esc($('#now-txt')?.textContent || 'começando…')}</span></p>`;
+      }
       startTimer();
     } else {
       b.innerHTML = '';
+      const ex = $('#busy-explain'); if (ex) ex.innerHTML = '';
       clearTimer();
     }
   }
@@ -7158,8 +7236,8 @@ async function project(id) {
       </div>
       <div id="pt-actions" style="display:inline-flex;align-items:center;gap:8px"></div>
     </div>
-    <div class="steps" id="steps"></div><div id="body"></div>
-    <div class="box"><h4>Progresso <span id="busy" style="text-transform:none;letter-spacing:0;color:var(--accent)"></span></h4><div id="log"></div><div id="cost" class="muted" style="font:11px var(--mono);margin-top:8px"></div></div>`;
+    <div class="steps" id="steps"></div><div class="now-bar" id="now"><div class="track"></div><div class="txt" id="now-txt"></div></div><div id="body"></div>
+    <div class="box" id="progress-box"><h4>Progresso <span id="busy" style="text-transform:none;letter-spacing:0;color:var(--accent)"></span></h4><div id="busy-explain"></div><div id="log"></div><div id="cost" class="muted" style="font:11px var(--mono);margin-top:8px"></div></div>`;
   const log = $('#log'), line = s => appendToProjectLog(id, s, true);
 
   // Restaura imediatamente do cache em memória para a tela nunca reiniciar
@@ -7167,6 +7245,7 @@ async function project(id) {
     const cached = projectLogsMap.get(id);
     log.textContent = cached.join('\n') + '\n';
     log.scrollTop = log.scrollHeight;
+    setNowLine(cached);
   }
 
   // Carrega histórico completo de logs desde a criação do projeto
@@ -7181,6 +7260,7 @@ async function project(id) {
       if (currentProjectId === id && log) {
         log.textContent = combined.join('\n') + '\n';
         log.scrollTop = log.scrollHeight;
+        setNowLine(combined);
       }
     }
   }).catch(() => {});
@@ -8034,6 +8114,26 @@ const tcode = t => {
 };
 const RV_STATUS = { open: 'aberta', done: 'aplicada ✓', skipped: 'não aplicada' };
 
+// volume and loop of the player, shared by Revisão and Edição (<hyperframes-player> and <video> both take volume, muted and loop)
+const AV = { vol: 1, muted: false, loop: false };
+try { Object.assign(AV, JSON.parse(localStorage.getItem('rv_av') || '{}')); } catch {}
+const avHtml = () => `<span class="rv-av"><button data-av="mute" title="Mudo / som">🔊</button><input type="range" data-av="vol" min="0" max="100" title="Volume"></span><button data-av="loop" title="Repetir o vídeo em loop">🔁 Loop</button>`;
+const avApply = P => { if (P) { P.volume = AV.vol; P.muted = AV.muted; P.loop = AV.loop; } };
+function avWire(root, getP) {
+  const paint = () => {
+    const m = AV.muted || AV.vol === 0;
+    root.querySelector('[data-av=mute]').textContent = m ? '🔇' : AV.vol < 0.5 ? '🔉' : '🔊';
+    root.querySelector('[data-av=vol]').value = m ? 0 : Math.round(AV.vol * 100);
+    root.querySelector('[data-av=loop]').classList.toggle('on', AV.loop);
+    avApply(getP());
+    try { localStorage.setItem('rv_av', JSON.stringify(AV)); } catch {}
+  };
+  root.querySelector('[data-av=mute]').onclick = () => { AV.muted = !(AV.muted || AV.vol === 0); if (!AV.muted && AV.vol === 0) AV.vol = 1; paint(); };
+  root.querySelector('[data-av=vol]').oninput = e => { AV.vol = e.target.value / 100; AV.muted = false; paint(); };
+  root.querySelector('[data-av=loop]').onclick = () => { AV.loop = !AV.loop; paint(); };
+  paint();
+}
+
 async function reviewStep(id, body, st) {
   let rv = await api('GET', `/projects/${id}/review`);
   const SPEEDS = [1, 1.5, 2, 2.5];
@@ -8047,15 +8147,16 @@ async function reviewStep(id, body, st) {
     <div class="rv">
       <div class="rv-player">
         <div class="rv-stage" id="rv-stage"></div>
-        <div class="rv-scrub" id="rv-scrub" title="Clique ou arraste para navegar"><div class="trk"></div><div class="fill"></div><div id="rv-marks"></div><div class="knob"></div></div>
+        <div class="rv-scrub" id="rv-scrub" title="Arraste para navegar · arraste a setinha ▸ de uma marca para a direita: cria ou estica o trecho · arraste a marca de uma anotação aberta para mudar o tempo dela"><div class="trk"></div><div class="fill"></div><div id="rv-marks"></div><div class="knob"></div></div>
         <div class="rv-bar">
           <button id="rv-play" title="Play / pausa (espaço)">▶</button>
           <button id="rv-back" title="Voltar 1 quadro (←)">◀︎|</button>
           <button id="rv-fwd" title="Avançar 1 quadro (→)">|▶︎</button>
           <span class="rv-tc" id="rv-tc">00:00:00:00</span>
+          ${avHtml()}
           <div class="rv-speeds">${SPEEDS.map(s => `<button data-s="${s}">${String(s).replace('.', ',')}x</button>`).join('')}</div>
         </div>
-        <p class="muted" style="font-size:11px;margin:0">Espaço: play/pausa · I / O: início / fim do trecho · ← / →: 1 quadro · Shift + ← / →: 1 segundo · clique no vídeo: play/pausa</p>
+        <p class="muted" style="font-size:11px;margin:0">Espaço: play/pausa · I / O ou arrastar a setinha ▸ da marca: trecho da anotação · arraste a marca amarela para mudar o tempo · ← / →: 1 quadro · Shift + ← / →: 1 segundo · clique no vídeo: play/pausa</p>
       </div>
       <div class="rv-notes">
         <div class="rv-notes-head"><b>Anotações</b><span class="muted" id="rv-count" style="font-size:12px"></span>
@@ -8068,6 +8169,7 @@ async function reviewStep(id, body, st) {
             <button id="rv-in" title="Início do trecho = posição atual (I)">⇤ Início</button>
             <button id="rv-out" title="Fim do trecho = posição atual (O). Sem trecho, a anotação é pontual">Fim ⇥</button>
             <button id="rv-pin" title="Clique e depois clique no vídeo para marcar o local">📍 Marcar ponto</button>
+            <button id="rv-all" title="A anotação vale para o vídeo todo, sem tempo (ex.: tirar o grão, trocar uma cor)">🎞 Vídeo todo</button>
             <button class="primary" id="rv-add" style="margin-left:auto">Adicionar</button>
           </div>
         </div>
@@ -8087,7 +8189,7 @@ async function reviewStep(id, body, st) {
   const seek = t => { if (!P) return; t = Math.max(0, Math.min(dur() || t, t)); P.seek ? P.seek(t) : (P.currentTime = t); };
   const sorted = () => [...rv.notes].sort((a, b) => a.t - b.t);
   const numOf = n => sorted().indexOf(n) + 1;
-  const span = n => tcode(n.t) + (n.end != null ? ' → ' + tcode(n.end) : '');
+  const span = n => n.all ? 'Vídeo todo' : tcode(n.t) + (n.end != null ? ' → ' + tcode(n.end) : '');
   const openCount = () => rv.notes.filter(n => n.status === 'open').length;
 
   // the player: the live composition, or the rendered preview for a reel the agent composer made
@@ -8108,6 +8210,7 @@ async function reviewStep(id, body, st) {
     if (!(el.duration > 0)) { stage.insertAdjacentHTML('beforeend', '<div class="rv-msg">O vídeo não carregou. Recarregue a página.</div>'); return; }
     P = el;
     P.playbackRate = rate;
+    avApply(P);
     if (keepT) seek(keepT);
     stage.querySelector('.rv-hit').onclick = onStageClick;
     markKey = pinKey = '';
@@ -8134,10 +8237,14 @@ async function reviewStep(id, body, st) {
     scrub.querySelector('.knob').style.left = pct + '%';
     $('#rv-play').textContent = P && !P.paused ? '❚❚' : '▶';
     if (!draft) $('#rv-at').textContent = tcode(t);   // with a draft, paintCompose owns the chip
-    const mk = d + '|' + rv.notes.map(n => n.t + n.status + (n.end ?? '')).join();
+    // the note being written shows in white; a whole-video note has no place on the ruler
+    const marks = (draft ? [...rv.notes, { ...draft, status: 'draft', text: 'anotação nova' }] : rv.notes).filter(n => !n.all);
+    const mk = d + '|' + marks.map(n => n.t + n.status + (n.end ?? '')).join();
     if (mk !== markKey) {
       markKey = mk;
-      $('#rv-marks').innerHTML = d ? rv.notes.map(n => (n.end != null ? `<span class="rg ${n.status}" style="left:${n.t / d * 100}%;width:${(n.end - n.t) / d * 100}%"></span>` : '') + `<span class="mk ${n.status}" style="left:${n.t / d * 100}%" title="#${numOf(n)} ${esc(n.text.slice(0, 60))}"></span>`).join('') : '';
+      // ▸ after the mark (or the end of its stretch): drag it right to make or stretch the stretch
+      $('#rv-marks').innerHTML = d ? marks.map(n => (n.end != null ? `<span class="rg ${n.status}" style="left:${n.t / d * 100}%;width:${(n.end - n.t) / d * 100}%"></span>` : '') + `<span class="mk ${n.status}" data-id="${n.id ?? ''}" style="left:${n.t / d * 100}%" title="${n.id ? `#${numOf(n)} ` : ''}${esc(n.text.slice(0, 60))}"></span>` +
+        (n.status === 'open' || n.status === 'draft' ? `<span class="ext ${n.status}" data-id="${n.id ?? ''}" style="left:${(n.end ?? n.t) / d * 100}%" title="Arraste para a direita: cria ou estica o trecho">▸</span>` : '')).join('') : '';
     }
     const pins = sorted().filter(n => n.x !== undefined && n.x !== null && (n.id === selId || (t > n.t - 0.75 && t < (n.end ?? n.t) + 0.75)));
     const pk = pins.map(n => n.id).join() + (draft?.x ?? '') + (draft?.y ?? '');
@@ -8156,6 +8263,7 @@ async function reviewStep(id, body, st) {
     if (draft) $('#rv-at').textContent = span(draft);
     $('#rv-out').classList.toggle('on', draft?.end != null);
     $('#rv-out').textContent = draft?.end != null ? 'Fim ⇥ ✕' : 'Fim ⇥';
+    $('#rv-all').classList.toggle('on', !!draft?.all);
   }
 
   function renderNotes() {
@@ -8177,7 +8285,7 @@ async function reviewStep(id, body, st) {
       : open ? `Enviar ${open} alteraç${open === 1 ? 'ão' : 'ões'} para o Claude` : 'Nenhuma anotação aberta';
     $('#rv-final').disabled = applying || !!open;
     $('#rv-final').title = open ? 'Envie as anotações abertas para o Claude ou remova antes de aprovar' : '';
-    for (const b of [text, $('#rv-add'), $('#rv-pin'), $('#rv-in'), $('#rv-out')]) b.disabled = applying;
+    for (const b of [text, $('#rv-add'), $('#rv-pin'), $('#rv-in'), $('#rv-out'), $('#rv-all')]) b.disabled = applying;
   }
 
   const save = async () => {
@@ -8192,8 +8300,8 @@ async function reviewStep(id, body, st) {
   async function addNote() {
     const msg = text.value.trim();
     if (!msg) return;
-    const t = draft?.t ?? now();
-    rv.notes.push({ id: 'n' + Date.now().toString(36), t: Math.round(t * 1000) / 1000, ...(draft?.end != null ? { end: Math.round(draft.end * 1000) / 1000 } : {}), ...(draft?.x !== undefined ? { x: draft.x, y: draft.y } : {}), text: msg, status: 'open' });
+    const t = draft?.all ? 0 : draft?.t ?? now();
+    rv.notes.push({ id: 'n' + Date.now().toString(36), t: Math.round(t * 1000) / 1000, ...(draft?.all ? { all: true } : {}), ...(draft?.end != null ? { end: Math.round(draft.end * 1000) / 1000 } : {}), ...(draft?.x !== undefined ? { x: draft.x, y: draft.y } : {}), text: msg, status: 'open' });
     text.value = ''; draft = null; pinning = false; paintCompose();
     await save();
   }
@@ -8205,7 +8313,7 @@ async function reviewStep(id, body, st) {
     if (a === 'del') { rv.notes = rv.notes.filter(x => x !== n); if (selId === n.id) selId = null; save().catch(err => alert(err.message)); return; }
     if (a === 'edit') {   // back to the composer, same time and spot; it becomes a new note when added again
       rv.notes = rv.notes.filter(x => x !== n);
-      text.value = n.text; draft = { t: n.t, ...(n.end != null ? { end: n.end } : {}), ...(n.x !== undefined && n.x !== null ? { x: n.x, y: n.y } : {}) };
+      text.value = n.text; draft = { t: n.t, ...(n.all ? { all: true } : {}), ...(n.end != null ? { end: n.end } : {}), ...(n.x !== undefined && n.x !== null ? { x: n.x, y: n.y } : {}) };
       seek(n.t); P?.pause(); paintCompose(); text.focus();
       save().catch(err => alert(err.message));
       return;
@@ -8221,30 +8329,51 @@ async function reviewStep(id, body, st) {
       body.querySelectorAll('.rv-speeds button').forEach(x => x.classList.toggle('on', x === b));
     };
   });
+  avWire(body.querySelector('.rv-bar'), () => P);
   $('#rv-play').onclick = () => P && (P.paused ? P.play() : P.pause());
   $('#rv-back').onclick = () => { P?.pause(); seek(now() - 1 / RV_FPS); };
   $('#rv-fwd').onclick = () => { P?.pause(); seek(now() + 1 / RV_FPS); };
+  // drag: move the playhead · drag a mark's ▸: make or stretch its stretch · drag an open note's mark: that note's time
   scrub.onpointerdown = e => {
     if (!P) return;
-    const to = ev => { const r = scrub.getBoundingClientRect(); seek(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * dur()); };
+    const at = ev => { const r = scrub.getBoundingClientRect(); return Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * dur(); };
+    const r3 = t => Math.round(t * 1000) / 1000;
+    const hit = !applying && e.target.closest('.mk, .ext'), ext = hit?.classList.contains('ext');
+    // an open note by its id, or the note being written (the white ▸ has no id)
+    const n = hit && (hit.dataset.id ? rv.notes.find(x => x.status === 'open' && x.id === hit.dataset.id) : ext && draft);
+    let to = ev => seek(at(ev)), done = null;
+    if (n && ext) {   // ▸ right of the start makes the stretch; back over the start it is a single moment again
+      P.pause();
+      const e0 = n.end;
+      to = ev => { const b = at(ev); if (b - n.t >= 1 / RV_FPS) n.end = r3(b); else delete n.end; seek(Math.max(b, n.t)); paintCompose(); };
+      done = n === draft ? () => text.focus() : () => { if (n.end !== e0) save(); };
+    } else if (n) {   // the note moves, its stretch keeps its length
+      P.pause();
+      const t0 = n.t, len = n.end != null ? n.end - n.t : 0, off = at(e) - n.t;
+      to = ev => { n.t = r3(Math.max(0, Math.min(dur() - len, at(ev) - off))); if (n.end != null) n.end = r3(n.t + len); seek(n.t); };
+      done = () => { if (n.t !== t0) save(); };
+    }
     scrub.setPointerCapture(e.pointerId); to(e);
     scrub.onpointermove = to;
-    scrub.onpointerup = () => { scrub.onpointermove = null; };
+    scrub.onpointerup = () => { scrub.onpointermove = null; done?.(); };
   };
   // writing a note freezes its time where the video was paused
   text.onfocus = () => { if (!draft && P) { P.pause(); draft = { t: now() }; paintCompose(); } };
   text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote().catch(err => alert(err.message)); } };
-  text.oninput = () => { if (!text.value && draft && draft.x === undefined && draft.end == null) draft = null; };
+  text.oninput = () => { if (!text.value && draft && draft.x === undefined && draft.end == null && !draft.all) draft = null; };
   $('#rv-add').onclick = e => act(e.target, addNote);
   // I/O like Premiere: Início moves the start to the playhead, Fim sets the end there (again to drop the range)
-  const markIn = () => { P?.pause(); draft = { ...(draft ?? {}), t: now() }; if (draft.end <= draft.t) delete draft.end; pinKey = ''; paintCompose(); };
+  const markIn = () => { P?.pause(); draft = { ...(draft ?? {}), t: now() }; delete draft.all; if (draft.end <= draft.t) delete draft.end; pinKey = ''; paintCompose(); };
   const markOut = () => {
     P?.pause();
+    if (draft?.all) draft = null;   // a time mark turns a whole-video note back into a timed one
     if (draft?.end != null) delete draft.end;
     else { draft ??= { t: now() }; if (now() > draft.t) draft.end = now(); }
     paintCompose();
   };
   $('#rv-in').onclick = markIn; $('#rv-out').onclick = markOut;
+  // a note with no time: it goes to the composer as [vídeo todo] (grain, a colour, the font...)
+  $('#rv-all').onclick = () => { P?.pause(); draft = draft?.all ? null : { t: 0, all: true }; pinning = false; pinKey = ''; paintCompose(); text.focus(); };
   $('#rv-pin').onclick = () => {
     if (draft?.x !== undefined) { delete draft.x; delete draft.y; pinning = false; }
     else { pinning = !pinning; if (pinning) P?.pause(); }
@@ -8331,6 +8460,7 @@ async function editStep(id, body, st) {
           <button id="ed-back" title="Voltar 1 quadro (←)">◀︎|</button>
           <button id="ed-fwd" title="Avançar 1 quadro (→)">|▶︎</button>
           <span class="rv-tc" id="ed-tc">00:00:00:00</span>
+          ${avHtml()}
           <label title="Tamanho do preview">Tamanho <input type="range" id="ed-size" min="25" max="90"></label>
           <button id="ed-layout" title="Monitor à esquerda: mais espaço para a timeline e o inspetor">⇤ Monitor à esquerda</button>
         </div>
@@ -8467,6 +8597,7 @@ async function editStep(id, body, st) {
     for (let i = 0; i < 300 && !(el.duration > 0 && el.ready); i++) await new Promise(r => setTimeout(r, 100));
     if (!(el.duration > 0)) { stage.insertAdjacentHTML('beforeend', '<div class="rv-msg">O vídeo não carregou. Recarregue a página.</div>'); return; }
     P = el;
+    avApply(P);
     if (keepT) seek(keepT);
     kfRead();
     if (!(E.kfSplit >= 4)) {   // once per project: the AI's moves on every picture layer (camera included) are switched off, everything starts still
@@ -8849,10 +8980,10 @@ async function editStep(id, body, st) {
         ${it.ai && it.kind === 'cutout' ? `<span></span><button data-act="still" title="Mata os ajustes de posição/escala que a IA animou nesta camada (os cortes feitos neles somem; os seus ficam)">${e.still ? 'Devolver as animações da IA' : 'Parar as animações da IA'}</button>` : ''}</div>`;
     const sound = aud || it.kind === 'video' || it.kind === 'add:video' ? `<h4>ÁUDIO</h4><div class="sec">Volume (%)<input type="range" min="0" max="200" data-p="volume" value="${val(it, 'volume')}">
         <span></span><span class="muted" id="ed-vol">${val(it, 'volume')}%</span></div>` : '';
-    const aiTexts = it.ai && it.texts?.length ? `<h4>TEXTO</h4><div class="sec col">${words(it.texts).slice(0, 60).map(g => {
+    const aiTexts = it.ai && it.texts?.length ? `<h4>TEXTO</h4><div class="sec col"><div class="two">${words(it.texts).slice(0, 60).map(g => {
       const cur = g.map(t => (e.texts || []).find(x => x.i === t.i)?.to ?? t.text).join('');
       return `<input data-text="${g.map(t => t.i).join(',')}" data-from="${esc(JSON.stringify(g.map(t => t.text)))}" value="${esc(cur)}">`;
-    }).join('')}${fontRow(e.font || {}, true)}<button data-act="fontall" title="Copia esta fonte (peso, tamanho, família) para todas as camadas de texto da IA">Aplicar esta fonte a todos os textos</button></div>` : '';
+    }).join('')}</div>${fontRow(e.font || {}, true)}<button data-act="fontall" title="Copia esta fonte (peso, tamanho, família) para todas as camadas de texto da IA">Aplicar esta fonte a todos os textos</button></div>` : '';
     const addedText = a && (a.kind === 'text' || a.kind === 'title') ? `<h4>TEXTO</h4><div class="sec col"><textarea data-a="text" rows="2">${esc(a.text || '')}</textarea></div>
         <div class="sec col">${fontRow(a, false)}</div><div class="sec">Animação<select data-a="anim">${[['pop', 'Pop'], ['slide', 'Deslizar'], ['fade', 'Surgir'], ['type', 'Digitar'], ['none', 'Nenhuma']].map(([k, n]) => `<option value="${k}" ${k === (a.anim ?? (a.kind === 'title' ? 'pop' : 'none')) ? 'selected' : ''}>${n}</option>`).join('')}</select></div>` : '';
     const capLines = a?.kind === 'captions' ? `<h4>LEGENDA</h4><div class="sec col">${fontRow({ ...a, size: a.size ?? 64 }, false)}</div>
@@ -8876,7 +9007,7 @@ async function editStep(id, body, st) {
         <label style="margin-left:auto;display:flex;gap:5px;align-items:center;font-size:11px;color:var(--mute)"><input type="checkbox" data-act="on" ${e.hidden ? '' : 'checked'}> ${aud ? 'Som' : 'Ativa'}</label></div>
       ${it.kind === 'plate' ? `<h4>FONTE</h4><div class="sec col"><label style="display:flex;gap:8px;align-items:center;color:var(--cream)"><input type="checkbox" data-act="original" ${e.original ? 'checked' : ''}> Vídeo original, sem desfoque</label>
         <span>A IA usa uma cópia desfocada do vídeo como fundo atrás do recorte. Marque para usar o vídeo original.</span></div>` : ''}
-      <div class="grps">${[aiTexts + addedText + capLines, motion + width, crop, timing + cuts, swatches + textColors, sound, licSec].filter(Boolean).map(g => `<div class="grp">${g}</div>`).join('')}</div>
+      <div class="grps">${[aiTexts + addedText + capLines, motion + width + crop, timing + cuts + swatches + textColors, sound, licSec].filter(Boolean).map(g => `<div class="grp">${g}</div>`).join('')}</div>
       ${a ? `<div class="sec col"><button data-act="del" style="color:var(--red)">Apagar camada</button></div>` : ''}`;
     // numbers: instant ones go straight to the player, timing reloads it
     box.querySelectorAll('[data-p]').forEach(i => {
@@ -9011,6 +9142,7 @@ async function editStep(id, body, st) {
   $('#ed-undo').onclick = () => undo(false);
   $('#ed-redo').onclick = () => undo(true);
   $('#ed-zoom').oninput = setZoom;
+  avWire($('#ed-play').parentElement, () => P);
   $('#ed-play').onclick = () => P && (P.paused ? P.play() : P.pause());
   $('#ed-back').onclick = () => { P?.pause(); seek(now() - 1 / RV_FPS); };
   $('#ed-fwd').onclick = () => { P?.pause(); seek(now() + 1 / RV_FPS); };
@@ -9058,6 +9190,7 @@ async function deliveryStep(id, body, st) {
   const rv = await api('GET', `/projects/${id}/review`);
   const open = rv.notes.filter(n => n.status === 'open').length;
   const unapproved = !st.approvedAt;   // final() refuses without the approval given in the Revisão
+  const runStep = (window.getProjectRunning?.() || st.running)?.step;   // the button of a running step stays busy across re-renders
   // a clip without a license never blocks the render: it is only a reminder to swap it later
   const unlic = await api('GET', `/projects/${id}/layers`).then(l => (l.edits?.added || []).filter(a => a.rights?.status === 'unlicensed').length).catch(() => 0);
   const hooks = await api('GET', `/projects/${id}/files/embrulhos.json`).then(r => r.embrulhos || []).catch(() => []);
@@ -9076,14 +9209,15 @@ async function deliveryStep(id, body, st) {
       <div id="fmts" class="fmt-selector-group">${fmtBoxes(st.formats)}</div>
       <div id="dl-agent-actions" style="margin-top:12px"></div>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding-top:12px;margin-top:12px;border-top:1px solid var(--line)">
-        <button class="primary" id="dl-render" ${open || unapproved ? 'disabled' : ''}>🚀 Renderizar ${st.qa ? 'de novo' : 'o final'}</button>
+        ${runStep === 'final' ? `<button class="primary is-busy" id="dl-render" disabled>Renderizando… acompanhe em Progresso</button>`
+          : `<button class="primary" id="dl-render" ${open || unapproved ? 'disabled' : ''}>🚀 Renderizar ${st.qa ? 'de novo' : 'o final'}</button>`}
         ${unapproved && !open ? `<span class="err">O vídeo ainda não foi aprovado: assista na Revisão (Etapa 3) e clique em Aprovar.</span>` : ''}
       </div>
       ${st.qa ? `<div style="margin-top:14px"><p>QA: <b>${st.qa.pass ? 'passou ✓' : 'falhou ✗'}</b></p>${st.qa.summary ? `<p>${esc(st.qa.summary)}</p>` : ''}
         <details><summary>Relatório</summary><pre>${esc(st.qa.report)}</pre></details>
-        ${((st.readyFinals && st.readyFinals.length > 0) ? st.readyFinals : (st.formats || []).filter(f => f === (st.primaryFormat || '9:16'))).map(f => `<p style="font-weight:600;margin-top:16px">${esc(f)}</p><video controls src="/projects/${id}/files/final-${f.replace(':', '-')}.mp4?${Date.now()}"></video>`).join('')}</div>` : ''}`)}
-    ${sec('2 · ARQUIVO PARA AFTER EFFECTS', 'Scripts .jsx e clipes do projeto; gera o .aep quando o After Effects está disponível.', `<button id="dl-ae">🎬 Exportar para After Effects</button>`)}
-    ${sec('3 · EMBRULHOS (9:16)', 'A IA escolhe até 3 molduras do PDF pelo texto do vídeo, escreve a copy em tom de conversa e renderiza cada uma com o reel dentro da janela.', `<button id="dl-hooks">✨ ${hooks.length ? 'Gerar de novo' : 'Gerar embrulhos'} (IA)</button><div id="dl-hook-list">${hookList(hooks)}</div>`)}
+        ${((st.readyFinals && st.readyFinals.length > 0) ? st.readyFinals : (st.formats || []).filter(f => f === (st.primaryFormat || '9:16'))).map(f => `<p style="font-weight:600;margin-top:16px">${esc(f)}</p><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><video controls src="/projects/${id}/files/final-${f.replace(':', '-')}.mp4?${Date.now()}"></video><button class="dl-save" data-file="final-${f.replace(':', '-')}.mp4">💾 Salvar</button></div>`).join('')}</div>` : ''}`)}
+    ${sec('2 · ARQUIVO PARA AFTER EFFECTS', 'Scripts .jsx e clipes do projeto; gera o .aep quando o After Effects está disponível.', `${runStep === 'ae' ? '<button id="dl-ae" class="is-busy" disabled>Exportando… acompanhe em Progresso</button>' : '<button id="dl-ae">🎬 Exportar para After Effects</button>'}<div id="dl-ae-out" class="muted" style="margin-top:8px;font-size:12px"></div>`)}
+    ${sec('3 · EMBRULHOS (9:16)', 'A IA escolhe até 3 molduras do PDF pelo texto do vídeo, escreve a copy em tom de conversa e renderiza cada uma com o reel dentro da janela.', `${runStep === 'embrulhos' ? '<button id="dl-hooks" class="is-busy" disabled>Gerando… acompanhe em Progresso</button>' : `<button id="dl-hooks">✨ ${hooks.length ? 'Gerar de novo' : 'Gerar embrulhos'} (IA)</button>`}<div id="dl-hook-list">${hookList(hooks)}</div>`)}
     ${sec('4 · STATUS & ENCERRAMENTO DO PROJETO', 'Finalize o ciclo deste vídeo marcando-o como concluído para arquivá-lo na esteira e retirar os alertas de ação pendente.', `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
@@ -9168,7 +9302,10 @@ async function deliveryStep(id, body, st) {
     completeToggle.onclick = async () => {
       const next = !st.completed;
       if (next && !confirm('Deseja marcar este projeto como Concluído e encerrá-lo?')) return;
-      await api('POST', `/projects/${id}/complete`, { completed: next });
+      completeToggle.classList.add('is-busy'); completeToggle.disabled = true;
+      try { await api('POST', `/projects/${id}/complete`, { completed: next }); }
+      catch (err) { completeToggle.classList.remove('is-busy'); completeToggle.disabled = false; alert(err.message); return; }
+      showToast({ title: next ? '✓ Projeto concluído' : '↺ Projeto reaberto', message: next ? 'Registrado como entregue.' : 'O projeto voltou para edição.', type: 'success', duration: 4000 });
       refreshProjectsSidebar();
       if (typeof window.renderProject === 'function') window.renderProject();
     };
@@ -9185,21 +9322,48 @@ async function deliveryStep(id, body, st) {
       }
     }
     window.setProjectRunning({ step: 'final', startedAt: Date.now() });
-    window.renderProject();
+    stepStarted(e.target, 'Renderizando… acompanhe em Progresso', `Render final de ${fmts.join(', ')} começou. O vídeo aparece aqui quando terminar.`);
+    // no renderProject() here: the server's 'start' event re-renders once the step holds the lock
     api('POST', `/projects/${id}/final`, { formats: fmts }).catch(err => {
       window.setProjectRunning(null);
       alert('Erro ao renderizar o final: ' + err.message);
       window.renderProject();
     });
   });
+  // Salvar: Chrome opens the system save dialog (File System Access API) so the user picks the folder
+  document.querySelectorAll('.dl-save').forEach(b => b.onclick = () => act(b, async () => {
+    const file = b.dataset.file, url = `/projects/${id}/files/${file}`;
+    const name = `${(st.name || id).replace(/[\\/:*?"<>|]/g, '-')}-${file.replace(/^final-/, '')}`;
+    // shortcut: without showSaveFilePicker (Safari/Firefox) the browser saves to its download folder
+    if (!window.showSaveFilePicker) { Object.assign(document.createElement('a'), { href: url, download: name }).click(); return; }
+    let handle;
+    try { handle = await showSaveFilePicker({ suggestedName: name, types: [{ description: 'Vídeo MP4', accept: { 'video/mp4': ['.mp4'] } }] }); }
+    catch (err) { if (err.name === 'AbortError') return; throw err; }
+    b.textContent = '⏳ Salvando…';
+    const r = await fetch(url);
+    if (!r.ok) { b.textContent = '💾 Salvar'; throw new Error('Arquivo não encontrado: ' + file); }
+    await r.body.pipeTo(await handle.createWritable());
+    b.textContent = '✓ Salvo';
+  }));
   $('#dl-ae').onclick = e => act(e.target, async () => {
-    const r = await api('POST', `/projects/${id}/ae`);
-    alert(r.aepGenerated ? '✓ Projeto do After Effects (.aep) criado em:\n' + r.aep
-      : '✓ Scripts (.jsx) e clipes exportados.\nPara gerar o .aep, abra o After Effects e rode o script:\n' + (r.outputDir || '') + '/run.jsx');
+    const b = e.target;
+    stepStarted(b, 'Exportando… acompanhe em Progresso', 'Exportação para o After Effects começou.');
+    try {
+      const r = await api('POST', `/projects/${id}/ae`);
+      const msg = r.aepGenerated ? '✓ Projeto do After Effects (.aep) criado em: ' + r.aep
+        : '✓ Scripts (.jsx) e clipes exportados. Para gerar o .aep, abra o After Effects e rode o script: ' + (r.outputDir || '') + '/run.jsx';
+      $('#dl-ae-out').textContent = msg;
+      showToast({ title: '✓ After Effects', message: msg, type: 'success', duration: 10000 });
+    } finally { stepOk(b, '🎬 Exportar para After Effects'); }
   });
   $('#dl-hooks').onclick = e => act(e.target, async () => {
-    const r = await api('POST', `/projects/${id}/embrulhos`);
-    $('#dl-hook-list').innerHTML = hookList(r.embrulhos || []);
+    const b = e.target;
+    stepStarted(b, 'Gerando… acompanhe em Progresso', 'A IA começou a gerar os embrulhos.');
+    try {
+      const r = await api('POST', `/projects/${id}/embrulhos`);
+      $('#dl-hook-list').innerHTML = hookList(r.embrulhos || []);
+      showToast({ title: '✓ Embrulhos prontos', message: `${(r.embrulhos || []).length} embrulho(s) gerado(s), logo abaixo do botão.`, type: 'success' });
+    } finally { stepOk(b, '✨ Gerar de novo (IA)'); }
   });
 }
 
@@ -10364,6 +10528,7 @@ async function configUpdate() {
     out.innerHTML = r.behind
       ? `${r.behind} atualização(ões) disponível(is):<br>${r.commits.map(c => "• " + esc(c)).join("<br>")}${r.dirty ? "<br><br>⚠️ Há edições locais em arquivos do Editor; elas serão guardadas e reaplicadas." : ""}`
       : "✓ Já está na versão mais recente.";
+    out.innerHTML = `Instalada: v${esc(r.version)} · No GitHub: v${esc(r.remote)}<br><br>` + out.innerHTML;
   });
   applyBtn.onclick = e => act(e.target, async () => {
     out.textContent = "Baixando e instalando... não feche esta aba.";
