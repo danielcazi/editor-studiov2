@@ -46,6 +46,49 @@ assert mask == [{"t0": 0, "ignore": [[-90, 300, 1260, 1620]]}, {"t0": 4, "ignore
 assert 'tl.set(".cut",{scale:1.06},1.500);' in html and 'tl.set(".cut",{scale:1},3.000);' in html and ',12.000);' not in html
 assert any('T() sem palavra' in a and '"nada"' in a for a in kit.AVISOS), kit.AVISOS
 kit.S.clear(); kit.CUTS.clear()
+# ritmo: sem `pace` no compose.json vale o dinamico de antes; o aviso de locutor parado segue pace.hold
+assert kit.PACE == {'every': 1.5, 'scene': [1.2, 3], 'framing': [2, 4], 'hold': 4}, kit.PACE
+def hold_warn():
+    kit.AVISOS.clear(); kit.S.clear(); kit.scene(1, 0, 6, 'red', ('L', 'hold', 'L')); kit.lint_static()
+    return [a for a in kit.AVISOS if 'locutor parado' in a]
+assert hold_warn(); kit.PACE['hold'] = 8; assert not hold_warn(); kit.PACE['hold'] = 4
+kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
+# planos do formato: cam fora de compose.json planos é erro; o mesmo plano em cenas vizinhas (agenda livre) é aviso
+assert kit.PLANOS == ['cut', 'panel', 'none']   # sem `planos` no compose.json valem os três de antes
+kit.PLANOS[:] = ['cut', 'none']
+kit.S.clear(); kit.scene(1, 0, 3, 'red', 'panel'); kit.scene(2, 3, 6, 'black', None); kit.scene(3, 6, 10, 'amber', None); kit.lint_static()
+assert any('cena 1' in e and "'panel'" in e and 'fora dos planos' in e for e in kit.ERROS), kit.ERROS
+assert not any('cena 2' in e or 'cena 3' in e for e in kit.ERROS) and any('cenas 2 e 3' in a and 'mesmo plano none' in a for a in kit.AVISOS), (kit.ERROS, kit.AVISOS)
+kit.PLANOS[:] = ['cut', 'panel', 'none']
+kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
+# v9 fase 6: panel-top (painel em cima), raw (vídeo cru em tela cheia, bg clear) e react (referência na metade oposta ao painel)
+H = kit.H
+kit.PANEL, kit.PANEL_SIDE, kit.PANEL_TOP = {'side': 'top', 'top': .5}, 'top', H // 2
+kit.PANEL_Y0, kit.PANEL_H = 0, H // 2
+kit.PLANOS[:] = ['cut', 'panel', 'panel-top', 'raw', 'react', 'none']
+def erros(*sc):
+    kit.ERROS.clear(); kit.AVISOS.clear(); kit.S.clear()
+    for k, (cam, bg) in enumerate(sc, 1): kit.scene(k, k - 1, k, bg, cam)
+    kit.lint_static(); return list(kit.ERROS)
+assert erros(('panel-top', 'red'), ('raw', 'clear'), (None, 'black')) == []
+assert any('painel embaixo' in e or 'painel de baixo' in e for e in erros(('panel', 'red')))   # "panel" com o painel em cima
+assert any('bg="clear"' in e for e in erros(('raw', 'red')))   # um fundo sólido esconderia o vídeo cru
+assert any('"clear" só com' in e for e in erros((None, 'clear')) + erros((('L', 'hold', 'L'), 'clear')))
+assert any('refVideo' in e for e in erros(('react', 'clear')))   # sem assets/ref.mp4 não há react
+kit.REF_VIDEO = True
+assert erros(('react', 'clear'), (('L', 'hold', 'L'), 'red')) == []
+kit.S.clear(); kit.ERROS.clear()
+kit.scene(1, 0, 3, 'clear', 'raw'); kit.scene(2, 3, 6, 'red', 'panel-top'); kit.scene(3, 6, 9, 'clear', 'react'); kit.scene(4, 9, 10, 'black', None)
+kit.render()
+html = open("index.html").read(); mask = json.load(open("motion_mask.json"))
+assert 'id="rcam"' in html and 'assets/raw.mp4' in html and 'id="rfcam"' in html and 'assets/ref.mp4' in html and 'object-position:' in html, 'raw e react no index.html'
+assert f'#tcam {{ position:absolute; left:0; top:0px; width:1080px; height:{H // 2}px' in html, 'painel de cima: de 0 até a metade'
+assert f'id="rfcam" style="position:absolute;left:0;width:1080px;top:{H // 2}px;height:{H - H // 2}px' in html, 'a referência ocupa a metade de baixo, oposta ao painel'
+assert 'tl.set("#rcam",{opacity:1},0);' in html and 'tl.set("#tcam",{opacity:1},3);' in html and 'tl.set("#tcam",{opacity:1},6);' in html and 'tl.set("#rfcam",{opacity:1},6);' in html
+assert mask[1]["ignore"] == [[0, 0, 1080, H // 2]] and mask[2]["ignore"] == [[0, 0, 1080, H]] and mask[3]["ignore"] == [], mask
+kit.PANEL, kit.PANEL_SIDE, kit.PANEL_TOP, kit.PANEL_Y0, kit.PANEL_H, kit.REF_VIDEO = None, 'bottom', None, 0, 0, False
+kit.PLANOS[:] = ['cut', 'panel', 'none']
+kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()
 # motores por estilo: engine() lê engines/<nome>.js uma vez, canvas(engine=) marca o uso da cena, e cada motor é JS válido
 import subprocess
 shutil.copytree(KIT / "engines", Path(d) / "engines")
@@ -75,3 +118,10 @@ kit.scene(1, 0, 2, 'red', None, sfx=[('whoosh', -.12, .5)])
 kit.scene(2, 2, 4, 'black', None, sfx=[('pop', .3, .5), ('pop', .35, .5), ('click', .35, .5)])
 kit.lint_sfx()
 assert len(kit.ERROS) == 2 and any('antes do reel' in e for e in kit.ERROS) and any('duas vezes' in e for e in kit.ERROS), kit.ERROS
+# b-roll: footage() é uma janela de vídeo mudo com clip dentro da cena; music() entra uma vez no index.html
+h, js = kit.footage('b01', 'assets/video/lib1-clip-tim-cook.mp4', 60, 300, 960, 540, 4.0, at=.5, start=3)
+assert 'class="clip"' in h and 'data-media-start="3.00"' in h and 'data-duration="3.50"' in h and 'muted' in h and 'object-fit:cover' in h, h
+assert 'tl.fromTo("#b01-ft"' in js and '},3.70);' in js, js
+assert 'footage' in kit.KIT_HELPERS
+kit.music('assets/music/lib9-music-upbeat.mp3', vol=.2)
+assert kit.MUSIC == ('assets/music/lib9-music-upbeat.mp3', .2, 1.2)

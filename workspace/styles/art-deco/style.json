@@ -1,0 +1,8 @@
+{
+  "id": "art-deco",
+  "name": "Art déco",
+  "description": "Laca preta, linha dourada gravada e geometria aerografada: um pôster dos anos 30 que se move.",
+  "pack": "art-deco.md",
+  "engine": "deco",
+  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='deco')."
+}

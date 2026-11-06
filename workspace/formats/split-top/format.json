@@ -1,0 +1,27 @@
+{
+  "id": "split-top",
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "speaker": true,
+  "refVideo": false,
+  "safeZones": {
+    "top": 200,
+    "bottom": 380,
+    "left": 70,
+    "right": 70
+  },
+  "name": "Tela dividida (locutor em cima)",
+  "order": 6,
+  "description": "Locutor cru no painel de cima, animação embaixo.",
+  "planos": [
+    "panel-top",
+    "none"
+  ],
+  "janelas": null,
+  "panel": {
+    "side": "top",
+    "top": 0.5
+  },
+  "regras": "Locutor cru no painel de cima, animação embaixo."
+}
