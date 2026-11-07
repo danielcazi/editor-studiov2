@@ -1,0 +1,8 @@
+{
+  "id": "swiss-motion",
+  "name": "Suíço em movimento",
+  "description": "Estilo tipográfico internacional em movimento: grade modular, uma fonte, uma cor-sinal e movimento exato como prensa.",
+  "pack": "swiss-motion.md",
+  "engine": "swiss",
+  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='swiss')."
+}

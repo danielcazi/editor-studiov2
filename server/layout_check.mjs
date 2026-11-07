@@ -235,12 +235,13 @@ try {
         console.log(`  ${c.n} ${x[0]} "${x[1].t}" x=${x[1].x.toFixed(0)} y=${x[1].y.toFixed(0)} w=${x[1].w.toFixed(0)} h=${x[1].h.toFixed(0)}`);
       }
       // texto em animação (ou cortado pelo quadro) não entra na conta: a folha mostra o que ficou
-      // Speech Screen: numa cena de painel (cam 'panel') o texto fica acima do painel do locutor
+      // painel do locutor: em 'panel' (embaixo) o texto fica acima dele; em 'panel-top' (em cima) fica abaixo dele
       const zonaBottom = c.cam === 'panel' && cfg.panel ? Math.round(H * cfg.panel.top) - 10 : ZONA.bottom;
+      const zonaTop = c.cam === 'panel-top' && cfg.panel ? Math.round(H * cfg.panel.top) + 10 : ZONA.top;
       for (const x of [...back, ...(out[ids[1]]?.texts ?? [])]) {
         if (x.frac < 0.9) { reporta('aviso', `${c.n}|parcial|${x.t}`, `cena ${c.n}: "${x.t}" parcialmente fora do quadro ou do recorte neste instante (animação ou corte); confira na folha`); continue; }
-        if (x.x < ZONA.left || x.x + x.w > ZONA.right || x.y < ZONA.top || x.y + x.h > zonaBottom) {
-          const msg = `cena ${c.n}: "${x.t}" fora da zona segura (topo ${ZONA.top}, base ${H - zonaBottom}${zonaBottom !== ZONA.bottom ? ', painel do locutor' : ''}, laterais ${ZONA.left})`;
+        if (x.x < ZONA.left || x.x + x.w > ZONA.right || x.y < zonaTop || x.y + x.h > zonaBottom) {
+          const msg = `cena ${c.n}: "${x.t}" fora da zona segura (topo ${zonaTop}, base ${H - zonaBottom}${zonaBottom !== ZONA.bottom || zonaTop !== ZONA.top ? ', painel do locutor' : ''}, laterais ${ZONA.left})`;
           reporta('erro', msg, msg);
         }
       }

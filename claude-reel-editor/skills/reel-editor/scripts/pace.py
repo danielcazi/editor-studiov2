@@ -69,6 +69,7 @@ def spoken(words, a, b):
 def main():
     args = sys.argv[1:]
     opt = lambda k: args[args.index(k) + 1] if k in args else None
+    if opt("--every"): BAR["every"] = float(opt("--every"))   # the reel's pace toggle (compose.json pace.every); default is the dinamico bar
     video, words = args[0], json.load(open(opt("--words"))) if opt("--words") else []
     plan = masks(json.load(open(opt("--mask")))) if opt("--mask") else []
     m = measure(grey_frames(video), plan, words)

@@ -1,4 +1,4 @@
-# Guia do compositor (Motion Completo)
+# Guia do compositor
 
 Você compõe o reel inteiro, cena a cena, em HyperFrames 0.8.217 + GSAP 3.14.2. `brief.md` diz o que e para quem; este guia diz como. Dentro das regras abaixo, a liberdade criativa é sua: invente dinâmicas de texto, cards e transições. **Helpers primeiro:** monte cada cena com os helpers do `kit.py` (seção "Estilos prontos do kit") e as peças de `assets/` (biblioteca do reel, biblioteca compartilhada, imagens do site, objetos 3D); escreva HTML/CSS e GSAP à mão só para um movimento que nenhum helper faz (medido no mesmo trecho: GSAP à mão levou 2,2× o tempo e 3× o código para o mesmo resultado). Um movimento novo que valeu a pena vira helper do kit depois. Pode escrever HTML/JS próprio em `back`/`front`, criar helpers em `scenes.py` e usar qualquer asset de `assets/`.
 
@@ -8,21 +8,41 @@ Você compõe o reel inteiro, cena a cena, em HyperFrames 0.8.217 + GSAP 3.14.2.
 3. `npx --yes hyperframes@0.8.217 check --json > check.json` (meta: 0 erros), depois `npx --yes hyperframes@0.8.217 snapshot --at "<meio de cada cena>" --no-end -o snaps` e olhe as folhas de contato.
 4. Corrija o que viu e repita. Só então renderize: `npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery`.
 
-## Camadas (z-index)
+## Só Motion (sem locutor: `speaker: false` no compose.json)
+Reel 100% de animação e infográfico: **não há locutor na tela**; a voz (`assets/voice.m4a`) é só a trilha de narração. As seções marcadas "(com locutor)" não valem; vale o resto. Sem `cut.webm`, sem `plate.mp4`, sem enquadramentos M/L/XL/XXL, sem regras de rosto/braço/queixo. Ignore o que o roteiro falar do locutor.
+- **Fluxo:** leia também `ref_site/site.md` (se existir) e escreva `scenes.py` com `scene(n, a, b, bg, None, back=..., front=...)`: câmera sempre `None`.
+- **Referência visual:** `ref_site/` tem capturas do site da marca e `ref_site/site.md` tem paleta, fonte e textos. Olhe as imagens com Read antes de escrever. Reproduza a linguagem do site (fundo preto, títulos em âmbar grosso, cards arredondados e inclinados em cores vivas, balão como logo), não copie o layout de página.
+- **Layout sem locutor:**
+  1. Cada cena ocupa a tela inteira: nenhum quadro vazio ou meio vazio. Hierarquia clara: um elemento dominante e apoio menor.
+  2. Infográficos de verdade: números que contam, barras e linhas que se desenham, comparações, listas que se preenchem, diagramas, mapas de trilhas. O dado vem da fala.
+  3. Texto não sobrepõe texto. A mesma palavra gigante nunca aparece duas vezes seguidas.
+  4. Zonas seguras: topo 200, base 380, laterais 70 px para texto importante.
+  5. Ritmo: siga `pace` do compose.json (`every` = algo novo a cada N s; `scene` = duração mínima e máxima da cena); nunca o mesmo tipo de cena duas vezes seguidas; gancho forte nos 3 primeiros segundos; passagem entre cenas pelo `tr=` de `scene()` (`push`, `fade`, `slide`, `wipe`; `cut` só na batida forte).
+  6. CTA final: botão grande e URL legível.
+- **Ilustração em código (`ILUSTRACAO.md`):** `ILUSTRACAO.md` é o estilo de desenho desta marca (materiais, cor, linha, luz, moves nativos, motivos): leia antes do treatment. Toda ilustração de uma cena é uma destas três coisas: desenhada em `canvas()` (Canvas 2D), construída em `scene3d()` (three.js com luz, sombra e névoa) ou uma imagem do site em `assets/img/`. Proibido como ilustração: pictograma de pessoa (cabeça redonda e corpo), ícone de linha fina, emoji, balão de fala com texto de exemplo ("Hi!", "Hello!"), texto em outra língua que a fala não diz. Cada ilustração é um objeto específico do que a fala diz, com material, luz e textura (grão, papel, duotone, sombra dura), seguindo as receitas do ILUSTRACAO.md; quando o brief pede "muita ilustração", pelo menos uma cena desenhada a cada ~10 s. A ilustração tem câmera própria (parallax entre camadas do desenho, `world=` da cena) e entra, vive e sai como o ILUSTRACAO.md §6 descreve.
+- **Imagens:** só as que já estão em `assets/img/`. Não baixe nada da internet.
+
+## Camadas (z-index) (com locutor)
 1 `#pcam` o vídeo original inteiro, escondido (backup para a Edição e o After; nunca aparece e o render final o remove) · 2 `bNN` fundo + texto gigante atrás (callback `back=`) · 3 `#ccam` locutor recortado (RVM, 1920×1080 com alfa; um clipe por janela de recorte) · 4 `sNN` frente (callback `front=`).
 - **Fundo da cena: nunca o vídeo do locutor desfocado ou replicado** (`bg='plate'` é erro). Use imagem do site, cor sólida ou gradiente da marca (`black`, `red`, `amber`, `cream`) ou ilustração desenhada.
 - Cada mídia só existe nos trechos em que aparece (o kit emite `cut.webm` por janela e `talk.mp4` por trecho de painel): o render extrai e pinta só esses quadros. Voz na trilha 8; efeitos em rodízio nas trilhas 9–14.
 - **Tipografia Gigante / Texto Atrás**: OBRIGATORIAMENTE em `back` (camada 2, z-index 2). O locutor recortado (`#ccam`, z-index 3) fica naturalmente por cima. NUNCA coloque tipografia gigante em `front` (z-index 4) tampando o locutor, e NUNCA use contorno artificial grosso (`-webkit-text-stroke`) para forçar o texto na frente do corpo.
 - **Camada `front` (z-index 4)**: Apenas para UI, mockups, cartões, recibos e badges na altura do peito ou topo, sem obstruir o rosto do locutor.
 
-## Enquadramentos do locutor (rosto em x≈980 de 1920)
-M 0,95 · L 1,2 (padrão) · XL 1,5 (punch-in) · XXL 1,8 (mão erguida, CTA). Modos de câmera: `hold`, `snap`, `push`, `shake`. Troque de enquadramento a cada 2–4 s. Nunca "locutor pequeno no canto".
+## Enquadramentos do locutor (rosto em x≈980 de 1920) (com locutor)
+M 0,95 · L 1,2 (padrão) · XL 1,5 (punch-in) · XXL 1,8 (mão erguida, CTA). Modos de câmera: `hold`, `snap`, `push`, `shake`. Troque de enquadramento no ritmo de `pace.framing` do compose.json. Nunca "locutor pequeno no canto".
 
-## Speech Screen (formato com painel)
+## Speech Screen (formato com painel) (com locutor)
 Quando `compose.json` traz `panel` e `cutWindows`, o recorte só existe nas janelas listadas (fora delas o alfa do cut.webm é vazio). Cena fora de uma janela: `cam='panel'` (o vídeo bruto do locutor, assets/talk.mp4, ocupa o painel de baixo a partir de `H*panel.top`, com uma régua na cor de destaque; toda a animação fica acima, e a checagem de layout reprova texto sobre o painel) ou `cam=None` (tela cheia). A CTA fica na última janela, com XXL. `render()` reprova câmera de recorte fora das janelas.
+## Outros planos do locutor (só os de `planos` do compose.json) (com locutor)
+- `cam='panel-top'`: o painel do locutor (vídeo cru, `assets/talk.mp4`) fica em cima, de 0 até `H*panel.top`, com a régua embaixo dele; a animação ocupa o resto e a checagem de layout reprova texto sobre o painel. Só em formato com `panel.side` `top`. `cam='panel'` é o espelho (painel embaixo, `panel.side` `bottom`); usar o errado é erro.
+- `cam='raw'` com `bg='clear'`: o vídeo original em tela cheia, recortado em cover e centrado no rosto (`faceX`), com os gráficos por cima. Não há recorte nem máscara: nada de texto sobre o rosto, e `front` só na altura do peito (a checagem de rosto não cobre este plano). O fundo sólido esconderia o vídeo, então `bg='clear'` é obrigatório e só vale com `raw` ou `react`.
+- `cam='react'` com `bg='clear'`: o vídeo de referência (`assets/ref.mp4`, só existe se o projeto tem um vídeo de referência) ocupa a metade oposta ao painel e o locutor cru fica no painel. Use para reagir ao vídeo; os gráficos vão por cima de tudo.
+- CTA continua exigindo locutor XXL (recortado): nenhum destes planos serve para ela.
+
 O `hyperframes check` pode acusar `canvas_covered` no fundo (`bgfill`) de uma cena de painel: é falso positivo, o painel (`#tcam`) fica fora do `#world` e cobre o fundo; confira no snapshot e siga.
 
-## Recorte e centro do rosto
+## Recorte e centro do rosto (com locutor)
 - Recorte sempre RVM (`rvm_mobilenetv3_fp32.onnx`), nunca u2net: a máscara u2net fazia o braço sumir em 9 cenas e tremia.
 - O recorte NÃO é pré-cortado em 9:16: usa a largura inteira da fonte (1920×1080, alfa fora do corpo), ancorado na base. Um corte 9:16 de 608 px corta os braços (o corpo tem ≈840 px).
 - O rosto de cada fonte fica em `faceX` (compose.json, da trilha do nariz). 980 vale para fonte de 1920 px de largura. Se a checagem avisar `cabeça centrada em x=…`, corrija o `faceX` e o crop do plate, não o enquadramento.
@@ -30,7 +50,7 @@ O `hyperframes check` pode acusar `canvas_covered` no fundo (`bgfill`) de uma ce
 - Fonte 9:16 (2160×3840, por exemplo): o recorte vira uma faixa de ≈608 px no meio do palco, e o braço que sai do quadro da fonte já não existe no arquivo. Esse caso aparece como aviso "braço ou corpo cortado pela borda da faixa". Não se resolve no compositor: refilme ou exporte em 16:9 com o braço no quadro.
 - Plate (fundo desfocado): 608 px centrados no rosto, `crop=608:1080:(faceX−304):0,scale=540:960,gblur=sigma=18,scale=1080:1920`.
 
-## Regras de layout (do cliente)
+## Regras de layout (do cliente) (com locutor)
 1. Braços nunca cortados no meio da tela: o recorte usa a largura inteira, sem borda reta visível.
 2. Um destaque por cena (palavra gigante atrás, contorno vazado, número no card ou palavra no B-roll). Sem legenda simples; a mesma palavra nunca aparece duas vezes.
 3. Texto não sobrepõe texto. Pílulas só com informação nova.
@@ -38,7 +58,7 @@ O `hyperframes check` pode acusar `canvas_covered` no fundo (`bgfill`) de uma ce
 5. Nada sobre o rosto: cards e imagens acima da cabeça; apoio na altura do peito.
 6. CTA: locutor XXL; destaque, botão menor e URL pequena, tudo acima de 380 px da base, sem encostar no queixo.
 7. Zonas seguras: topo 200, base 380, laterais 70 px.
-8. Ritmo: nada sem mudança visual por mais de 3 s; ~1,5 s por estímulo; card de 1,2 a 3 s; nunca o mesmo tipo de card duas vezes seguidas; gancho forte nos 3 primeiros segundos; passagem entre cenas pelo `tr=` de `scene()` (corte seco só na batida forte).
+8. Ritmo: siga `pace` do compose.json (`every` = algo novo a cada N s, `scene` = duração mínima e máxima da cena, `framing`, `hold`); nada sem mudança visual por mais de 2 × `every`; nunca o mesmo tipo de card duas vezes seguidas; gancho forte nos 3 primeiros segundos; passagem entre cenas pelo `tr=` de `scene()` (corte seco só na batida forte).
 9. Texto cabe inteiro na zona segura: meça a largura e reduza o corpo até caber; nunca cortado pelas laterais nem coberto por faixa, card ou locutor.
 10. Número grande em cor forte da paleta sobre fundo claro (ou o inverso), contraste de pelo menos 4,5:1; nunca vermelho sobre vinho ou preto.
 11. Imagem só quando mostra o que a fala diz. Print de notícia, logo ou tela sem ligação com a frase fica fora.
@@ -60,6 +80,7 @@ A peça visual de uma cena vem, nesta ordem: **1)** a biblioteca do reel (`asset
 ## Estilos prontos do kit
 Helpers testados (cada um devolve `(html, js)`; junte com `both(...)`; `at` é relativo ao início da cena; `k=` separa duas instâncias na mesma cena). Use como ponto de partida, não em toda cena: um estilo novo por cena, sem repetir o mesmo dois seguidos.
 - **Imagens do site**: `floatimg(p, src, x, y, w, at, rot, drift, d)` card flutuando (sombra, rotação leve, entra com mola, deriva ida e volta); várias por cena, em `front` ao redor do locutor ou na área de cima do painel.
+- **Vídeo da biblioteca (b-roll)**: `footage(p, src, x, y, w, h, d, at, start)` janela de vídeo mudo com cantos redondos (assets/video/, trechos de 15 s); `d` = segundos da cena, `start` = segundo do arquivo. Nunca sobre o rosto. **Trilha**: `music(src, vol=.16)` uma vez no scenes.py, fora das cenas (assets/music/ ou assets/lib/music/).
 - **Tipografia estrutural** (palavras com papel físico): `cascade` palavras que caem uma por batida e empilham (a última em destaque; `back`) · `lintel` palavra-viga que aperta a frase numa fresta · `hang` palavra descida por cabos que verga a base · `column` palavra que sobe e gira até virar coluna · `platform` palavras anteriores formam um piso justificado e a final assenta nele · `aperture` parede com a palavra cuja letra vira íris e abre a cena (no início da cena; escolha uma letra do meio da palavra) · `phrase` frase que sobe por máscara em grupos (`|`).
 - **Vídeo como código**: `slam` uma palavra por batida, a última invertida · `code` editor digitado com sintaxe · `diff` linhas +/− · `count` número que conta e pousa · `braces` assinatura `{ TÍTULO }` · `typeline` linha monoespaçada digitada.
 - **UI que se transforma**: `morph` um objeto que passa por estados sem corte · `iris` revelação circular de uma camada · `flood` cor inundando a tela · `glass` painel de vidro que nasce como gota · `pay` botão → loader → check · `toggle` · `tabs` abas com indicador líquido · `island` ilha dinâmica no topo · `toast` · `cmdk` paleta ⌘K que filtra · `widget` card de métrica com gráfico.
@@ -106,7 +127,7 @@ Composições do catálogo HyperFrames já instaladas em `motions/`. Use só no 
 - Uma timeline pausada por composição em `window.__timelines[id]`.
 - Cenas encostadas cobrindo 0→DUR (o `render()` confere com assert).
 
-## Checagem automática do locutor
+## Checagem automática do locutor (com locutor)
 Roda sozinha dentro de `render()` (`kit.py`); sem locutor mede só texto e zonas seguras. Erro para o render; aviso fica para a sua revisão. Medido no Chrome com o runtime do HyperFrames (`server/layout_check.mjs`) e no alfa do `cut.webm`.
 - **Erro, na hora (lint do kit)**: câmera fora de `FR`/modos; `broll` com locutor; CTA (`cta=True` em `scene(...)`) sem XXL; `-webkit-text-stroke`; tipografia gigante (`class="giant"`) em `front`.
 - **Erro, medido**: cartão ou texto da frente sobre o rosto ou o queixo; cabeça cobrindo mais de 50% de palavra atrás (desça o locutor); texto fora das zonas seguras (topo 200, base 380, laterais 70 px).
@@ -117,5 +138,5 @@ Roda sozinha dentro de `render()` (`kit.py`); sem locutor mede só texto e zonas
 ## O que olhar nas folhas de contato
 Reprove e refaça a cena se: braço, mão ou punho cortado reto; palavra encostando na borda; texto atrás coberto >50%; texto ou card sobre rosto ou queixo; dois textos encostados ou palavra repetida; CTA na zona de baixo; resto de cenário no recorte; texto cortado, coberto ou sem contraste; dois fundos escuros seguidos. A checagem automática cobre o que é medível; o resto é com os olhos. Avisos intencionais podem ficar.
 
-## Limite conhecido
+## Limite conhecido (com locutor)
 - rd-09: o gesto de soco cruza o queixo por volta de 61,2 s. Não resolvido. A checagem não pega, porque não é texto nem cartão.

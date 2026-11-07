@@ -38,12 +38,15 @@ test('format ids cannot leave the formats folder', () => {
   assert.ok(existsSync(join(P.WS, 'victim')));
 });
 
-test('updateFormat merges deeply: a partial editingStyle keeps its siblings', () => {
+test('updateFormat merges deeply: a partial safeZones keeps its siblings, and a bad shot is refused', () => {
   P.createFormat('deep');
-  const next = P.updateFormat('deep', { editingStyle: { punchIns: { zoomScale: 1.4 } } });
-  assert.equal(next.editingStyle.punchIns.zoomScale, 1.4);
-  assert.deepEqual(next.editingStyle.punchIns.intervalSeconds, [4, 7]);
-  assert.equal(next.editingStyle.pacing, 'dynamic');
+  const next = P.updateFormat('deep', { safeZones: { top: 250 } });
+  assert.equal(next.safeZones.top, 250);
+  assert.equal(next.safeZones.bottom, 380);
+  assert.deepEqual(next.planos, ['cut', 'none']);
+  assert.throws(() => P.updateFormat('deep', { planos: ['zoom'] }), /plano desconhecido/);
+  assert.throws(() => P.createFormat('bad', { name: 'x', planos: [] }), /planos/);
+  assert.equal(existsSync(join(P.WS, 'formats', 'bad')), false);   // a refused create leaves no folder behind
 });
 
 test('a createProject that fails leaves no folder behind, so the name can be used again', async () => {
@@ -190,4 +193,18 @@ test('the step lock is a file: another live server holds it, a dead one does not
   assert.equal(P.getBusy(st.id), null);
   await assert.rejects(P.final(st.id, ['9:16']), /master\.mp4|ffprobe/);   // got past the lock, failed later on the missing master
   assert.ok(!existsSync(lock), 'the lock is released after the step');
+});
+
+test('getFormat lists the preview frames beside format.json, serves only those, and updateFormat never writes them', () => {
+  P.createFormat('com-previa', { name: 'Prévia', planos: ['cut', 'none'] });
+  assert.deepEqual(P.getFormat('com-previa').frames, []);
+  const dir = join(P.WS, 'formats', 'com-previa', 'frames');
+  mkdirSync(dir);
+  for (const f of ['2.jpg', '0.jpg', '1.jpg', 'notes.txt']) writeFileSync(join(dir, f), '');
+  assert.deepEqual(P.getFormat('com-previa').frames, ['0.jpg', '1.jpg', '2.jpg']);
+  assert.equal(P.formatFrameFile('com-previa', '1.jpg'), join(dir, '1.jpg'));
+  assert.throws(() => P.formatFrameFile('com-previa', 'notes.txt'), /no frame/);
+  assert.throws(() => P.formatFrameFile('com-previa', '../format.json'), /no frame/);
+  P.updateFormat('com-previa', { frames: ['x.jpg'], regras: 'r' });
+  assert.ok(!('frames' in JSON.parse(readFileSync(join(P.WS, 'formats', 'com-previa', 'format.json'), 'utf8'))));
 });

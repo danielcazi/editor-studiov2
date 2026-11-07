@@ -1,0 +1,8 @@
+{
+  "id": "silkscreen-poster",
+  "name": "Pôster em serigrafia",
+  "description": "Tintas chapadas e opacas puxadas uma de cada vez pela tela: 4 a 6 tintas, céu em faixas escalonadas no lugar de degradê, frestas de papel onde o registro escorrega.",
+  "pack": "silkscreen-poster.md",
+  "engine": "silkscreen",
+  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='silkscreen')."
+}

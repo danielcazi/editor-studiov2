@@ -1,0 +1,7 @@
+{
+  "id": "visual-investigation",
+  "name": "Investigação visual",
+  "description": "Uma mesa fria de evidências: print do site, dado da fala, frase citada e contagem, lado a lado em painéis duros, todos lendo o mesmo relógio.",
+  "pack": "visual-investigation.md",
+  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve."
+}
