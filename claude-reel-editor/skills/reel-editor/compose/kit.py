@@ -443,11 +443,11 @@ def render():
     # raw: o vídeo original em tela cheia; react: o vídeo de referência na metade oposta ao painel. Ambos na camada funda do mundo, com os gráficos por cima (bg="clear")
     raw_html = f'<div id="rcam" style="position:absolute;inset:0;opacity:0;pointer-events:none">{"".join(clip(i, "rawfull", "assets/raw.mp4", a, b, 16) for i, (a, b) in enumerate(raw_ranges))}</div>' if SPEAKER and raw_ranges else ''
     react_html = f'<div id="rfcam" style="position:absolute;left:0;width:{W}px;top:{PANEL_H if PANEL_SIDE == "top" else 0}px;height:{H - PANEL_H}px;overflow:hidden;opacity:0;pointer-events:none">{"".join(clip(i, "refclip", "assets/ref.mp4", a, b, 17) for i, (a, b) in enumerate(ref_ranges))}</div>' if SPEAKER and ref_ranges else ''
-    # camada 1: o vídeo original inteiro, escondido, só como backup para a Edição e o After (data-backup: o render final o remove)
-    speaker_html = (f"""
-      <div id="pcam" style="z-index:1;position:absolute;inset:0;opacity:0;pointer-events:none"><video id="raw" class="clip" src="assets/raw.mp4" data-start="0" data-duration="{DUR}" data-track-index="0" muted playsinline data-backup data-layout-allow-occlusion></video></div>
-      <div id="ccam" style="z-index:3">{cut_clips}</div>
-""" if SPEAKER else '')
+    # camada 1: o vídeo original inteiro, escondido, só como backup para a Edição e o After (data-backup: o render final o remove).
+    # Também no Só Motion (sem locutor na tela), desde que assets/raw.mp4 exista
+    pcam_html = (f'<div id="pcam" style="z-index:1;position:absolute;inset:0;opacity:0;pointer-events:none"><video id="raw" class="clip" src="assets/raw.mp4" data-start="0" data-duration="{DUR}" data-track-index="0" muted playsinline data-backup data-layout-allow-occlusion></video></div>'
+                 if SPEAKER or os.path.exists('assets/raw.mp4') else '')
+    ccam_html = f'<div id="ccam" style="z-index:3">{cut_clips}</div>' if SPEAKER else ''
     open('index.html', 'w').write(f"""<!doctype html>
     <html lang="pt-BR" data-resolution="{'landscape' if W > H else 'portrait'}">
     <head>
@@ -474,9 +474,9 @@ def render():
     <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="{DUR}" data-width="{W}" data-height="{H}">
       <div id="world">
-      <div id="deep" style="{depth('deep')}">{speaker_html.split('<div id="ccam"')[0] if SPEAKER else ''}{raw_html}{react_html}</div>
+      <div id="deep" style="{depth('deep')}">{pcam_html}{raw_html}{react_html}</div>
       <div id="mid" style="{depth('mid')}">{(chr(10) + '  ').join(mid_hosts)}</div>
-      {('<div id="ccam"' + speaker_html.split('<div id="ccam"')[1]) if SPEAKER else ''}
+      {ccam_html}
       <div id="near" style="{depth('near')}">{(chr(10) + '  ').join(near_hosts)}</div>
       </div>
       {panel_html}
