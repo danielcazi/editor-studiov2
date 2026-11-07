@@ -19,5 +19,5 @@
     "none"
   ],
   "janelas": null,
-  "regras": "Locutor recortado em tela cheia na maior parte do reel; cena sem locutor (none) só quando a ilustração precisa da tela toda."
+  "regras": "Locutor recortado em tela cheia na maior parte do reel. O gancho e a CTA são em recorte fechado com texto gigante atrás. O enquadramento acompanha a fala: fecha na afirmação forte, abre na explicação. Texto ao lado do rosto, no lado oposto a faceX, nunca sobre o rosto ou o queixo. Cena sem locutor (none) só quando a ilustração precisa da tela toda."
 }
