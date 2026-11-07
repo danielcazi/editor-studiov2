@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Clean a talking-head voice track: light noise removal (DeepFilterNet + gate), de-essing, gentle EQ + compression, two-pass loudness to -14 LUFS.
-Usage: clean_audio.py <clip> <out.wav> [--no-denoise]   (noise removal is ON by default: birds, traffic, fans, room hiss)"""
+Usage: clean_audio.py <clip> <out.wav> [--no-denoise] [--no-loudnorm]   (both ON by default: noise removal for birds, traffic, fans, room hiss; --no-loudnorm keeps the clip's own level)"""
 import array, glob, json, math, os, re, shutil, subprocess, sys, tempfile, wave
 
 src_in, out = sys.argv[1], sys.argv[2]
-denoise = (sys.argv[3] if len(sys.argv) > 3 else "--denoise") == "--denoise"
+flags = sys.argv[3:]
+denoise, loudnorm = "--no-denoise" not in flags, "--no-loudnorm" not in flags
 def ff(*a, **kw): return subprocess.run(["ffmpeg", *map(str, a)], **kw)
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -23,11 +24,12 @@ with tempfile.TemporaryDirectory() as tmp:
     # light 3:1 compression (keeps it natural, not squashed).
     gate = "agate=threshold=0.015:ratio=3:range=0.25:attack=4:release=150," if denoise else ""
     chain = gate + "highpass=f=85,equalizer=f=220:t=q:w=1:g=-2.5,equalizer=f=3200:t=q:w=1:g=2.5,highshelf=f=9000:g=2,deesser=i=0.4:m=0.5:f=0.5,acompressor=ratio=3:threshold=-20dB:attack=5:release=80"
-    LN = "loudnorm=I=-14:TP=-1.5:LRA=7"
-    r = ff("-hide_banner", "-i", src, "-af", f"{chain},{LN}:print_format=json", "-f", "null", "-", capture_output=True, text=True)
-    m = json.loads(re.search(r"^\{.*?^\}", r.stderr + r.stdout, re.S | re.M).group(0))
-    ff("-v", "error", "-y", "-i", src, "-af", f"{chain},{LN}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}"
-       f":measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true", "-ar", "48000", out, check=True)
+    if loudnorm:
+        LN = "loudnorm=I=-14:TP=-1.5:LRA=7"
+        r = ff("-hide_banner", "-i", src, "-af", f"{chain},{LN}:print_format=json", "-f", "null", "-", capture_output=True, text=True)
+        m = json.loads(re.search(r"^\{.*?^\}", r.stderr + r.stdout, re.S | re.M).group(0))
+        chain += f",{LN}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true"
+    ff("-v", "error", "-y", "-i", src, "-af", chain, "-ar", "48000", out, check=True)
 
 # Sound-engineer check: the gaps between words must be quiet. 10th-percentile 50 ms level = the background.
 w = wave.open(out); sr = w.getframerate(); a = array.array("h"); a.frombytes(w.readframes(w.getnframes()))

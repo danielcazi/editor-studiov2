@@ -3,6 +3,7 @@
 Run after the person approves edl.json, before cut.py. Rewrites edl.json (the original is kept as edl_rough.json).
 Usage: python3 tighten.py <reel-folder>
        python3 tighten.py <reel-folder> --detect   only find the fillers (writes fillers.json); run before the review page
+       python3 tighten.py <reel-folder> --pauses-only   only shorten the pauses (no Whisper pass: the words come from the user's .srt)
 
 How: Whisper normally hides fillers inside neighbouring words, so it is re-run with a prompt full of "um, uh",
 which makes it write them down. Pauses come from silencedetect on the cleaned voice. Every cut edge keeps the preset's
@@ -11,7 +12,7 @@ import json, os, re, shutil, subprocess, sys
 from pathlib import Path
 
 reel = Path(sys.argv[1]).expanduser()
-DETECT = "--detect" in sys.argv[2:]
+DETECT, PAUSES_ONLY = "--detect" in sys.argv[2:], "--pauses-only" in sys.argv[2:]
 edl = {} if DETECT else json.load(open(reel / "edl.json"))
 voice = reel / edl.get("audio", "voice.wav")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -23,41 +24,42 @@ LANG = os.environ.get("REEL_LANG", "pt")
 
 # 1. fillers, via Whisper with a filler-heavy prompt
 cuts = []
-def find_whisper():
-    cli = shutil.which("whisper-cli") or next((str(p) for p in Path("~/.cache/hyperframes/whisper").expanduser().rglob("whisper-cli.exe" if sys.platform == "win32" else "whisper-cli")), None)
-    model = next(iter(sorted(Path("~/.cache/hyperframes/whisper/models").expanduser().glob("ggml-small.bin"))), None)
-    return cli, model
-cli, model = find_whisper()
-if not (cli and model):   # fresh install (or the ElevenLabs route): HyperFrames' transcriber downloads whisper-cli + the model
-    print("local Whisper not installed yet: installing it (one time, a few minutes)")
-    try:
-        subprocess.run([shutil.which("npx") or "npx", "-y", "hyperframes@0.8.217", "transcribe", str(voice), "-d", str(reel / "_whisper_setup"), "--json", "--model", "small", "--language", LANG],
-                       capture_output=True, cwd=str(reel))
-    except OSError as e:
-        print("couldn't install Whisper:", e)
-    shutil.rmtree(reel / "_whisper_setup", ignore_errors=True)
+if not PAUSES_ONLY:
+    def find_whisper():
+        cli = shutil.which("whisper-cli") or next((str(p) for p in Path("~/.cache/hyperframes/whisper").expanduser().rglob("whisper-cli.exe" if sys.platform == "win32" else "whisper-cli")), None)
+        model = next(iter(sorted(Path("~/.cache/hyperframes/whisper/models").expanduser().glob("ggml-small.bin"))), None)
+        return cli, model
     cli, model = find_whisper()
-found = False
-if cli and model:
-    wav16 = reel / "v16.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(voice), "-ar", "16000", "-ac", "1", str(wav16)], check=True)
-    r = subprocess.run([cli, "-m", str(model), "-f", str(wav16), "--prompt", "Hum, é, tipo, né, ahn, hã, hum.", "-l", LANG,
-                        "-ml", "1", "-sow", "-oj", "-of", str(reel / "fillers")], capture_output=True, text=True)
-    if r.returncode == 0 and (reel / "fillers.json").exists():
-        found = True
-        toks = [(t["text"].strip(), t["offsets"]["from"] / 1000, t["offsets"]["to"] / 1000)
-                for t in json.load(open(reel / "fillers.json"))["transcription"] if t["text"].strip()]
-        for k, (txt, a, b) in enumerate(toks):
-            if re.sub(r"[\W\d_]", "", txt.lower()) in FILLERS:
-                nxt = toks[k + 1][1] if k + 1 < len(toks) else b
-                cuts.append((a - 0.02, max(b, min(nxt, a + 0.7)) - 0.02))
-        print(f"fillers found: {len(cuts)}", [round(a, 1) for a, _ in cuts])
-    else:
-        (reel / "fillers.json").unlink(missing_ok=True)   # never leave a stale or half-written file behind
-        print("whisper-cli failed:", (r.stderr or "").strip()[-300:])
-if not found:
-    print("FILLERS NOT DETECTED: hum/ahn won't be cut automatically. Tell the person, and offer to cut them by hand on the review.")
-if DETECT: sys.exit(0 if found else 3)
+    if not (cli and model):   # fresh install (or the ElevenLabs route): HyperFrames' transcriber downloads whisper-cli + the model
+        print("local Whisper not installed yet: installing it (one time, a few minutes)")
+        try:
+            subprocess.run([shutil.which("npx") or "npx", "-y", "hyperframes@0.8.217", "transcribe", str(voice), "-d", str(reel / "_whisper_setup"), "--json", "--model", "small", "--language", LANG],
+                           capture_output=True, cwd=str(reel))
+        except OSError as e:
+            print("couldn't install Whisper:", e)
+        shutil.rmtree(reel / "_whisper_setup", ignore_errors=True)
+        cli, model = find_whisper()
+    found = False
+    if cli and model:
+        wav16 = reel / "v16.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(voice), "-ar", "16000", "-ac", "1", str(wav16)], check=True)
+        r = subprocess.run([cli, "-m", str(model), "-f", str(wav16), "--prompt", "Hum, é, tipo, né, ahn, hã, hum.", "-l", LANG,
+                            "-ml", "1", "-sow", "-oj", "-of", str(reel / "fillers")], capture_output=True, text=True)
+        if r.returncode == 0 and (reel / "fillers.json").exists():
+            found = True
+            toks = [(t["text"].strip(), t["offsets"]["from"] / 1000, t["offsets"]["to"] / 1000)
+                    for t in json.load(open(reel / "fillers.json"))["transcription"] if t["text"].strip()]
+            for k, (txt, a, b) in enumerate(toks):
+                if re.sub(r"[\W\d_]", "", txt.lower()) in FILLERS:
+                    nxt = toks[k + 1][1] if k + 1 < len(toks) else b
+                    cuts.append((a - 0.02, max(b, min(nxt, a + 0.7)) - 0.02))
+            print(f"fillers found: {len(cuts)}", [round(a, 1) for a, _ in cuts])
+        else:
+            (reel / "fillers.json").unlink(missing_ok=True)   # never leave a stale or half-written file behind
+            print("whisper-cli failed:", (r.stderr or "").strip()[-300:])
+    if not found:
+        print("FILLERS NOT DETECTED: hum/ahn won't be cut automatically. Tell the person, and offer to cut them by hand on the review.")
+    if DETECT: sys.exit(0 if found else 3)
 
 # 2. pauses, via silencedetect on the cleaned voice. The threshold sits just above THIS clip's background noise
 #    (outdoor or noisy rooms never reach a fixed -40 dB, so a fixed threshold finds nothing).

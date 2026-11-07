@@ -11,15 +11,28 @@ export function shortcutPlan(preEdited: boolean, hasSrt: boolean): Plan {
   return { transcribe: hasSrt ? 'srt' : 'whisper', cut: preEdited ? 'none' : hasSrt ? 'srt' : 'tighten' };
 }
 
-// SRT-guided cut: keep the spoken stretches, drop any gap between words longer than `gap`, `air` seconds either side.
-export function spansFromWords(words: Word[], gap: number, air: number, dur: number): Span[] {
-  const spans: Span[] = [];
-  for (const w of words) {
-    const last = spans.at(-1);
-    if (last && w.start - last[1] <= gap) last[1] = w.end;
-    else spans.push([w.start, w.end]);
+// Source-clip time -> time in the cut master (a time inside a removed gap lands on the join).
+export function remapTime(t: number, spans: Span[], speed: number): number {
+  let acc = 0;
+  for (const [a, b] of spans) {
+    if (t < a) break;
+    if (t <= b) return r3((acc + t - a) / speed);
+    acc += b - a;
   }
-  return spans.map(([a, b]) => [r3(Math.max(0, a - air)), r3(Math.min(dur, b + air))]);
+  return r3(acc / speed);
+}
+
+// The user's .srt with its cues moved to the cut master; a cue that was cut out entirely is dropped.
+export function remapSrt(srt: string, spans: Span[], speed: number): string {
+  const sec = (s: string) => { const [h, m, rest] = s.split(':'); return +h * 3600 + +m * 60 + +rest.replace(',', '.'); };
+  const fmt = (t: number) => new Date(Math.round(t * 1000)).toISOString().slice(11, 23).replace('.', ',');
+  const cues = srt.replace(/^\uFEFF/, '').trim().split(/\r?\n\s*\r?\n/).flatMap(block => {
+    const m = block.match(/(\d\d:\d\d:\d\d[,.]\d{3}) --> (\d\d:\d\d:\d\d[,.]\d{3})\s*\n([\s\S]*)/);
+    if (!m) return [];
+    const a = remapTime(sec(m[1]), spans, speed), b = remapTime(sec(m[2]), spans, speed);
+    return b - a < 0.05 ? [] : [[a, b, m[3].trim()] as const];
+  });
+  return cues.map(([a, b, text], i) => `${i + 1}\n${fmt(a)} --> ${fmt(b)}\n${text}`).join('\n\n') + '\n';
 }
 
 // Source-clip word times -> times in the cut master (spans in play order, then the speed-up).

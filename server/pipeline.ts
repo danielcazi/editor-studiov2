@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { agent, ask, type Cost, MAX_TURNS_HIT } from './models.ts';
-import { cutWindows, deepMerge, FORMATS, lookOnly, PACE, pickFormats, paceFromSkill, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, spansFromWords, styleToSkill, type Pace, type Plan, type Word } from './lib.ts';
+import { cutWindows, deepMerge, FORMATS, lookOnly, PACE, pickFormats, paceFromSkill, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill, type Pace, type Plan, type Word } from './lib.ts';
 import { CAPTION_PRESETS, validateCaptionStyle, validateFont, validateFormat, validateIcon } from './validate.ts';
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
 import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
@@ -1978,17 +1978,18 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
     return st;
   }
 
-  await py(id, 'clean_audio.py', [raw, join(P, 'voice.wav')]);
+  // raw video: EQ, de-esser and compression only; the clip keeps its own noise floor and level (no denoise, no -14 LUFS)
+  await py(id, 'clean_audio.py', [raw, join(P, 'voice.wav'), '--no-denoise', '--no-loudnorm']);
   await py(id, 'transcribe.py', transcribeArgs);
   const words: Word[] = readJSON(join(P, 'transcript.json')).filter((w: Word) => w.text.trim());
   if (!words.length) fail('no speech found in the transcript');
   const dur = await duration(id, raw), pace = await pacing(id);
-  const keep = plan.cut === 'srt' ? spansFromWords(words, pace.pause_min, pace.air, dur) : [[0, dur]];
-  writeJSON(join(P, 'edl.json'), { source: basename(raw), audio: 'voice.wav', keep });
-  if (plan.cut === 'tighten') await py(id, 'tighten.py', [P]);
+  writeJSON(join(P, 'edl.json'), { source: basename(raw), audio: 'voice.wav', keep: [[0, dur]] });
+  // silences (silencedetect on voice.wav) are cut on both routes; fillers only without an .srt, since the .srt is the user's text
+  await py(id, 'tighten.py', plan.cut === 'srt' ? [P, '--pauses-only'] : [P]);
   await py(id, 'cut.py', [P], { REEL_PREVIEW: '1' });
   // every join transcribed on its own: a retake left in or a word clipped by the cut shows up here, not in the final (exit 3 = no local Whisper)
-  if (plan.cut === 'tighten' && (await run(id, PYTHON, [join(S, 'check_joins.py'), P], {}, true)).code === 1) emit(id, 'log', '⚠ emendas com problema (ver FLAG acima e joins.txt): confira o corte antes de seguir');
+  if ((await run(id, PYTHON, [join(S, 'check_joins.py'), P], {}, true)).code === 1) emit(id, 'log', '⚠ emendas com problema (ver FLAG acima e joins.txt): confira o corte antes de seguir');
   const long = await overLength(id, P, brand);
   if (long) emit(id, 'log', `⚠ ${long}: corte antes da entrega ou suba o limite`);
   // Whisper glues words across pauses, so after tighten its times can sit inside a cut: re-transcribe the master
@@ -1996,6 +1997,8 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
   const edl = readJSON(join(P, 'edl.json'));
   if (plan.cut === 'tighten') await py(id, 'transcribe.py', [join(P, 'master.mp4'), join(P, 'master_transcript.json')]);
   else writeJSON(join(P, 'master_transcript.json'), remapWords(words, edl.keep, edl.speed ?? pace.speed));
+  // the brief reads the .srt for the script and its times, so the cues follow the cut too
+  if (st.subtitle === 'source.srt') writeFileSync(join(P, 'master.srt'), remapSrt(readFileSync(join(P, 'source.srt'), 'utf8'), edl.keep, edl.speed ?? pace.speed));
   const master: Word[] = readJSON(join(P, 'master_transcript.json'));
   // qa.py's lost-words check compares Whisper with Whisper; SRT text would not match word for word
   if (plan.transcribe === 'whisper') writeFileSync(join(P, 'expected.txt'), master.map(w => w.text).join(' '));
@@ -2841,7 +2844,8 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     }
   }
   const words: Word[] = readJSON(join(P, 'transcript.json')), script = existsSync(join(P, 'script.json')) ? readJSON(join(P, 'script.json')) : {};
-  const srt = existsSync(join(P, 'source.srt')) ? readFileSync(join(P, 'source.srt'), 'utf8').replace(/^﻿/, '') : '';
+  const srtFile = ['master.srt', 'source.srt'].map(f => join(P, f)).find(existsSync);   // master.srt = cues moved to the cut (ingest)
+  const srt = srtFile ? readFileSync(srtFile, 'utf8').replace(/^\uFEFF/, '') : '';
   const brandMd = existsSync(join(brandDir(st.brand), 'brand.md')) ? readFileSync(join(brandDir(st.brand), 'brand.md'), 'utf8') : '';
   const refFile = join(P, 'reference.json'), refAnalysis = existsSync(refFile) ? Object.entries(readJSON(refFile)).map(([k, v]) => `- ${k}: ${v}`).join('\n') : '';
   const imgFiles = existsSync(join(A, 'img')) ? readdirSync(join(A, 'img')).filter(f => !f.startsWith('.')) : [];

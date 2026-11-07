@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cutWindows, deepMerge, lookOnly, PACE, paceFromSkill, pickFormats, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, spansFromWords, styleToSkill } from '../lib.ts';
+import { cutWindows, deepMerge, lookOnly, PACE, paceFromSkill, pickFormats, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill } from '../lib.ts';
 
 test('formats render in a fixed order and reject unknown ones', () => {
   assert.deepEqual(pickFormats(['4:5', '1:1', '9:16']), ['9:16', '1:1', '4:5']);
@@ -18,9 +18,10 @@ test('shortcut matrix (SPEC §3 step 1)', () => {
 
 const w = (text: string, start: number, end: number) => ({ text, start, end });
 
-test('SRT-guided spans split on long gaps and keep air', () => {
-  const words = [w('olá', 0.5, 1), w('pessoal', 1.1, 1.6), w('hoje', 3, 3.4), w('vamos', 3.5, 4)];
-  assert.deepEqual(spansFromWords(words, 0.6, 0.15, 4.05), [[0.35, 1.75], [2.85, 4.05]]);
+test('remapSrt moves cues to the cut, lands a time inside a gap on the join and drops cues cut out', () => {
+  const srt = '\uFEFF1\n00:00:00,000 --> 00:00:01,000\nolá\n\n2\n00:00:01,500 --> 00:00:02,500\nfora\n\n3\n00:00:02,800 --> 00:00:04,000\ncorte\nno meio\n';
+  assert.equal(remapSrt(srt, [[0, 1.2], [2.9, 4]], 1), '1\n00:00:00,000 --> 00:00:01,000\nolá\n\n2\n00:00:01,200 --> 00:00:02,300\ncorte\nno meio\n');
+  assert.equal(remapSrt(srt, [[0, 1]], 2), '1\n00:00:00,000 --> 00:00:00,500\nolá\n');
 });
 
 test('remap follows spans in play order and the speed-up', () => {
