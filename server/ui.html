@@ -6341,6 +6341,17 @@ async function projects() {
                   `).join('')}
                 </select>
               <div class="np-format-preview" id="npFmtPreview"></div>
+              <!-- Vídeo de reação: só para formatos com refVideo (Reação) -->
+              <div class="np-field" id="npReactBox" hidden style="margin-top:10px">
+                <label class="np-field-label"><span>Vídeo de reação</span><span class="opt">(obrigatório neste formato)</span></label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <button type="button" class="quiet-button" id="btnPickReact" style="font-size:12px;padding:8px 14px">📂 Escolher arquivo</button>
+                  <input type="file" id="npReactFileInput" accept=".mp4,.mov,.m4v" style="display:none">
+                  <span class="muted" style="font-size:11px">ou</span>
+                  <input class="np-input" type="url" id="npReactUrl" placeholder="https://instagram.com/reel/... (baixado inteiro)" style="flex:1;min-width:220px">
+                </div>
+                <div class="muted" id="npReactFile" style="font-size:11px;margin-top:4px">Nenhum arquivo escolhido. É o vídeo que aparece numa metade da tela enquanto o locutor reage; não é referência de estilo.</div>
+              </div>
             </div>
             <div class="np-field">
               <label class="np-field-label"><span>Estilo de motion</span><span class="opt">(automático deixa o diretor escolher)</span></label>
@@ -6460,6 +6471,22 @@ async function projects() {
     const nameInput = $('#npProjectName');
     const formatSelect = $('#npFormatSelect');
     const fmtPreview = $('#npFmtPreview');
+    let reactPath = '';   // Vídeo de reação (formats with refVideo): a picked path or an uploaded one
+    const reactBox = $('#npReactBox'), reactUrlInput = $('#npReactUrl'), reactFileLabel = $('#npReactFile'), reactFileInput = $('#npReactFileInput');
+    const fmtNeedsReact = () => !!fl.find(f => f.id === formatSelect.value)?.refVideo;
+    const setReactPath = p => { reactPath = p || ''; reactFileLabel.textContent = reactPath ? `Arquivo: ${reactPath.split(/[\\/]/).pop()}` : 'Nenhum arquivo escolhido. É o vídeo que aparece numa metade da tela enquanto o locutor reage; não é referência de estilo.'; };
+    const syncReactBox = () => { const on = fmtNeedsReact(); reactBox.hidden = !on; if (!on) { setReactPath(''); reactUrlInput.value = ''; } };
+    $('#btnPickReact').onclick = async () => {
+      if (!NATIVE_PICKER) return reactFileInput.click();
+      try { const r = await api('POST', '/pick-file', { kind: 'video' }); const p = r.paths?.[0] || r.path; if (p) setReactPath(p); } catch { reactFileInput.click(); }
+    };
+    reactFileInput.onchange = async () => {
+      const f = reactFileInput.files?.[0]; if (!f) return;
+      reactFileLabel.textContent = `Enviando ${f.name}...`;
+      try { const r = await fetch(`/upload?kind=video&name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f }); if (!r.ok) throw new Error(await r.text()); setReactPath((await r.json()).path); }
+      catch (err) { setReactPath(''); alert(`Erro ao enviar o vídeo de reação: ${err.message}`); }
+      reactFileInput.value = '';
+    };
     const refUrlInput = $('#npRefUrl');
     const preToggle = $('#npPreToggle');
     const btnCreate = $('#btnCreate');
@@ -6540,7 +6567,8 @@ async function projects() {
       updateFooterStatus();
     };
     const pickTile = (grid, attr, val) => grid.querySelectorAll('.np-tile').forEach(t => t.classList.toggle('active', t.dataset[attr] === val));
-    $('#npFormatGrid').querySelectorAll('[data-format]').forEach(t => t.onclick = () => { formatSelect.value = t.dataset.format; pickTile($('#npFormatGrid'), 'format', t.dataset.format); updateFormatPreview(); });
+    $('#npFormatGrid').querySelectorAll('[data-format]').forEach(t => t.onclick = () => { formatSelect.value = t.dataset.format; pickTile($('#npFormatGrid'), 'format', t.dataset.format); updateFormatPreview(); syncReactBox(); });
+    syncReactBox();   // the first tile is active at load
     $('#npStyleGrid').querySelectorAll('[data-style]').forEach(t => t.onclick = () => { $('#npMotionStyleSelect').value = t.dataset.style; pickTile($('#npStyleGrid'), 'style', t.dataset.style); updateFooterStatus(); });
     $('#npPaceBar').querySelectorAll('[data-pace]').forEach(b => b.onclick = () => { $('#npPaceSelect').value = b.dataset.pace; $('#npPaceBar').querySelectorAll('[data-pace]').forEach(x => x.classList.toggle('active', x === b)); updateFooterStatus(); });
     // a skill locks style, rhythm and (when it carries shots) the format: the selectors stay visible but cannot be changed
@@ -6934,7 +6962,9 @@ async function projects() {
     btnCreate.onclick = e => act(e.target, async () => {
       if (textMode) {
         if (!speechEl.value.trim() || !voiceEl.value) throw new Error('Cole o roteiro e escolha uma voz.');
+        if (fmtNeedsReact() && !reactPath && !reactUrlInput.value.trim()) throw new Error('Este formato precisa de um vídeo de reação: escolha um arquivo ou cole um link.');
         const st = await api('POST', '/projects', {
+          reactVideo: fmtNeedsReact() ? (reactPath ? { path: reactPath } : { url: reactUrlInput.value.trim() }) : undefined,
           name: nameInput.value.trim() || 'novo-video', text: speechEl.value, voice: { provider: provEl.value, voice: voiceEl.value }, character: charEl.value ? { name: charEl.value } : undefined,
           referenceUrl: refUrlInput.value.trim() || undefined, referenceNote: $('#npRefNote').value.trim() || undefined,
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
@@ -6951,6 +6981,8 @@ async function projects() {
 
       const baseName = nameInput.value.trim() || 'novo-video';
       const formatId = formatSelect.value || 'business-reels';
+      if (fmtNeedsReact() && !reactPath && !reactUrlInput.value.trim()) throw new Error('Este formato precisa de um vídeo de reação: escolha um arquivo ou cole um link.');
+      const reactVideo = fmtNeedsReact() ? (reactPath ? { path: reactPath } : { url: reactUrlInput.value.trim() }) : undefined;
       const brand = selectedBrand;
       const subtitle = subtitlePath || undefined;
       const referenceUrl = refUrlInput.value.trim() || undefined;
@@ -6972,6 +7004,7 @@ async function projects() {
             preEdited,
             brand,
             formatId,
+            reactVideo,
             images: imagePaths,
             styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
           });
@@ -6997,6 +7030,7 @@ async function projects() {
         preEdited,
         brand,
         formatId,
+        reactVideo,
         images: imagePaths,
         styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
       });

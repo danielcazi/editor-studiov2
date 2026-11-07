@@ -1598,6 +1598,8 @@ export async function createProject(o: {
   voice?: { provider: string; voice: string; language?: string };
   /** Brand character name (optionally a pose) that plays the speaker in formats with a cut-out. */
   character?: { name: string; pose?: string };
+  /** Reaction video (formats with refVideo: Reação): a local file or upload (`path`) or a link (`url`, downloaded whole). Stored as <project>/react.mp4; not a style reference. */
+  reactVideo?: { path?: string; url?: string };
 }) {
   const textMode = typeof o.text === 'string' && o.text.trim() !== '';
   const rawList = o.videos && o.videos.length
@@ -1623,6 +1625,13 @@ export async function createProject(o: {
   const extraReferenceUrls = refUrls.filter(u => u !== referenceUrl);
   const referenceNote = referenceUrl ? o.referenceNote?.trim().slice(0, 1000) || undefined : undefined;
   if (subtitle && (!SUB_EXT.includes(extname(subtitle).toLowerCase()) || !existsSync(subtitle))) fail(`subtitle must be an existing ${SUB_EXT.join('/')} file`);
+  // reaction video: required by a format with refVideo (Reação), refused elsewhere so a stray file never reaches the compose
+  let fmtNeedsReact = false;
+  try { fmtNeedsReact = !!getFormat(o.formatId || 'business-reels').refVideo; } catch {}
+  const reactPath = o.reactVideo?.path ? expandHome(o.reactVideo.path) : undefined, reactUrl = o.reactVideo?.url?.trim() || undefined;
+  if (fmtNeedsReact && !reactPath && !reactUrl) fail('este formato precisa de um vídeo de reação (arquivo ou link)');
+  if (reactPath && (!VIDEO_EXT.includes(extname(reactPath).toLowerCase()) || !existsSync(reactPath))) fail(`vídeo de reação inválido ou não encontrado: ${reactPath}`);
+  if (reactUrl && !/^https?:\/\/\S+$/.test(reactUrl)) fail(`link do vídeo de reação inválido (use http/https): ${reactUrl}`);
   
   const slug = String(o.name ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!slug) fail('name is required');
@@ -1683,6 +1692,17 @@ export async function createProject(o: {
     if (subtitle) {
       appendProjectLog(id, `📝 Legenda importada: ${basename(subtitle)}`);
       take(subtitle, join(P, subName!));
+    }
+    if (fmtNeedsReact) {
+      const dst = join(P, 'react.mp4');
+      if (reactPath) {
+        appendProjectLog(id, `🎬 Vídeo de reação importado: ${basename(reactPath)}`);
+        if (extname(reactPath).toLowerCase() === '.mp4') copyFileSync(reactPath, dst);   // copied, not moved: a batch of projects can share one reaction video
+        else await run(id, 'ffmpeg', ['-y', '-v', 'error', '-i', reactPath, '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', dst]);
+      } else {
+        appendProjectLog(id, `🎬 Baixando o vídeo de reação: ${reactUrl}`);
+        await run(id, YT_DLP, ['-f', 'best[ext=mp4]/best', '-o', dst, '--', reactUrl!]);   // whole, unlike the 60 s style reference
+      }
     }
 
     writeFileSync(join(P, '.gitignore'), '._*\nactivity.log\nraw.*\n*.mp4\n*.wav\nproj/\n*_whisper/\nqa_transcript/\nframes/\nref/\ncutout/\ncutout.webm\ncutout.json\nnose.json\nfillers.json\ncut_filter.txt\nafter-effects/\nref_extra/\nassets/user/\n' + COMPOSE_IGNORE);
@@ -2719,8 +2739,8 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     sfxManifest[f.replace(/\.[^.]+$/, '')] = { file: f, duration: (await probeMedia(join(sfxLib, f)).catch(() => ({ duration: 1 }))).duration, description: `efeito do estúdio (${f})`, onset: 0, peak: 0, source: 'workspace/library/sfx' };
   }
   writeJSON(join(A, 'sfx', 'manifest.json'), sfxManifest);
-  // react (SPEC-v9 §4): the reference video of the script step (ref/ref.mp4) goes beside the speaker; the kit lints a react scene without it
-  const refMp4 = join(P, 'ref', 'ref.mp4'), hasRef = !noSpeaker && !!fmtOf(st).refVideo && existsSync(refMp4);
+  // react (SPEC-v9 §4): the reaction video (react.mp4, or the style reference's ref/ref.mp4 for old projects) goes beside the speaker; the kit lints a react scene without it
+  const refMp4 = existsSync(join(P, 'react.mp4')) ? join(P, 'react.mp4') : join(P, 'ref', 'ref.mp4'), hasRef = !noSpeaker && !!fmtOf(st).refVideo && existsSync(refMp4);   // react.mp4 (the reaction video chosen at creation) wins over the style reference's clip
   if (hasRef) copyFileSync(refMp4, join(A, 'ref.mp4'));
   for (const [from, to] of [['cutout.webm', 'cut.webm'], ['master.mp4', 'raw.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json'], ['talk.mp4', 'talk.mp4']].filter(([f]) => (!noSpeaker || f === 'voice.m4a' || f === 'transcript.json' || f === 'master.mp4') && (f !== 'talk.mp4' || existsSync(join(P, f))))) if (media || (existsSync(join(P, from)) && !cutoutJobs.has(id))) { const src = join(P, from), dst = join(A, to); if (!existsSync(dst) || statSync(dst).size !== statSync(src).size || statSync(dst).mtimeMs < statSync(src).mtimeMs) copyFileSync(src, dst); }   // deferred: RVM writes cutout.webm in place, so a running job means a partial file. Só Motion keeps master.mp4 too: the hidden layer 1 (kit.py #pcam) for Edição and the After export
   // the brand as it is now (global + this project's override): the copy in the project folder goes stale when the brand gains a font or colour
