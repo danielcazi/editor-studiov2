@@ -1693,7 +1693,7 @@ export async function createProject(o: {
       return `assets/user/${name}`;
     });
     if (userImages.length) appendProjectLog(id, `🖼️ Imagens importadas: ${userImages.length}`);
-    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], ...(o.styleId ? { styleId: getStyle(o.styleId).id } : {}), ...(o.pace ? { pace: checkPace(o.pace) } : {}), ...(o.skillId ? { skillId: getSkill(o.skillId).id } : {}), ...(o.broll === true ? { broll: true } : {}), ...(o.character ? { character: o.character } : {}) };
+    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], ...(o.styleId ? { styleId: styleChoice(o.styleId) } : {}), ...(o.pace ? { pace: checkPace(o.pace) } : {}), ...(o.skillId ? { skillId: getSkill(o.skillId).id } : {}), ...(o.broll === true ? { broll: true } : {}), ...(o.character ? { character: o.character } : {}) };
     save(st);
     await run(id, 'git', ['init', '-q', P]);
     await run(id, 'git', ['-C', P, 'config', 'core.autocrlf', 'false']);
@@ -1713,7 +1713,13 @@ export const getProject = (id: string) => {
   const composedFormats = composedByAgent(st) ? FORMATS.filter(f => existsSync(join(composeDirOf(P, st, f), 'index.html'))) : [];
   const readyFinals = FORMATS.filter(f => existsSync(join(P, finalName(f))));
   const running = getBusy(id);
-  return { ...st, composed: true, composedFormats, readyFinals, primaryFormat: primaryAspect(st), running,
+  // the files the project was created from, so "Clonar projeto anterior" can feed them to createProject again (copied, not moved)
+  const sources = {
+    videos: VIDEO_EXT.map(e => join(P, 'raw' + e)).filter(existsSync),   // several uploads were concatenated: the clone gets one raw.mp4
+    subtitle: st.subtitle && existsSync(join(P, st.subtitle)) ? join(P, st.subtitle) : undefined,
+    images: (st.userImages ?? []).map(r => join(P, r)).filter(existsSync),
+  };
+  return { ...st, composed: true, composedFormats, readyFinals, primaryFormat: primaryAspect(st), running, sources,
     interrupted: !running && existsSync(composeMarker(id)) };   // a compose cut by a server restart (the marker outlived the lock)
 };
 // the marker compose() keeps while it runs; the user acknowledges it from the Revisão
@@ -1747,10 +1753,12 @@ export const paceOf = (st: { pace?: Pace }) => PACE[st.pace ?? 'dinamico'];
 // the pace the reel is made at: the skill's measured seconds per cut when it has one, otherwise the toggle
 export const effectivePace = (st: State) => { if (st.skillId) try { const p = paceFromSkill(getSkill(st.skillId)); if (p) return p; } catch {} return paceOf(st); };
 // one call for the four selectors (SPEC-v9 §5); a field left out is left alone, null clears the optional ones
+// 'none' = no illustration pack at all (the director gets no estilos/ list either); '' / undefined = the director picks one
+const styleChoice = (id: string) => id === 'none' ? 'none' : getStyle(id).id;
 export function setChoices(id: string, b: { formatId?: string; styleId?: string | null; skillId?: string | null; pace?: unknown }) {
   const st = load(id);
   if (b?.formatId !== undefined) { getFormat(b.formatId); st.formatId = b.formatId; }
-  if (b?.styleId !== undefined) st.styleId = b.styleId ? getStyle(b.styleId).id : undefined;
+  if (b?.styleId !== undefined) st.styleId = b.styleId ? styleChoice(b.styleId) : undefined;
   if (b?.skillId !== undefined) st.skillId = b.skillId ? getSkill(b.skillId).id : undefined;
   if (b?.pace !== undefined) st.pace = checkPace(b.pace);
   save(st);
@@ -2001,10 +2009,9 @@ export const ingest = (id: string) => locked(id, 'ingest', async st => {
 
 // Step 2 - Haiku cleans and segments, Opus writes script.json.
 const SEGMENTS = obj({ segments: { type: 'array', items: obj({ t_start: num, t_end: num, text: str }) } });
-const MOMENT = (types: string[]) => obj({
+const MOMENT = obj({
   t_start: num,
   t_end: num,
-  tipo_card: { type: 'string', enum: types },
   motion_style: str,
   visual_action: str,
   texto: str,
@@ -2012,7 +2019,7 @@ const MOMENT = (types: string[]) => obj({
   sfx: str,
   motivo: str
 });
-const SCRIPT = (types: string[]) => obj({ moments: { type: 'array', items: MOMENT(types) }, accentWords: { type: 'array', items: str } });
+const SCRIPT = obj({ moments: { type: 'array', items: MOMENT }, accentWords: { type: 'array', items: str } });
 
 export const script = (id: string) => locked(id, 'script', async st => {
   const P = projDir(id), brand = writeBrand(st);
@@ -2047,12 +2054,12 @@ export const script = (id: string) => locked(id, 'script', async st => {
       'enquadramento do locutor (M, L, XL, XXL ou sem locutor), o destaque único da cena (palavra gigante atrás, número, card, imagem) com a cor, o apoio (ícone, pílula, imagem) e a troca interna se a cena passa de 2,5 s. ' +
       'Never two moments in a row with the same background or the same kind of highlight.\n' +
       '- motion_style: The visual motion category (a short free label for the visual idea, e.g. "Manchete editorial", "Diagrama orbital", "Tipografia gigante", "UI & Mockup"; not a fixed list, vary it across the reel).\n' +
-      '- tipo_card: always "custom"; Opus 5.5 decides the motion later. visual_action and motion_style are only a brief: Opus redesigns each moment freely.\n' +
+      '- visual_action and motion_style are only a brief: Opus redesigns each moment freely.\n' +
       '- icone: the name of one of the brand icons, or "". sfx: a sound name or "". motivo: why this moment, in one short sentence. accentWords: one key word per sentence.',
     readDir: projDir(id),
     content: `Frames: ${frames.join(', ')}. Read each one before planning.\n` + siteFiles(id) + JSON.stringify({ duration: dur, segments, graphics: brand.graphics, sfx: brand.sfx,
       icons: (brand.icons ?? []).map((i: any) => ({ name: i.name, tags: i.tags })) }),
-    schema: SCRIPT(['custom']),
+    schema: SCRIPT,
   }, logCost(st));
   writeJSON(join(P, 'script.json'), res);
   // images, icons and 3D objects for the moments, downloaded now so the composer finds them in assets/ (never blocks the script)
@@ -2839,7 +2846,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const refFile = join(P, 'reference.json'), refAnalysis = existsSync(refFile) ? Object.entries(readJSON(refFile)).map(([k, v]) => `- ${k}: ${v}`).join('\n') : '';
   const imgFiles = existsSync(join(A, 'img')) ? readdirSync(join(A, 'img')).filter(f => !f.startsWith('.')) : [];
   // the noSpeaker style: chosen (followed to the letter, with the frames it came from) or, if none, the list the director picks from
-  const styleList = style || skill ? [] : listMotionStyles().map(sid => { try { return getStyle(sid); } catch { return null; } }).filter(Boolean);
+  const styleList = style || skill || st.styleId === 'none' ? [] : listMotionStyles().map(sid => { try { return getStyle(sid); } catch { return null; } }).filter(Boolean);
   // illustration packs (SPEC-v9 §2.2): the chosen style's pack becomes ESTILO.md; with none chosen the director reads the ones listed in estilos/
   const packOf = (x: any): string | null => x?.pack && safeId(x.pack) && existsSync(join(K, 'estilos', x.pack)) ? join(K, 'estilos', x.pack) : null;
   if (style && packOf(style)) copyFileSync(packOf(style)!, join(C, 'ESTILO.md'));

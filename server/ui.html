@@ -2436,6 +2436,7 @@
   .np-step.active b { background: var(--accent); color: #000; }
   .np-step-sep { color: var(--mute); }
   .np-recall { margin-left: auto; width: auto; max-width: 280px; }
+  .np-recall + .np-recall { margin-left: 8px; }
   .np-step-panel { display: flex; flex-direction: column; gap: 12px; }
   .np-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .np-tile { text-align: left; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; cursor: pointer; color: var(--mute); font: 500 12px var(--sans); transition: border-color 0.15s ease; }
@@ -3244,6 +3245,19 @@ function appendToProjectLog(projId, message, persistToServer = false) {
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+// create dialog: a format with no reel rendered yet shows a sketch per plano (speaker in yellow, motion in grey; panel = raw video band), cycled like the real frames
+function formatSketch(f) {
+  const W = 90, H = 160, top = f.panel?.top ?? 0.5;
+  const person = (x, y, w, h) => `<circle cx="${x + w / 2}" cy="${y + h * .3}" r="${w * .13}" fill="#f2e600"/><path d="M${x + w * .2},${y + h} v-${h * .35} q0,-${h * .2} ${w * .3},-${h * .22} q${w * .3},${h * .02} ${w * .3},${h * .22} v${h * .35}z" fill="#f2e600"/>`;
+  const motion = (y, h) => `<rect x="14" y="${y + h * .18}" width="62" height="${h * .16}" rx="3" fill="#777"/><circle cx="32" cy="${y + h * .6}" r="12" fill="#555"/><rect x="50" y="${y + h * .6 - 12}" width="24" height="24" fill="#555"/>`;
+  const band = (y, h) => `<rect y="${y}" width="${W}" height="${h}" fill="#2a2a2a"/>${person(0, y, W, h)}`;
+  const scene = {
+    cut: motion(0, H) + person(W * .15, H * .3, W * .7, H * .7), none: motion(0, H), raw: band(0, H),
+    panel: motion(0, H * top) + band(H * top, H * (1 - top)), 'panel-top': band(0, H * top) + motion(H * top, H * (1 - top)),
+    react: `<rect width="${W}" height="${H * top}" fill="#444"/><text x="${W / 2}" y="${H * top / 2 + 4}" font-size="11" font-family="monospace" fill="#aaa" text-anchor="middle">ref</text>` + band(H * top, H * (1 - top)),
+  };
+  return (f.speaker === false ? ['none'] : f.planos || []).map(p => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#111"/>${scene[p] || scene.none}<text x="${W / 2}" y="${H - 5}" font-size="9" font-family="monospace" fill="#f2e600" text-anchor="middle">${p}</text></svg>`));
+}
 const FORMATS = ['16:9', '9:16', '4:3', '1:1', '4:5'];   // same order as the server renders them
 const FORMAT_META = {
   '16:9': { name: 'Horizontal', desc: 'YouTube / Widescreen' },
@@ -6127,6 +6141,7 @@ async function projects() {
     let selectedBrand = (draft?.brand && bl.includes(draft.brand)) ? draft.brand : (bl && bl.length) ? bl[0] : 'Insula';
     let selectedPre = draft?.selectedPre || '1';
     let multiMode = draft?.multiMode || 'concat';
+    const recentOptions = [...overviewList].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 15).map(p => `<option value="${esc(p.id)}">${esc(p.name || p.id)}${p.brand ? ` · ${esc(p.brand)}` : ''}</option>`).join('');
 
     app.innerHTML = `
       <div class="np-page-wrapper">
@@ -6146,6 +6161,7 @@ async function projects() {
               </h2>
               <p class="np-subtitle">Suba os arquivos de gravação ou configure projetos inteligentes para cada vídeo.</p>
             </div>
+            <button type="button" class="np-back-btn" id="btnRedo" title="Zera esta etapa: apaga o rascunho e recomeça do zero">↻ Refazer</button>
             <div class="np-floating-badges" aria-hidden="true">
               <div class="np-float-badge" title="Roteiro & Cards com IA (Claude Opus)">✨</div>
               <div class="np-float-badge" title="Ingestão & Transcrição Whisper">🎬</div>
@@ -6159,9 +6175,13 @@ async function projects() {
             <button type="button" class="np-step" data-step="2"><b>2</b>Marca</button>
             <span class="np-step-sep">›</span>
             <button type="button" class="np-step" data-step="3"><b>3</b>Edição</button>
-            <select class="np-select np-recall" id="npRecall" title="Copia marca, referências, formato, estilo e ritmo de um projeto anterior: só falta subir os arquivos">
+            <select class="np-select np-recall" id="npRecall" title="Copia nome, marca, referências, formato, estilo e ritmo de um projeto anterior: só falta subir os arquivos">
               <option value="">↺ Relembrar projeto anterior</option>
-              ${[...overviewList].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 15).map(p => `<option value="${esc(p.id)}">${esc(p.name || p.id)}${p.brand ? ` · ${esc(p.brand)}` : ''}</option>`).join('')}
+              ${recentOptions}
+            </select>
+            <select class="np-select np-recall" id="npClone" title="Refaz a última seleção inteira, inclusive os vídeos, a legenda e as imagens enviadas">
+              <option value="">⧉ Clonar projeto anterior</option>
+              ${recentOptions}
             </select>
           </div>
 
@@ -6341,12 +6361,17 @@ async function projects() {
                 <span class="muted" style="font-size:11px">🤖 compositor agent · a prévia é o último reel feito nesse formato</span>
               </div>
               <div class="np-tile-grid" id="npFormatGrid">
-                ${fl.map((f, idx) => `
+                ${fl.map((f, idx) => { const urls = f.frames?.length ? f.frames.map(fr => `/formats/${encodeURIComponent(f.id)}/frames/${encodeURIComponent(fr)}`) : formatSketch(f); return `
                 <button type="button" class="np-tile ${idx === 0 ? 'active' : ''}" data-format="${esc(f.id)}">
-                  <div class="np-thumb">${f.frames?.length ? `<img data-reel="${esc(JSON.stringify(f.frames.map(fr => `/formats/${encodeURIComponent(f.id)}/frames/${encodeURIComponent(fr)}`)))}" src="/formats/${encodeURIComponent(f.id)}/frames/${encodeURIComponent(f.frames[0])}" alt="">` : `<span>${esc(f.aspectRatio || '9:16')}<br>sem prévia ainda</span>`}</div>
+                  <div class="np-thumb"><img data-reel="${esc(JSON.stringify(urls))}" src="${urls[0]}" alt=""></div>
                   <div class="np-tile-name">${esc(f.name || f.id)}</div>
-                  <div class="np-tile-sub">${f.speaker === false ? 'sem locutor' : esc((f.planos || []).join(' · '))}</div>
-                </button>`).join('')}
+                  <div class="np-tile-sub">${f.speaker === false ? 'sem locutor' : esc((f.planos || []).join(' · '))}${f.frames?.length ? '' : ' · esboço'}</div>
+                </button>`; }).join('')}
+                <button type="button" class="np-tile" data-format="" title="Sem formato: a skill escolhida traz os planos do locutor; sem skill, vale o Business Reels">
+                  <div class="np-thumb"><span>nenhum</span></div>
+                  <div class="np-tile-name">Nenhum</div>
+                  <div class="np-tile-sub">a skill traz os planos</div>
+                </button>
               </div>
                 <select class="np-select" hidden style="display:none" name="formatId" id="npFormatSelect">
                   ${fl.map((f, idx) => `
@@ -6354,6 +6379,7 @@ async function projects() {
                       ${esc(f.name || f.id)} (${esc(f.aspectRatio || '9:16')})
                     </option>
                   `).join('')}
+                  <option value="">Nenhum (a skill traz os planos)</option>
                 </select>
               <div class="np-format-preview" id="npFmtPreview"></div>
             </div>
@@ -6365,6 +6391,11 @@ async function projects() {
                   <div class="np-tile-name">O diretor escolhe</div>
                   <div class="np-tile-sub">entre os estilos da lista</div>
                 </button>
+                <button type="button" class="np-tile" data-style="none" title="Sem pacote de ilustração: o compositor desenha livre; com skill, o visual é o dela">
+                  <div class="np-thumb"><span>nenhum</span></div>
+                  <div class="np-tile-name">Nenhum</div>
+                  <div class="np-tile-sub">sem pacote de ilustração</div>
+                </button>
                 ${motionStyles.map(x => { const refs = (x.refs || []).map(fr => `/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(fr)}`); return `
                 <button type="button" class="np-tile" data-style="${esc(x.id)}" title="${esc(x.description || '')}">
                   <div class="np-thumb">${refs.length ? `<img data-reel="${esc(JSON.stringify(refs))}" src="${refs[0]}" alt="">` : `<span>sem quadros</span>`}</div>
@@ -6374,6 +6405,7 @@ async function projects() {
               </div>
                 <select class="np-select" hidden style="display:none" name="styleId" id="npMotionStyleSelect" title="Estilo de motion: um estilo clonado na aba Estilos que o compositor segue à risca; automático deixa o diretor escolher">
                   <option value="">Estilo: automático (o diretor escolhe entre os estilos)</option>
+                  <option value="none">Estilo: nenhum (sem pacote de ilustração)</option>
                   ${motionStyles.map(s => `<option value="${esc(s.id)}" title="${esc(s.description || '')}">Estilo: ${esc(s.name || s.id)}</option>`).join('')}
                 </select>
             </div>
@@ -6450,6 +6482,8 @@ async function projects() {
       showStep(step + 1);
     });
     $('#btnBackStep').onclick = () => { if (step === 1) { sessionStorage.removeItem('npDraft'); dashCurrentTab = 'esteira'; renderView(); } else showStep(step - 1); };
+    // Refazer: drops the draft (files, name, choices) and mounts the dialog again from scratch
+    $('#btnRedo').onclick = () => { sessionStorage.removeItem('npDraft'); renderView(); };
     $('#npSteps').querySelectorAll('.np-step').forEach(b => b.onclick = () => { if (+b.dataset.step < step) showStep(+b.dataset.step); });
     // preview loop: next frame every 500 ms (~12 frames at 24 fps) on the format and style cards
     const reels = [...app.querySelectorAll('.np-thumb img[data-reel]')].map(img => ({ img, urls: JSON.parse(img.dataset.reel), i: 0 }));
@@ -6494,7 +6528,7 @@ async function projects() {
     // Helper: update status footer
     const updateFooterStatus = () => {
       const chosenFmt = fl.find(f => f.id === formatSelect.value);
-      const fmtLabel = chosenFmt?.name || formatSelect.value;
+      const fmtLabel = chosenFmt?.name || formatSelect.value || 'sem formato';
       const composerTag = ' · 🤖 Modo Agente';
 
       if (!videoPaths.length) {
@@ -6550,7 +6584,7 @@ async function projects() {
           </div>
         `;
       } else {
-        fmtPreview.innerHTML = '';
+        fmtPreview.innerHTML = '<div class="np-fmt-desc">Sem formato: a skill escolhida traz os planos do locutor. Sem skill, vale o Business Reels.</div>';
       }
       updateFooterStatus();
     };
@@ -6560,14 +6594,30 @@ async function projects() {
     $('#npPaceBar').querySelectorAll('[data-pace]').forEach(b => b.onclick = () => { $('#npPaceSelect').value = b.dataset.pace; $('#npPaceBar').querySelectorAll('[data-pace]').forEach(x => x.classList.toggle('active', x === b)); updateFooterStatus(); });
     // a skill locks style, rhythm and (when it carries shots) the format: the selectors stay visible but cannot be changed
     const lock = (el, on) => { el.style.opacity = on ? '.4' : ''; el.style.pointerEvents = on ? 'none' : ''; };
-    $('#npSkillSelect').onchange = () => { const o = $('#npSkillSelect').selectedOptions[0], on = !!o.value; lock($('#npStyleGrid'), on); lock($('#npPaceBar'), on); lock($('#npFormatGrid'), on && !!o.dataset.planos); updateFooterStatus(); };
+    let beforeSkill = null;   // the format and style picked before a skill moved them to Nenhum, put back when the skill is cleared
+    const pick = (grid, attr, val) => grid.querySelector(`[data-${attr}="${CSS.escape(val)}"]`)?.click();
+    $('#npSkillSelect').onchange = () => {
+      const o = $('#npSkillSelect').selectedOptions[0], on = !!o.value, planos = on && !!o.dataset.planos;
+      if (on && !beforeSkill) beforeSkill = [formatSelect.value, $('#npMotionStyleSelect').value];
+      if (on) { pick($('#npStyleGrid'), 'style', 'none'); pick($('#npFormatGrid'), 'format', planos ? '' : beforeSkill[0]); }
+      else if (beforeSkill) { pick($('#npFormatGrid'), 'format', beforeSkill[0]); pick($('#npStyleGrid'), 'style', beforeSkill[1]); beforeSkill = null; }
+      lock($('#npStyleGrid'), on); lock($('#npPaceBar'), on); lock($('#npFormatGrid'), planos); updateFooterStatus();
+    };
     updateFormatPreview();   // the first format starts selected
-    // Relembrar projeto anterior: batch production repeats the brand, references, format, style and pace of the last reel
-    $('#npRecall').onchange = async e => {
-      const id = e.target.value;
+    // Relembrar projeto anterior: batch production repeats the name, brand, references, format, style and pace of the last reel;
+    // Clonar also takes its files (raw video, subtitle, images) so the whole selection is redone
+    const recall = async (id, withFiles) => {
       if (!id) return;
       try {
         const p = await api('GET', `/projects/${id}`);
+        nameInput.value = p.name || '';
+        if (withFiles) {
+          videoPaths = p.sources?.videos || [];
+          subtitlePath = p.sources?.subtitle || '';
+          imagePaths = p.sources?.images || [];
+          renderFilesList();
+          probeAllVideos();
+        }
         if (p.brand && bl.includes(p.brand)) $('#npBrandBar').querySelector(`[data-brand="${CSS.escape(p.brand)}"]`)?.click();
         if (p.formatId) $('#npFormatGrid').querySelector(`[data-format="${CSS.escape(p.formatId)}"]`)?.click();
         $('#npStyleGrid').querySelector(`[data-style="${CSS.escape(p.styleId || '')}"]`)?.click();
@@ -6580,6 +6630,8 @@ async function projects() {
         updateFooterStatus();
       } catch (err) { alert(`Não deu para relembrar o projeto: ${err.message}`); }
     };
+    $('#npRecall').onchange = e => recall(e.target.value, false);
+    $('#npClone').onchange = e => recall(e.target.value, true);
 
     // Probe videos to get resolution and duration
     const probeAllVideos = async () => {
@@ -7385,7 +7437,8 @@ async function project(id) {
         </select>
         <select id="pt-style-select" ${st.skillId ? 'disabled' : ''} title="Estilo de motion deste projeto (aba Estilos): vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
           <option value="">🎞 motion: diretor decide</option>
-          ${st.styleId ? `<option value="${esc(st.styleId)}" selected>🎞 ${esc(st.styleId)}</option>` : ''}
+          <option value="none"${st.styleId === 'none' ? ' selected' : ''}>🎞 motion: nenhum</option>
+          ${st.styleId && st.styleId !== 'none' ? `<option value="${esc(st.styleId)}" selected>🎞 ${esc(st.styleId)}</option>` : ''}
         </select>
         <select id="pt-pace-select" ${st.skillId ? 'disabled' : ''} title="Ritmo deste projeto: vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
           ${[['dinamico', 'dinâmico'], ['normal', 'normal'], ['lento', 'lento']].map(([v, n]) => `<option value="${v}"${(st.pace || 'dinamico') === v ? ' selected' : ''}>⏱ ritmo: ${n}</option>`).join('')}
@@ -7671,66 +7724,6 @@ async function project(id) {
   render();
 }
 
-const CARD_CATALOG = [
-  {
-    type: 'custom',
-    title: 'Opus Motion Livre',
-    desc: 'Animação 100% sob medida com GSAP/CSS criada livremente pelo Opus 5.5',
-    preview: `<div style="color:var(--accent);font-size:11px;font-weight:700;border:1.5px dashed var(--accent);border-radius:6px;padding:4px 8px;background:rgba(242,230,0,.08);text-align:center;">✦ Opus 5.5 Motion</div>`
-  },
-  {
-    type: 'motion',
-    title: 'Métricas & Infográfico',
-    desc: 'Contador numérico acelerando, gráficos e revelação de dados',
-    preview: `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;color:var(--accent);"><span style="font-size:16px;font-weight:900;letter-spacing:-.02em;">+240%</span><span style="font-size:7.5px;color:var(--mute);letter-spacing:.1em;text-transform:uppercase;">crescimento</span></div>`
-  },
-  {
-    type: 'shot',
-    title: 'Navegador & Preview',
-    desc: 'Mockup em janela de navegador ou janela de app',
-    preview: `<div style="background:#1a1c1a;border:1px solid var(--line-strong);border-radius:5px;width:85%;height:75%;display:flex;flex-direction:column;overflow:hidden;"><div style="background:#222522;padding:2px 5px;display:flex;gap:3px;align-items:center;"><span style="width:4px;height:4px;border-radius:50%;background:#ff5a4d;"></span><span style="width:4px;height:4px;border-radius:50%;background:#f2e600;"></span><span style="width:4px;height:4px;border-radius:50%;background:#3ddc4b;"></span></div><div style="display:flex;align-items:center;justify-content:center;flex:1;font-size:8.5px;color:var(--mute);">preview.app</div></div>`
-  },
-  {
-    type: 'image',
-    title: 'Galeria & Leque Visual',
-    desc: 'Fotos e capturas abrindo em leque dinâmico',
-    preview: `<div style="position:relative;width:56px;height:42px;"><div style="position:absolute;left:4px;top:4px;width:30px;height:30px;background:#333;border:1px solid #555;border-radius:4px;transform:rotate(-10deg);"></div><div style="position:absolute;left:18px;top:2px;width:30px;height:30px;background:#444;border:1px solid #777;border-radius:4px;transform:rotate(12deg);display:flex;align-items:center;justify-content:center;font-size:10px;">🖼️</div></div>`
-  },
-  {
-    type: 'sticker',
-    title: 'Ícone & Selo 3D',
-    desc: 'Adesivo, ícone ou elemento flutuante da marca',
-    preview: `<div style="display:flex;align-items:center;justify-content:center;font-size:22px;filter:drop-shadow(0 2px 6px rgba(242,230,0,.3));">⚡</div>`
-  },
-  {
-    type: 'follow',
-    title: 'Câmera & Zoom Texto',
-    desc: 'Palavras com afastamento dinâmico de câmera',
-    preview: `<div style="text-align:center;font-size:9px;color:var(--cream);font-weight:600;letter-spacing:.02em;"><span>palavra por </span><span style="color:var(--accent);font-weight:800;">palavra</span></div>`
-  }
-];
-
-const cardTypes = CARD_CATALOG.map(c => c.type);
-const cardLabelMap = {
-  custom: '✦ Opus Motion Livre',
-  motion: '📊 Métricas & Infográfico',
-  shot: '🌐 Navegador & Preview',
-  image: '🖼️ Galeria em Leque',
-  sticker: '⚡ Ícone / Selo 3D',
-  follow: '🔍 Câmera & Zoom Texto',
-  tier: '🏆 Item do Ranking',
-  backdrop: '🌄 Fundo atrás do locutor',
-  broll: '🎞️ B-roll em tela cheia'
-};
-const cardOpts = cur => {
-  const norm = (cur || '').trim().toLowerCase();
-  const list = cardTypes.includes(norm) ? cardTypes : [norm, ...cardTypes].filter(Boolean);
-  return list.map(c => {
-    const lbl = cardLabelMap[c] || c;
-    return `<option value="${esc(c)}" ${c === norm ? 'selected' : ''}>${esc(lbl)}</option>`;
-  }).join('');
-};
-
 // Step 2: Manter / Mudar / Remover per moment
 async function scriptStep(id, body) {
   let s = null;
@@ -7777,7 +7770,7 @@ async function scriptStep(id, body) {
         <button id="broll" title="Busca na internet fotos e clipes das pessoas, marcas e eventos citados, e uma trilha">${project.broll ? '✓ B-roll ligado · buscar de novo' : '🎞 Inserir b-roll (este projeto nasceu sem)'}</button>
       </div>
     </div>
-    <table><tr><th style="width:75px">início</th><th style="width:75px">fim</th><th style="min-width:180px">estilo de motion</th><th style="min-width:180px">texto em destaque</th><th style="min-width:320px">o que será animado (ação visual)</th><th style="width:90px">status</th></tr>
+    <table><tr><th style="width:75px">início</th><th style="width:75px">fim</th><th style="min-width:180px">texto em destaque</th><th style="min-width:320px">o que será animado (ação visual)</th><th style="width:90px">status</th></tr>
     ${s.moments.map((m, i) => {
       const origMotivo = m.orig_motivo || (m.motivo ? m.motivo.replace(/\s*\[Alteração:.*?\]$/, '') : '');
       const currentObs = m.observacao || (m.motivo?.match(/\[Alteração:\s*(.*?)\]/)?.[1] ?? '');
@@ -7786,7 +7779,6 @@ async function scriptStep(id, body) {
       return `<tr data-i="${i}">
         <td><input type="number" step="0.1" class="m-start" value="${m.t_start}" style="width:65px"></td>
         <td><input type="number" step="0.1" class="m-end" value="${m.t_end}" style="width:65px"></td>
-        <td><select class="m-card" style="width:100%">${cardOpts(m.tipo_card)}</select></td>
         <td><input class="m-text" value="${esc(m.texto)}" style="width:100%"></td>
         <td style="min-width:320px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -7826,12 +7818,11 @@ async function scriptStep(id, body) {
     const trs = body.querySelectorAll('tr[data-i]');
     const tr = trs[selectedIdx] || trs[0];
     if (!tr) return;
-    const curType = tr.querySelector('.m-card')?.value;
     const start = tr.querySelector('.m-start')?.value;
     const end = tr.querySelector('.m-end')?.value;
     const info = $('#selRowInfo');
     if (info) {
-      info.innerHTML = `Linha selecionada: <span style="color:var(--accent)">#${selectedIdx + 1} (${start}s – ${end}s)</span> · Card: <span style="color:var(--accent);text-transform:uppercase;">${curType}</span>`;
+      info.innerHTML = `Linha selecionada: <span style="color:var(--accent)">#${selectedIdx + 1} (${start}s – ${end}s)</span>`;
     }
   }
 
@@ -7851,11 +7842,10 @@ async function scriptStep(id, body) {
     const viewBox = tr.querySelector('.m-motivo-view');
     const editBox = tr.querySelector('.m-motivo-edit');
     const obsInp = tr.querySelector('.m-obs');
-    const cardSel = tr.querySelector('.m-card');
     const startInp = tr.querySelector('.m-start');
     const endInp = tr.querySelector('.m-end');
     const textInp = tr.querySelector('.m-text');
-    const fields = [startInp, endInp, cardSel, textInp, obsInp];
+    const fields = [startInp, endInp, textInp, obsInp];
 
     tr.addEventListener('click', () => selectRow(i));
     fields.forEach(f => f.addEventListener('focus', () => selectRow(i)));
@@ -7878,10 +7868,6 @@ async function scriptStep(id, body) {
     chk.onchange = () => setChange(chk.checked, chk.checked);
     viewBox.onclick = () => setChange(true, true);
 
-    cardSel.onchange = () => {
-      setChange(true, false);
-      updateTileSelection();
-    };
     obsInp.oninput = () => {
       if (actSel.value !== 'remove') actSel.value = 'change';
       chk.checked = true;
@@ -7911,7 +7897,6 @@ async function scriptStep(id, body) {
         if (orig) {
           startInp.value = orig.t_start;
           endInp.value = orig.t_end;
-          cardSel.value = (orig.tipo_card || 'custom').trim().toLowerCase();
           textInp.value = orig.texto;
           obsInp.value = orig.observacao || '';
         }
@@ -7957,7 +7942,6 @@ async function scriptStep(id, body) {
       const moments = [...body.querySelectorAll('tr[data-i]')].filter(tr => tr.querySelector('.m-act').value !== 'remove').map(tr => {
         const a = tr.querySelector('.m-start');
         const b = tr.querySelector('.m-end');
-        const t = tr.querySelector('.m-card');
         const x = tr.querySelector('.m-text');
         const obsInp = tr.querySelector('.m-obs');
         const obs = (obsInp ? obsInp.value : '').trim();
@@ -7969,7 +7953,6 @@ async function scriptStep(id, body) {
           orig_motivo: origMotivo,
           t_start: Number(a.value),
           t_end: Number(b.value),
-          tipo_card: t.value,
           texto: x.value,
           motivo: finalMotivo,
           observacao: obs || undefined
