@@ -1,0 +1,8 @@
+{
+  "id": "diorama",
+  "name": "Diorama isométrico",
+  "description": "Um lugar inteiro cabe num pedestal redondo: piso xadrez, parede-fundo em meia-lua, móveis em blocos pastel sem textura, uma placa flutuando com o nome e outra com o número.",
+  "pack": "diorama.md",
+  "engine": "diorama",
+  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='diorama')."
+}

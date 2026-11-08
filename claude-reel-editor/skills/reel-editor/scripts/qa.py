@@ -40,7 +40,9 @@ else:
 
 # pace: measured on the render; the speaker box comes from the agent composer (compose/motion_mask.json), words from the master clock
 mask = reel / "compose" / "motion_mask.json"; words = reel / "master_transcript.json"
-pace_args = (["--mask", str(mask)] if mask.exists() else []) + (["--words", str(words)] if words.exists() else [])
+cfg = reel / "compose" / "compose.json"
+every = json.load(open(cfg)).get("pace", {}).get("every") if cfg.exists() else None
+pace_args = (["--mask", str(mask)] if mask.exists() else []) + (["--words", str(words)] if words.exists() else []) + (["--every", str(every)] if every else [])
 if subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "pace.py"), str(video), *pace_args]).returncode:
     fails.append("pace")
 

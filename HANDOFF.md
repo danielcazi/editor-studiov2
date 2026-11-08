@@ -79,7 +79,7 @@ Regras transversais:
 | **5 Entrega** | `POST /final`, `POST /formats`, `POST /compose {format}` (outros aspectos) | formats[], composições por aspecto | B: `syncEdits` + `hyperframes render` em cada `compose[-aspecto]/` + 2× `loudnorm` → `final.mp4`. A: `render.py --final` (REEL_FORMAT). Ambos: `qa.py` (tamanho, duração, LUFS, palavras perdidas); Haiku resume a falha. | `final-9-16.mp4`, `final-16-9.mp4`…, `state.qa` |
 | Entrega: After Effects | `POST /ae` | `liveDir/index.html` | `server/ae/make_jsx.mjs` amostra o HTML no Chrome headless, gera clips ProRes 4444 e `build_comp.template.jsx`; `run.jsx` via osascript | `after-effects/*.aep` (gitignored) |
 | Entrega: Embrulhos | `POST /embrulhos` | srt, 9 modelos do PDF em `embrulhos/modelos/` | Sonnet escolhe até 3 ângulos e escreve o texto estático; `renderCamadas` compõe PNGs com alfa sobre o vídeo 9:16 | `embrulhos/` |
-| Só motion (teste) | `POST /compose {mode:"motion"}` | site, voz, transcript (sem locutor) | mesmo agente com `GUIDE-motion.md`, renderiza | `compose-motion/out.mp4` → `preview-motion.mp4` |
+| Só motion (teste) | `POST /compose {mode:"motion"}` | site, voz, transcript (sem locutor) | mesmo agente com o `GUIDE.md` (seção Só Motion), renderiza | `compose-motion/out.mp4` → `preview-motion.mp4` |
 | **Cortes** (lateral, fora do projeto) | `/cortes…` | palestra de ~1 h | Whisper → Sonnet `cortes` escolhe 10 trechos de 1-2 min (duas passagens) → Haiku `cortesSrt` corrige o srt → mp4 + srt por trecho. UI faz polling, sem SSE. | `workspace/cortes/<id>/out/` |
 | **Marcas** | `/brands…` | imagem ou YouTube (`cloneBrandWithOpus`), fontes, ícones SVG/PNG, poses de personagem, `brand.md` | Opus clona a marca; `syncBrandMarkdown` mantém brand.md e brand.json coerentes; `testClip` renderiza um clipe de teste | `workspace/brands/<id>/` |
 | **Formatos** | `/formats…` | edição por `format.json` (`composer`, `cutout`, `aspectRatio`, `layout`, `camera`, `safeZones`, `editingStyle`, `promptGuide`) | sem modelo | `workspace/formats/<id>/` |
@@ -233,7 +233,7 @@ Nenhuma chamada `compose:treatment` aparece em nenhum `cost[]`. O código que co
 | `compose/kit.py` (1317 linhas) | **O motor do caminho B**: `scene()`, câmera de mundo, 60+ helpers tipográficos e de UI, `canvas()`/`scene3d()`, `engine()`, lints, `render()` → `compositions/*.html` + `index.html` + `scenes.json`. |
 | `compose/engines/*.js` | 8 motores por estilo (silkscreen SK, briefing BB, swiss SW, deco AD, sketch SB, launch LA, cinetic CN, diorama DI), funções puras de `t`, demos em `engines/demos/`. |
 | `compose/estilos/*.md` | 12 pacotes de estilo (8 com motor, 4 só receita); `README.md` é o índice que o diretor consulta. |
-| `compose/GUIDE.md`, `GUIDE-motion.md`, `DIRETOR.md` | Regras técnicas do compositor (camadas, enquadramentos, fluidez, código), variante sem locutor, e o método de direção (benchmark, estrutura, câmera, treatment). |
+| `compose/GUIDE.md`, `DIRETOR.md` | Regras técnicas do compositor (camadas, enquadramentos, fluidez, código, seção Só Motion para reel sem locutor), e o método de direção (benchmark, estrutura, câmera, treatment). |
 | `compose/sfx/` | SFX renderizados, copiados para `compose/assets/sfx/`. |
 | `engine/hf/` | HyperFrames 0.8.217 (player e runtime servidos em `/hf/*`), 20 composições de catálogo copiadas para `compose/motions/`. `engine/gsap.min.js`. |
 | `anim-presets.json` | Presets de animação de legenda do caminho A. |

@@ -17,11 +17,13 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   copyFileSync(join(HERE, 'fixtures/ae/index.html'), join(dir, 'index.html'));
   copyFileSync(join(ROOT, 'claude-reel-editor/skills/reel-editor/engine/gsap.min.js'), join(dir, 'gsap.min.js'));
   writeFileSync(join(dir, 'foto.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64'));   // 1×1 png
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=d=2:s=540x320:r=30', '-pix_fmt', 'yuv420p', '-y', join(dir, 'talk.mp4')]);   // o vídeo do painel do locutor (#tcam)
   const out = join(dir, 'after-effects');
   execFileSync('node', [join(ROOT, 'server/ae/make_jsx.mjs'), '--html', join(dir, 'index.html'), '--out', out, '--aep', join(out, 'f.aep'), '--name', 'fixture', '--step', '5'], { stdio: 'pipe', timeout: 180000 });
   const r = JSON.parse(readFileSync(join(out, 'ae_report.json'), 'utf8'));
   assert.deepEqual(r.avisos, []);
   assert.equal(r.camadas.grupos, 1, 'a cena dentro do #world é um grupo');
+  assert.equal(r.camadas.videos, 1, 'o vídeo cru do painel (#tcam) entra como a própria mídia');
   assert.ok(r.camadas.textos_na_composicao >= 2, 'a composição tem texto');
   assert.equal(r.camadas.textos_canvas, 1, 'a frase do canvas vira texto nativo');
   assert.equal(r.camadas.textos, 3, 'DOM (2) + canvas');

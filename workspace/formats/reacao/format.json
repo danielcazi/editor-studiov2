@@ -1,0 +1,27 @@
+{
+  "id": "reacao",
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "speaker": true,
+  "refVideo": true,
+  "safeZones": {
+    "top": 200,
+    "bottom": 380,
+    "left": 70,
+    "right": 70
+  },
+  "name": "Reação",
+  "order": 4,
+  "description": "Vídeo de referência numa metade, locutor cru na outra (precisa de um vídeo de referência no projeto).",
+  "planos": [
+    "react",
+    "cut"
+  ],
+  "janelas": null,
+  "panel": {
+    "side": "bottom",
+    "top": 0.5
+  },
+  "regras": "O gancho começa em react, com a referência em cima e o locutor cru embaixo. Recorte em tela cheia quando ele para a referência para comentar, explicar ou concluir; a CTA é em recorte. A referência só avança nas cenas react."
+}

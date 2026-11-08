@@ -57,15 +57,12 @@ export function pickFormats(f: unknown): string[] | null {
 // Path segments that come from a URL or a request body (project, brand, icon ids).
 export const safeId = (s: unknown): s is string => typeof s === 'string' && /^[\w][\w.-]{0,80}$/.test(s) && !s.includes('..');
 
-// Cut-out windows of a format (format.json "cutWindows": {head, mid: [a, b], tail}, seconds): the speaker is cut out only there,
+// Cut-out windows of a format (format.json "janelas.cut": [[a, b], ["head", n], ["tail", n]], seconds): the speaker is cut out only there,
 // the rest of the reel shows him in a panel or not at all. Clipped to the clip and merged when they touch; null = cut out everywhere.
-export type CutWindows = { head?: number; mid?: [number, number]; tail?: number };
-export function cutWindows(spec: CutWindows | undefined | null, dur: number): Span[] | null {
+export type CutSpec = Array<[number, number] | ['head' | 'tail', number]>;
+export function cutWindows(spec: CutSpec | undefined | null, dur: number): Span[] | null {
   if (!spec) return null;
-  const raw: Span[] = [];
-  if (spec.head) raw.push([0, spec.head]);
-  if (spec.mid) raw.push([spec.mid[0], spec.mid[1]]);
-  if (spec.tail) raw.push([dur - spec.tail, dur]);
+  const raw: Span[] = spec.map(w => w[0] === 'head' ? [0, w[1] as number] : w[0] === 'tail' ? [dur - (w[1] as number), dur] : [w[0], w[1]] as Span);
   const out: Span[] = [];
   for (const [a0, b0] of raw.map(([a, b]) => [Math.max(0, Math.min(a, b)), Math.min(dur, Math.max(a, b))] as Span).sort((x, y) => x[0] - y[0])) {
     if (b0 <= a0) continue;
@@ -73,4 +70,62 @@ export function cutWindows(spec: CutWindows | undefined | null, dur: number): Sp
     if (last && a0 <= last[1]) last[1] = Math.max(last[1], b0); else out.push([a0, b0]);
   }
   return out;
+}
+
+// Rhythm toggle. every = something new on screen every N s; scene = min/max scene length; framing = speaker reframe every N s; hold = warn when the speaker sits still longer than N s.
+// shortcut: lento and normal are first guesses, calibrate on the reference reel; dinamico is the pace every reel had before the toggle.
+export type Pace = 'lento' | 'normal' | 'dinamico';
+export const PACE: Record<Pace, { every: number; scene: [number, number]; framing: [number, number]; hold: number }> = {
+  lento: { every: 3.5, scene: [3, 5], framing: [5, 7], hold: 8 },
+  normal: { every: 2.2, scene: [2, 3.5], framing: [3, 5], hold: 6 },
+  dinamico: { every: 1.5, scene: [1.2, 3], framing: [2, 4], hold: 4 },
+};
+
+// Who answers each question (SPEC-v9 §1). A skill locks format, look and rhythm; without one, format + style + rhythm toggle are independent
+// (a style's paceHint is only the starting value of the toggle). Colours: site reference > the skill's locked hex > brand.
+export function resolveChoices(i: { format: any; style?: any; skill?: any; pace?: Pace; site?: boolean }) {
+  const { format, style, skill, pace, site } = i;
+  if (skill) return {
+    format: { ...format, ...skill.format }, look: skill.look ?? null, rhythm: skill.rhythm ?? null,
+    sources: { format: 'skill', look: 'skill', rhythm: 'skill', colors: site ? 'site' : skill.colorsLocked ? 'skill' : 'brand' },
+  };
+  const hint: Pace | undefined = style?.paceHint && style.paceHint in PACE ? style.paceHint : undefined;
+  return {
+    format, look: style ?? null, rhythm: PACE[pace ?? hint ?? 'dinamico'],
+    sources: { format: 'format', look: style ? 'style' : 'none', rhythm: pace ? 'toggle' : hint ? 'hint' : 'default', colors: site ? 'site' : 'brand' },
+  };
+}
+
+// A cloned reel as a skill (SPEC-v9 §2.3): the flat style.json split into the three drawers. camera.framing and camera.transitions are how the
+// speaker is shot (format); the rest of the camera, the palette, recipes and sounds are the look; pace and beats are the rhythm. A skill that does not
+// know the reel's speaker shots leaves `format.planos` out, so the chosen format keeps deciding them.
+export function styleToSkill(s: any) {
+  const { id, name, description, camera, guide, motif, palette, motionRecipes, sfxRules, sfxGainDb, sfxForbidden, giantCase, speakerShadow,
+    pace, beats, sfxPerMinute, clonedFrom, refineLog, ...rest } = s;
+  const { framing, transitions, ...lookCam } = camera ?? {};
+  return { id, name, description,
+    format: framing || transitions ? { camera: { framing, transitions } } : {},
+    look: { guide, motif, palette, ...(camera ? { camera: lookCam } : {}), motionRecipes, sfxRules, sfxGainDb, sfxForbidden, giantCase, speakerShadow, ...rest },
+    rhythm: { pace, beats, sfxPerMinute },
+    colorsLocked: false, clonedFrom, ...(refineLog ? { refineLog } : {}) };
+}
+// ... and back: the flat shape styleBrief and the refine step read
+export function skillAsStyle(k: any) {
+  const { camera: lookCam, ...look } = k.look ?? {};
+  const cam = { ...(lookCam ?? {}), ...(k.format?.camera ?? {}) };
+  return { id: k.id, name: k.name, description: k.description, ...look, ...(Object.keys(cam).length || lookCam ? { camera: cam } : {}),
+    pace: k.rhythm?.pace, beats: k.rhythm?.beats, sfxPerMinute: k.rhythm?.sfxPerMinute, clonedFrom: k.clonedFrom, ...(k.refineLog ? { refineLog: k.refineLog } : {}) };
+}
+// the look of a flat clone and nothing else: a style cloned "only for the visual" carries no shots, rhythm or origin
+export function lookOnly(s: any) {
+  const { beats: _b, pace: _p, sfxPerMinute: _s, clonedFrom: _c, refineLog: _r, ...rest } = s;
+  if (rest.camera) { const { framing: _f, transitions: _t, ...cam } = rest.camera; rest.camera = cam; }
+  return rest;
+}
+// compose.json pace of a skill: its measured seconds per cut is `every`; the other limits follow the nearest toggle
+export function paceFromSkill(k: any): (typeof PACE)[Pace] | null {
+  const p = Number(k?.rhythm?.pace);
+  if (!(p > 0)) return null;
+  // shortcut: pace is seconds per CUT, and a continuous take (the 18 s Build) has few cuts yet many graphics, so `every` never gets slower than lento
+  return { ...PACE[p <= 1.8 ? 'dinamico' : p <= 2.8 ? 'normal' : 'lento'], every: Math.min(p, PACE.lento.every) };
 }
