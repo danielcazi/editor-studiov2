@@ -2,8 +2,6 @@
 
 Decisões tomadas com o Daniel em 2026-11-07, a partir da comparação dos dois reels do corte 05 (Opus direto × Editor 7.0). Branch `v9`.
 
-> **Estado (00.25):** fases 1, 2 e 3 implementadas (`server/motionthink.ts`, `server/banco.ts`, aba `#/motion-think`, `kit.py` carregando `estilos/banco/`, seção no brief, parágrafo no GUIDE). O que difere do texto abaixo: a rodada fica inteira em `rounds/<m>/<r>/` (o scaffold da demo é a própria pasta da rodada, sem subpasta `compose/`); a folha de contato da demo é `sheet.jpg` e o quadro do meio `demo.jpg`; o quadro do original guardado no banco é `<helper>.orig.jpg`; `nao-gosto` entra no negativo ao salvar os apontamentos (sai se o veredito mudar); `banco.json` não vem no repositório (dado do estúdio); a variável `BANCO_DIR` aponta o banco para outra pasta (testes). A fase 4 (piloto) é com o Daniel.
-
 ## 0. Problema
 
 Os reels variam demais com o mesmo input porque o compositor escolhe livremente entre 66 helpers, 7 gramáticas de câmera e 3 planos, e o gosto do Daniel só chega como prosa (GUIDE, DIRETOR, skill clonada). Prosa não transfere gosto: a skill texto-derretido pedia a palavra a 85% da largura e saiu a 35%. O que transfere é um **movimento pronto, com geometria fixa e uma foto aprovada ao lado**. O Opus direto acertou com 13 verbos e 2 layouts; o Editor errou com liberdade total.
@@ -67,7 +65,7 @@ A análise é uma chamada Opus com `Read` sobre `frames/` (como o clone de estil
   "version": 3,
   "movimentos": {
     "1": {
-      "veredito": "gosto",
+      "veredito": "gosto",                 
       "momento": "gancho", "categoria": "tipografia", "tags": ["remate", "cantos"],
       "texto": "o que me pega é a palavra grande antes de qualquer coisa; as pequenas são apoio, nunca competem",
       "pins": [{ "t": 1.2, "x": 540, "y": 700, "text": "esse peso aqui, não o do Editor" }],
