@@ -15,9 +15,10 @@ import { synthesize, synthesizeLong } from './voice.ts';
 import { carregarEmbrulho, compor, conferirCampos, extrairQuadro, listarEmbrulhos, precosDoSrt, renderCamadas, sugerirQuadros } from './embrulhos.ts';
 import { download as brollDownload, extOf, type Kind, pick as brollPick, rightsOf, search as brollSearch } from './broll.ts';
 import { afterEffectsCmd, NPM, NPX, PYTHON, WIN } from './host.ts';
+import { bancoBrief, copyBancoTo, readBanco } from './banco.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const SKILL = join(ROOT, 'claude-reel-editor/skills/reel-editor');
+export const SKILL = join(ROOT, 'claude-reel-editor/skills/reel-editor');
 const S = join(SKILL, 'scripts');
 const K_DIR = join(SKILL, 'compose');
 export const WS = resolve(process.env.WORKSPACE ?? join(ROOT, 'workspace'));
@@ -118,7 +119,7 @@ export function logFromClient(id: string, text: string) {
   return { ok: true };
 }
 
-const emit = (id: string, event: string, data: unknown) => {
+export const emit = (id: string, event: string, data: unknown) => {
   if (event === 'log' && typeof data === 'string') {
     appendProjectLog(id, data);
   }
@@ -1264,7 +1265,7 @@ export function createFormat(id: string, data?: any) {
 // A style is the motion design cloned from references (typography, camera, beats, sfx, GSAP recipes); the format owns layout,
 // face tracking and rhythm. Rhythm and sound hits are measured here with ffmpeg; Opus only reads the frames and writes the
 // visual direction, so those numbers never come from the model's eye.
-const execP = (cmd: string, args: string[]) => new Promise<string>((ok, ko) =>
+export const execP = (cmd: string, args: string[]) => new Promise<string>((ok, ko) =>
   execFile(cmd, args, { maxBuffer: 64 << 20 }, (e, out, err) => e ? ko(new Error(`${cmd} failed: ${String(err || e.message).slice(-400)}`)) : ok(out + err)));
 
 // Sound-effect hits of a clip: energy jumps above 2.5 kHz (a voice carries little there, whooshes/clicks/pops a lot), as seconds.
@@ -2864,6 +2865,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const packOf = (x: any): string | null => x?.pack && safeId(x.pack) && existsSync(join(K, 'estilos', x.pack)) ? join(K, 'estilos', x.pack) : null;
   if (style && packOf(style)) copyFileSync(packOf(style)!, join(C, 'ESTILO.md'));
   else if (!style && !skill) for (const x of styleList) if (packOf(x)) { mkdirSync(join(C, 'estilos'), { recursive: true }); copyFileSync(packOf(x)!, join(C, 'estilos', x.pack)); }
+  // the bank of approved movements (Motion Think): helpers + photos into estilos/banco/ (kit.py loads them) and a section in the brief
+  const banco = copyBancoTo(C);
+  const bancoSection = bancoBrief(banco, recentBancoHelpers(st, banco.helpers.map(h => h.id)));
   const imgDesc = imgFiles.length ? `img/ (${imgFiles.length} imagens da referência disponíveis: ${imgFiles.join(', ')}; olhe cada uma com Read antes de usar, e mostre com <img src="assets/img/..."> em back/front)` : 'img/ (vazio)';
 
   const fmtBlock = `## Formato${skill?.format?.planos ? ' (travado pela skill)' : ` escolhido (${fmt.name})`}\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmtR.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmtR.regras ? `\nQuando: ${fmtR.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`;
@@ -2888,6 +2892,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     libLines.length ? `## Biblioteca compartilhada (assets/lib/)\nObjetos, imagens e trilhas do estúdio (workspace/library/): ${libLines.slice(0, 80).join(', ')}${libLines.length > 80 ? ` e mais ${libLines.length - 80}` : ''}. PNG com alfa entra como floatimg; .glb com obj3d; música (assets/lib/music/) com music(src, vol=.16), uma por reel, só quando a biblioteca do reel não trouxe uma.` : '',
     !noSpeaker && script.moments?.length ? `## Momentos do roteiro\nUm bloco por momento: tempo, fala e ação visual sugerida. O kit.py é opcional: use um helper só quando ele for a melhor ideia para o momento.\n${script.moments.map((m: any) => `- ${m.t_start}s–${m.t_end}s · "${m.texto ?? ''}" · ${m.visual_action ?? ''}`).join('\n')}` : '',
     charLines.length || brand.animation?.style ? `## Brandkit de animação\n${brand.animation?.style ? `Estilo de movimento: ${brand.animation.style}\n` : ''}${charLines.length ? `Personagens (PNG com fundo transparente; olhe cada um com Read). Anime entrada, gesto e troca de pose em GSAP, escolhendo a pose pela emoção da fala. Sem boca sincronizada: o personagem é voz em off, só reage.${st.character ? ` O locutor (cut.webm) é o personagem ${st.character.name}, parado e respirando: faça-o reagir com câmera e com as outras poses por cima (front), nunca invente outro rosto.` : ''}\n${charLines.join('\n')}` : ''}` : '',
+    bancoSection,
     script.accentWords?.length ? `## Palavras-chave sugeridas\n${script.accentWords.join(', ')}` : '',
     srt ? `## Roteiro e tempos (.srt)\n${srt}` : '',
     `## Transcript por palavra\nassets/transcript.json (${words.length} palavras).`,
@@ -2896,6 +2901,17 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     `Siga GUIDE.md. Escreva scenes.py, valide, olhe os snapshots e corrija antes de renderizar.`].filter(Boolean).join('\n\n'));
   return { dir: C };
 }
+
+// Bank helpers called in the brand's last 3 composed reels (other projects): the brief asks for variation (DIRETOR §8, Motion Think §8).
+function recentBancoHelpers(st: State, ids: string[]): string[] {
+  if (!ids.length) return [];
+  const used = new Set<string>();
+  const others = listProjects().filter(p => p !== st.id).map(p => { try { const o = load(p); return o.brand === st.brand && existsSync(join(projDir(p), 'compose', 'scenes.py')) ? { p, t: statSync(join(projDir(p), 'compose', 'scenes.py')).mtimeMs } : null; } catch { return null; } })
+    .filter((x): x is { p: string; t: number } => !!x).sort((a, b) => b.t - a.t).slice(0, 3);
+  for (const { p } of others) { const src = readFileSync(join(projDir(p), 'compose', 'scenes.py'), 'utf8'); for (const id of ids) if (new RegExp(`\\b${id}\\(`).test(src)) used.add(id); }
+  return [...used];
+}
+export { readBanco };
 
 // Agent composer (formats with composer: "agent"): Opus writes compose/scenes.py, which writes compose/index.html, and loops check + snapshot.
 // The review player plays that index.html live; only final() renders it. The motion-only test (mode "motion") still renders preview-motion.mp4.

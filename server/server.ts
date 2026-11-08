@@ -8,6 +8,8 @@ import * as K from './keys.ts';
 import * as B from './broll.ts';
 import * as V from './voice.ts';
 import * as C from './cortes.ts';
+import * as MT from './motionthink.ts';
+import * as BK from './banco.ts';
 
 process.chdir(import.meta.dirname);
 
@@ -16,6 +18,18 @@ const MAX_BODY = 25_000_000;
 const LOCAL_HOST = /^(127\.0\.0\.1|localhost)(:\d+)?$/, LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
 
 const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
+  ['GET', /^\/motion-think$/, () => MT.list()],
+  ['POST', /^\/motion-think$/, (_, b) => MT.create(b)],
+  ['GET', /^\/motion-think\/([^/]+)$/, m => MT.get(m[1])],
+  ['DELETE', /^\/motion-think\/([^/]+)$/, m => MT.remove(m[1])],
+  ['PUT', /^\/motion-think\/([^/]+)\/range$/, (m, b) => MT.setRange(m[1], b)],
+  ['POST', /^\/motion-think\/([^/]+)\/analyze$/, m => MT.analyze(m[1])],
+  ['PUT', /^\/motion-think\/([^/]+)\/notes$/, (m, b) => MT.putNotes(m[1], b)],
+  ['POST', /^\/motion-think\/([^/]+)\/synthesize$/, (m, b) => MT.synthesize(m[1], b)],
+  ['PUT', /^\/motion-think\/([^/]+)\/rounds\/(\d+)\/(\d+)\/verdict$/, (m, b) => MT.verdict(m[1], Number(m[2]), Number(m[3]), b)],
+  ['POST', /^\/motion-think\/([^/]+)\/approve$/, (m, b) => MT.approve(m[1], b)],
+  ['GET', /^\/banco$/, () => BK.listBanco()],
+  ['DELETE', /^\/banco\/([a-z][a-z0-9_]*)$/, m => BK.removeHelper(m[1])],
   ['GET', /^\/cortes$/, () => C.list()],
   ['POST', /^\/cortes$/, (_, b) => C.create(b)],
   ['GET', /^\/cortes\/([^/]+)$/, m => C.get(m[1])],
@@ -109,6 +123,14 @@ function events(id: string, res: ServerResponse) {
   res.on('close', off);
 }
 
+function mtEvents(id: string, res: ServerResponse) {
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+  const off = MT.events(id, (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+  const cur = MT.getBusy(id);
+  if (cur) res.write(`event: step\ndata: ${JSON.stringify({ ...cur, status: 'start' })}\n\n`);
+  res.on('close', off);
+}
+
 const TYPES: Record<string, string> = { mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', json: 'application/json', jpg: 'image/jpeg', jpeg: 'image/jpeg',
   png: 'image/png', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', glb: 'model/gltf-binary', aac: 'audio/aac', html: 'text/html; charset=utf-8', js: 'text/javascript', css: 'text/css',
   wav: 'audio/wav', mp3: 'audio/mpeg', m4a: 'audio/mp4', zip: 'application/zip', srt: 'text/plain; charset=utf-8' };
@@ -156,6 +178,12 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && f) return file(P.projectFile(decodeURIComponent(f[1]), decodeURIComponent(f[2])), req, res);
     const cf = path.match(/^\/cortes\/([^/]+)\/files\/([^/]+)$/);
     if (req.method === 'GET' && cf) return file(C.file(decodeURIComponent(cf[1]), decodeURIComponent(cf[2])), req, res);
+    const mf = path.match(/^\/motion-think\/([^/]+)\/file\/(.+)$/);
+    if (req.method === 'GET' && mf) return file(MT.file(decodeURIComponent(mf[1]), decodeURIComponent(mf[2])), req, res);
+    const bf = path.match(/^\/banco\/file\/(.+)$/);
+    if (req.method === 'GET' && bf) return file(BK.bancoFile(decodeURIComponent(bf[1])), req, res);
+    const me = path.match(/^\/motion-think\/([^/]+)\/events$/);
+    if (req.method === 'GET' && me) return mtEvents(decodeURIComponent(me[1]), res);
     const lv = path.match(/^\/projects\/([^/]+)\/live\/(.+)$/);
     if (req.method === 'GET' && lv) return file(P.liveFile(decodeURIComponent(lv[1]), decodeURIComponent(lv[2])), req, res);
     const hf = path.match(/^\/hf\/([^/]+)$/);
@@ -182,7 +210,7 @@ createServer(async (req, res) => {
     }
     res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"not found"}');
   } catch (e) {
-    const user = e instanceof P.UserError;
+    const user = e instanceof P.UserError || e instanceof BK.UserError;
     if (!user) console.error(e);
     if (!res.headersSent) res.writeHead(user ? 400 : 500, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: (e as Error).message }));

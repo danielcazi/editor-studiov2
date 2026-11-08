@@ -15,10 +15,12 @@ export const MODEL_BY_STEP = {
   cortesSrt: 'claude-haiku-5-5',  // Cortes export: fixes transcription slips in the srt of a chosen clip (text only, timing untouched)
   broll: 'claude-sonnet-5-5',     // b-roll fill: picks the beats and writes the stock search queries; no motion code, so not Opus
   embrulhos: 'claude-sonnet-5-5', // embrulhos: picks up to 3 of the 9 PDF frames for the talk and writes their static copy (text only)
+  mtAnalyze: 'claude-opus-5-5',   // Motion Think: reads the frames of a reference excerpt and splits it into movements (what moves, how, measured)
+  mtSynthesize: 'claude-opus-5-5', // Motion Think: turns one approved movement into a kit helper and renders its demo (agent run, max 30 turns)
 } as const;
 export type ModelStep = keyof typeof MODEL_BY_STEP;
 
-const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', composeTreatment: 'medium', cloneFormat: 'high', broll: 'low', cortes: 'medium', cortesSrt: 'low', embrulhos: 'medium' };
+const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', composeTreatment: 'medium', cloneFormat: 'high', broll: 'low', cortes: 'medium', cortesSrt: 'low', embrulhos: 'medium', mtAnalyze: 'high', mtSynthesize: 'high' };
 
 export type Cost = { at: string; stage: string; step: ModelStep; model: string; in: number; out: number; cacheRead: number; cacheWrite: number; turns?: number; ms?: number };   // turns/ms from the CLI result: wall time per call, to see where the pipeline's time goes
 
@@ -89,7 +91,7 @@ export async function ask<T>(step: ModelStep, stage: string, opts: {
 // step: compose (default) or composeTreatment; maxTurns: hard ceiling on tool turns (the compose call ran 69-88 turns, 16-27 min): past it the CLI stops
 // with subtype error_max_turns and the caller keeps whatever index.html exists.
 export const MAX_TURNS_HIT = '⚠ teto de turnos atingido';
-export async function agent(stage: string, opts: { system: string; prompt: string; cwd: string; noRender?: boolean; step?: 'compose' | 'composeTreatment'; maxTurns?: number }, logCost: (c: Cost) => void): Promise<string> {
+export async function agent(stage: string, opts: { system: string; prompt: string; cwd: string; noRender?: boolean; step?: ModelStep; maxTurns?: number }, logCost: (c: Cost) => void): Promise<string> {
   const step = opts.step ?? 'compose', model = MODEL_BY_STEP[step];
   const args = ['-p', '--model', model, '--effort', EFFORT[step], '--output-format', 'json', '--system-prompt', opts.system,
     ...opts.maxTurns ? ['--max-turns', String(opts.maxTurns)] : [],
