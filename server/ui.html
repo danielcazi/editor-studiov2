@@ -3127,6 +3127,7 @@
       <a href="#/styles" class="nav-tab" id="nav-styles">Estilos</a>
       <a href="#/skills" class="nav-tab" id="nav-skills">Skills</a>
       <a href="#/cortes" class="nav-tab" id="nav-cortes">Cortes</a>
+      <a href="#/motion-think" class="nav-tab" id="nav-mt">Motion Think</a>
       <a href="#/config" class="nav-tab" id="nav-config">Configurações</a>
     </nav>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
@@ -11330,10 +11331,205 @@ async function cortes(sel) {
   if (busy) cortesPoll = setInterval(() => cortes(sel).catch(() => {}), 3000);
 }
 
+// ---- Motion Think: Daniel teaches one movement at a time (excerpt → movements → marks → synthesis → demo → bank). SSE per session. ----
+let mtEs = null;
+const MT_MOMENTOS = ['gancho', 'prova', 'numero', 'lista', 'virada', 'cta'], MT_CATS = ['tipografia', 'infografico', '3d', 'transicao', 'camera'];
+const MT_STATUS = { baixando: '⏳ Guardando o vídeo...', pronto: 'Escolha o trecho (início e fim, até 60 s) e corte.', cortado: 'Trecho cortado. Clique em Analisar.', analisando: '🧠 Opus separando os movimentos...', analisado: 'Aponte o que gosta em cada movimento; só "gosto" vai para a síntese.', error: '✗ Erro' };
+const MT_MOV = { novo: '', sintetizando: '⏳ sintetizando', aguardando: 'aguardando veredito', aprovado: '✓ no banco', parado: '⏸ parado (3 rodadas)' };
+const mtFile = (id, rel) => `/motion-think/${encodeURIComponent(id)}/file/${rel.split('/').map(encodeURIComponent).join('/')}`;
+async function motionThink(sel) {
+  mtEs?.close(); mtEs = null;
+  const list = await api('GET', '/motion-think');
+  const banco = sel === 'banco';
+  const st = sel && !banco ? await api('GET', `/motion-think/${encodeURIComponent(sel)}`) : null;
+  const busyStep = st?.busy?.step;
+  app.innerHTML = `<div style="display:grid;grid-template-columns:260px 1fr;gap:24px">
+    <aside><h4>Motion Think</h4>
+      <a class="bitem ${banco ? 'on' : ''}" href="#/motion-think/banco">🏦 Banco de movimentos</a>
+      <details ${!sel ? 'open' : ''} style="margin:10px 0 14px"><summary class="muted" style="cursor:pointer">Novo trecho</summary>
+        <div style="display:grid;gap:6px;margin-top:8px">
+          <input id="mt-name" placeholder="Nome (opcional)">
+          <input id="mt-video" placeholder="Caminho do vídeo">
+          <button id="mt-pick">Escolher vídeo…</button>
+          <input id="mt-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" hidden>
+          <input id="mt-url" placeholder="ou link (YouTube, Instagram... via yt-dlp)">
+          <button id="mt-go" class="primary">Enviar</button>
+        </div></details>
+      ${list.map(c => `<a class="bitem ${c.id === sel ? 'on' : ''}" href="#/motion-think/${esc(c.id)}">${esc(c.name)} <span class="muted">· ${c.in != null ? `${Math.round(c.out - c.in)} s` : c.status}${c.movimentos ? ` · ${c.movimentos} mov` : ''}${c.aprovados ? ` · ${c.aprovados} ✓` : ''}</span></a>`).join('') || '<p class="muted">nenhum trecho ainda</p>'}
+    </aside>
+    <section id="mt-main">${!sel ? '<p class="muted">Mande um trecho de vídeo que você gosta. O modelo separa em movimentos e quadros; você aponta o que gosta e o que não gosta; o modelo monta o movimento como helper do kit e renderiza uma demo com o locutor de acervo; aprovado, entra no banco e o compositor passa a preferi-lo.</p>' : ''}</section></div>`;
+  const upload = f => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=video&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
+  $('#mt-pick').onclick = async () => { if (!NATIVE_PICKER) return $('#mt-file').click(); try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#mt-video').value = r.path; } catch { $('#mt-file').click(); } };
+  $('#mt-file').onchange = async e => { if (e.target.files[0]) { $('#mt-video').value = 'enviando…'; $('#mt-video').value = await upload(e.target.files[0]); } };
+  $('#mt-go').onclick = e => act(e.target, async () => { e.target.textContent = 'Enviando…'; const r = await api('POST', '/motion-think', { name: $('#mt-name').value, video: $('#mt-video').value || undefined, url: $('#mt-url').value || undefined }); location.hash = `#/motion-think/${r.id}`; });
+  if (banco) return mtBanco();
+  if (!st) return;
+  const main = $('#mt-main'), an = st.analysis, notes = st.notes, mm = n => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
+  const srcName = st.src ? st.src.split(/[\\/]/).pop() : '';
+  main.innerHTML = `
+    <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${st.duration ? mm(st.duration) : ''}${st.in != null ? ` · trecho ${st.in}–${st.out} s` : ''}</span></h3>
+    <p id="mt-status" class="${st.status === 'error' ? 'err' : 'muted'}">${busyStep ? `⏳ ${busyStep} em andamento...` : MT_STATUS[st.status]} ${esc(st.error ?? '')}</p>
+    <pre id="mt-log" class="muted" style="font-size:12px;max-height:160px;overflow:auto;${busyStep || st.status === 'error' ? '' : 'display:none'}">${esc(st.log.join('\n'))}</pre>
+    ${st.duration ? `<div style="display:grid;grid-template-columns:minmax(200px,320px) 1fr;gap:16px;align-items:start">
+      <video id="mt-src" src="${mtFile(st.id, srcName)}" controls style="width:100%;background:#000;border-radius:10px"></video>
+      <div>
+        <div id="mt-strip" style="position:relative;height:72px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--panel);user-select:none">
+          <div style="display:flex;height:100%">${Array.from({ length: st.thumbs ?? 0 }, (_, k) => `<img src="${mtFile(st.id, `thumbs/${String(k + 1).padStart(3, '0')}.jpg`)}" style="height:100%;flex:1 1 0;min-width:0;object-fit:cover" draggable="false">`).join('')}</div>
+          <div id="mt-shade-l" style="position:absolute;top:0;bottom:0;left:0;background:rgba(0,0,0,.6);pointer-events:none"></div>
+          <div id="mt-shade-r" style="position:absolute;top:0;bottom:0;right:0;background:rgba(0,0,0,.6);pointer-events:none"></div>
+          <div class="mt-h" data-edge="in" style="position:absolute;top:0;bottom:0;width:10px;margin-left:-5px;background:var(--yellow);cursor:ew-resize;border-radius:3px"></div>
+          <div class="mt-h" data-edge="out" style="position:absolute;top:0;bottom:0;width:10px;margin-left:-5px;background:var(--yellow);cursor:ew-resize;border-radius:3px"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+          <label class="muted">início <input id="mt-in" type="number" step="0.1" min="0" style="width:90px"></label>
+          <label class="muted">fim <input id="mt-out" type="number" step="0.1" min="0" style="width:90px"></label>
+          <span class="muted" id="mt-len"></span>
+          <button id="mt-cut" ${busyStep ? 'disabled' : ''}>Cortar trecho</button>
+          <button id="mt-analyze" class="primary" ${busyStep || !st.in && st.in !== 0 || st.status === 'pronto' ? 'disabled' : ''}>${an ? 'Analisar de novo' : 'Analisar'}</button>
+        </div>
+        ${st.in != null ? `<video id="mt-trecho" src="${mtFile(st.id, 'trecho.mp4')}" controls muted loop style="width:180px;margin-top:10px;background:#000;border-radius:8px"></video>` : ''}
+      </div></div>` : ''}
+    <div id="mt-movs" style="display:grid;gap:16px;margin-top:20px"></div>
+    <p style="margin-top:24px"><button id="mt-del" class="muted">Apagar este trecho</button></p>`;
+  $('#mt-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este trecho, seus quadros e rodadas?')) { await api('DELETE', `/motion-think/${encodeURIComponent(st.id)}`); location.hash = '#/motion-think'; } });
+  // SSE: the log grows while a step runs; done or error reloads the page
+  mtEs = new EventSource(`/motion-think/${encodeURIComponent(st.id)}/events`);
+  mtEs.addEventListener('log', e => { const l = $('#mt-log'); if (!l) return; l.style.display = ''; l.textContent += (l.textContent ? '\n' : '') + JSON.parse(e.data); l.scrollTop = l.scrollHeight; });
+  mtEs.addEventListener('step', e => { const d = JSON.parse(e.data); if (d.status === 'start') { const s = $('#mt-status'); if (s) s.textContent = `⏳ ${d.step} em andamento...`; } else if (location.hash === `#/motion-think/${st.id}`) motionThink(sel).catch(() => {}); });
+  // ---- range picker: two handles over the thumbnail strip, in/out in seconds ----
+  if (st.duration) {
+    const range = { in: st.in ?? 0, out: st.out ?? Math.min(st.duration, 30) }, strip = $('#mt-strip'), [hIn, hOut] = strip.querySelectorAll('.mt-h');
+    const paint = () => {
+      const pct = t => `${100 * t / st.duration}%`;
+      hIn.style.left = pct(range.in); hOut.style.left = pct(range.out);
+      $('#mt-shade-l').style.width = pct(range.in); $('#mt-shade-r').style.width = `${100 - 100 * range.out / st.duration}%`;
+      $('#mt-in').value = range.in.toFixed(1); $('#mt-out').value = range.out.toFixed(1);
+      const len = range.out - range.in; $('#mt-len').textContent = `${len.toFixed(1)} s${len > 60 ? ' (máx. 60)' : ''}`; $('#mt-len').className = len > 60 ? 'err' : 'muted';
+    };
+    const clamp = () => { range.in = Math.max(0, Math.min(range.in, st.duration - 1)); range.out = Math.max(range.in + 1, Math.min(range.out, st.duration)); };
+    $('#mt-in').onchange = e => { range.in = +e.target.value; clamp(); paint(); $('#mt-src').currentTime = range.in; };
+    $('#mt-out').onchange = e => { range.out = +e.target.value; clamp(); paint(); $('#mt-src').currentTime = range.out; };
+    strip.querySelectorAll('.mt-h').forEach(h => h.onmousedown = e => {
+      e.preventDefault();
+      const r = strip.getBoundingClientRect(), at = ev => Math.min(st.duration, Math.max(0, st.duration * (ev.clientX - r.left) / r.width));
+      const move = ev => { const t = at(ev); if (h.dataset.edge === 'in') range.in = Math.min(t, range.out - 1); else range.out = Math.max(t, range.in + 1); paint(); $('#mt-src').currentTime = h.dataset.edge === 'in' ? range.in : range.out; };
+      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+      document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    });
+    strip.onclick = e => { if (e.target.classList.contains('mt-h')) return; const r = strip.getBoundingClientRect(); $('#mt-src').currentTime = st.duration * (e.clientX - r.left) / r.width; };
+    paint();
+    $('#mt-cut').onclick = e => act(e.target, async () => { if (an && !confirm('Cortar de novo apaga a análise, os apontamentos e as rodadas deste trecho. Continuar?')) return; stepStarted(e.target, 'Cortando…', 'Cortando o trecho'); await api('PUT', `/motion-think/${encodeURIComponent(st.id)}/range`, { in: range.in, out: range.out }); motionThink(sel); });
+    $('#mt-analyze').onclick = e => act(e.target, async () => { if (an && !confirm('Analisar de novo apaga os apontamentos e as rodadas. Continuar?')) return; stepStarted(e.target, 'Analisando…', 'Opus está separando os movimentos'); $('#mt-log').style.display = ''; api('POST', `/motion-think/${encodeURIComponent(st.id)}/analyze`).catch(() => {}); });
+  }
+  if (!an) return;
+  // ---- movement cards: contact sheet with pins, looping preview, the fields, rounds ----
+  const local = structuredClone(notes.movimentos);
+  const noteOf = m => local[m] ?? (local[m] = { veredito: 'neutro', momento: an.movimentos.find(x => x.m === +m)?.momentoSugerido, categoria: an.movimentos.find(x => x.m === +m)?.categoriaSugerida, tags: [], texto: '', pins: [], naoLevar: '' });
+  const saveNotes = async () => { const r = await api('PUT', `/motion-think/${encodeURIComponent(st.id)}/notes`, { movimentos: local, version: notes.version }); notes.version = r.version; };
+  const movs = $('#mt-movs');
+  movs.innerHTML = an.movimentos.map(mv => {
+    const n = noteOf(mv.m), ms = st.movimentos[mv.m] ?? { status: 'novo', rodadas: 0 }, rounds = st.rounds.filter(r => r.m === mv.m);
+    const frames = mv.frames.filter((_, k) => k % 2 === 0).slice(0, 24);
+    return `<article class="mt-card" data-m="${mv.m}" style="border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;grid-template-columns:minmax(260px,46%) 1fr;gap:16px">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><b>${mv.m}. ${esc(mv.nome)}</b><span class="muted">${mv.a}–${mv.b} s · ${esc(mv.elemento)} · ${esc(mv.camera)} ${MT_MOV[ms.status] ? `· ${MT_MOV[ms.status]}` : ''}</span></div>
+        <div class="mt-sheet" style="position:relative;margin-top:8px;cursor:default">${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;display:block;border-radius:8px" draggable="false">` : ''}<div class="mt-pins" style="position:absolute;inset:0;pointer-events:none"></div></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+          <video class="mt-prev" src="${mtFile(st.id, 'trecho.mp4')}#t=${mv.a},${mv.b}" data-a="${mv.a}" data-b="${mv.b}" muted playsinline style="width:120px;background:#000;border-radius:6px"></video>
+          <button type="button" class="mt-pin">📍 Marcar ponto</button>
+          <span class="muted" style="font-size:12px">clique no botão e depois na folha de contato; o tempo é o da prévia</span>
+        </div>
+        <div class="mt-frames" style="display:flex;gap:3px;overflow:auto;margin-top:8px">${frames.map(f => `<img src="${mtFile(st.id, `frames/${mv.m}/${f}`)}" style="height:54px;border-radius:3px" loading="lazy">`).join('')}</div>
+        <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">O que o modelo viu</summary>
+          <p style="font-size:13px"><b>O que:</b> ${esc(mv.oque)}<br><b>Entrada:</b> ${esc(mv.entrada)}<br><b>Vida:</b> ${esc(mv.vida)}<br><b>Saída:</b> ${esc(mv.saida)}<br><b>Tipo:</b> ${esc(Object.entries(mv.tipo).map(([k, v]) => `${k} = ${v}`).join('; '))}<br><b>Paleta:</b> ${mv.paleta.map(c => `<span style="display:inline-block;width:12px;height:12px;background:${esc(c)};border-radius:3px;vertical-align:middle"></span> ${esc(c)}`).join(' ')}<br><b>Medidas:</b> ${esc(JSON.stringify(mv.medidas))}</p></details>
+      </div>
+      <div style="display:grid;gap:8px;align-content:start">
+        <div style="display:flex;gap:6px">${[['gosto', '👍 gosto'], ['neutro', '😐 neutro'], ['nao-gosto', '👎 não gosto']].map(([v, l]) => `<button type="button" class="mt-ver ${n.veredito === v ? 'primary' : ''}" data-v="${v}" style="flex:1">${l}</button>`).join('')}</div>
+        <div style="display:flex;gap:8px"><label class="muted" style="flex:1">momento <select class="mt-mom" style="width:100%">${MT_MOMENTOS.map(x => `<option ${n.momento === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+          <label class="muted" style="flex:1">categoria <select class="mt-cat" style="width:100%">${MT_CATS.map(x => `<option ${n.categoria === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+        <input class="mt-tags" placeholder="tags livres, separadas por vírgula" value="${esc(n.tags.join(', '))}">
+        <textarea class="mt-texto" placeholder="O que te pega neste movimento (o que aprender: movimento, ritmo, proporção)" style="min-height:70px">${esc(n.texto)}</textarea>
+        <input class="mt-nao" placeholder="Não levar: a fonte, a cor, o mascote..." value="${esc(n.naoLevar)}">
+        <ul class="mt-pinlist muted" style="margin:0;padding-left:18px;font-size:13px"></ul>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="mt-save">Salvar apontamentos</button>
+          <button type="button" class="mt-synth primary" ${n.veredito !== 'gosto' || busyStep || ['sintetizando', 'aguardando', 'aprovado', 'parado'].includes(ms.status) ? 'disabled' : ''}>Sintetizar (rodada ${Math.min(3, rounds.length + 1)}/3)</button>
+          ${ms.status === 'parado' ? '<span class="muted">parado: mude as notas e marque "gosto" de novo para retomar</span>' : ''}
+        </div>
+        ${rounds.map(r => `<div class="mt-round" data-r="${r.r}" style="border-top:1px dashed var(--line);padding-top:10px">
+          <div style="display:flex;justify-content:space-between"><b>Rodada ${r.r}/3 · ${esc(r.helper ?? '')}()</b><span class="muted">${r.veredito ? (r.veredito.ok ? '✓ aprovada' : '✗ reprovada') : 'aguardando veredito'}</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div><div class="muted" style="font-size:11px">original</div>${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : ''}</div>
+            <div><div class="muted" style="font-size:11px">demo</div>${r.sheet ? `<img src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : '<span class="muted">sem folha</span>'}</div></div>
+          ${r.demo ? `<video src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/demo.mp4`)}" controls style="width:200px;margin-top:6px;background:#000;border-radius:6px"></video>` : ''}
+          ${r.proposta ? `<details><summary class="muted" style="cursor:pointer">proposta.md</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(r.proposta)}</pre></details>` : ''}
+          ${r.summary ? `<p class="muted" style="font-size:12px">${esc(r.summary.slice(0, 600))}</p>` : ''}
+          ${r.veredito ? `<p style="font-size:13px">${esc(r.veredito.texto)}</p>${r.veredito.ok && ms.status !== 'aprovado' ? `<div style="display:flex;gap:8px;align-items:center"><button type="button" class="mt-approve primary" data-r="${r.r}">Entrar no banco</button><label class="muted">foto <select class="mt-frame"><option value="sheet.jpg">folha de contato</option><option value="demo.jpg">quadro do meio</option></select></label></div>` : ''}`
+            : `<textarea class="mt-vtext" placeholder="O que falta ou o que ficou bom" style="min-height:50px;margin-top:6px"></textarea><div style="display:flex;gap:8px"><button type="button" class="mt-ok primary" data-r="${r.r}">Aprovar</button><button type="button" class="mt-no" data-r="${r.r}">Reprovar</button></div>`}
+        </div>`).join('')}
+      </div></article>`;
+  }).join('');
+  for (const card of movs.querySelectorAll('.mt-card')) {
+    const m = card.dataset.m, n = noteOf(m), mv = an.movimentos.find(x => x.m === +m), prev = card.querySelector('.mt-prev'), sheet = card.querySelector('.mt-sheet');
+    let pinning = false;
+    // loop the preview inside the movement
+    prev.onloadedmetadata = () => { prev.currentTime = mv.a; prev.play().catch(() => {}); };
+    prev.ontimeupdate = () => { if (prev.currentTime >= mv.b - 0.05 || prev.currentTime < mv.a - 0.5) prev.currentTime = mv.a; };
+    prev.onclick = () => prev.paused ? prev.play() : prev.pause();
+    const paintPins = () => {
+      card.querySelector('.mt-pins').innerHTML = n.pins.map((p, k) => `<span class="rv-pin" style="left:${p.x}%;top:${p.y}%" title="${esc(p.text)}">${k + 1}</span>`).join('');
+      card.querySelector('.mt-pinlist').innerHTML = n.pins.map((p, k) => `<li>#${k + 1} · ${p.t.toFixed(1)} s · ${esc(p.text)} <a href="#" data-k="${k}" class="mt-unpin">✕</a></li>`).join('');
+      card.querySelectorAll('.mt-unpin').forEach(a => a.onclick = e => { e.preventDefault(); n.pins.splice(+a.dataset.k, 1); paintPins(); });
+      card.querySelector('.mt-pin').textContent = pinning ? '📍 Clique na folha...' : '📍 Marcar ponto';
+      sheet.style.cursor = pinning ? 'crosshair' : 'default';
+    };
+    card.querySelector('.mt-pin').onclick = () => { pinning = !pinning; if (pinning) prev.pause(); paintPins(); };
+    sheet.onclick = e => {
+      if (!pinning) return;
+      const r = sheet.getBoundingClientRect(), x = Math.round(1000 * (e.clientX - r.left) / r.width) / 10, y = Math.round(1000 * (e.clientY - r.top) / r.height) / 10;
+      const text = prompt('O que você vê aqui?'); if (text === null) return;
+      n.pins.push({ t: +Math.max(0, prev.currentTime - mv.a).toFixed(2), x, y, text }); pinning = false; paintPins();
+    };
+    paintPins();
+    card.querySelectorAll('.mt-ver').forEach(b => b.onclick = () => { n.veredito = b.dataset.v; card.querySelectorAll('.mt-ver').forEach(x => x.classList.toggle('primary', x === b)); card.querySelector('.mt-synth').disabled = n.veredito !== 'gosto' || !!busyStep; });
+    const read = () => { n.momento = card.querySelector('.mt-mom').value; n.categoria = card.querySelector('.mt-cat').value; n.tags = card.querySelector('.mt-tags').value.split(',').map(s => s.trim()).filter(Boolean); n.texto = card.querySelector('.mt-texto').value; n.naoLevar = card.querySelector('.mt-nao').value; };
+    card.querySelector('.mt-save').onclick = e => act(e.target, async () => { read(); await saveNotes(); e.target.textContent = 'Salvo ✓'; setTimeout(() => e.target.textContent = 'Salvar apontamentos', 1500); });
+    card.querySelector('.mt-synth').onclick = e => act(e.target, async () => { read(); await saveNotes(); stepStarted(e.target, 'Sintetizando…', `Opus está sintetizando o movimento ${m} (2 a 4 min com render)`); $('#mt-log').style.display = ''; api('POST', `/motion-think/${encodeURIComponent(st.id)}/synthesize`, { m: +m }).catch(() => {}); });
+    card.querySelectorAll('.mt-ok, .mt-no').forEach(b => b.onclick = e => act(e.target, async () => {
+      const r = b.dataset.r, texto = b.closest('.mt-round').querySelector('.mt-vtext').value;
+      if (b.classList.contains('mt-no') && !texto.trim()) throw new Error('diga o que falta: o veredito vai para a próxima rodada');
+      await api('PUT', `/motion-think/${encodeURIComponent(st.id)}/rounds/${m}/${r}/verdict`, { ok: b.classList.contains('mt-ok'), texto, pins: [] });
+      motionThink(sel);
+    }));
+    card.querySelectorAll('.mt-approve').forEach(b => b.onclick = e => act(e.target, async () => {
+      stepStarted(e.target, 'Entrando…', 'Copiando para o banco e rodando o teste');
+      await api('POST', `/motion-think/${encodeURIComponent(st.id)}/approve`, { m: +m, r: +b.dataset.r, frame: b.closest('.mt-round').querySelector('.mt-frame').value });
+      showToast({ title: '✓ No banco', message: `O helper entrou no banco de movimentos`, type: 'success', duration: 5000 });
+      motionThink(sel);
+    }));
+  }
+}
+// The bank: photos by moment, with name, category and origin; the negative list; removal.
+async function mtBanco() {
+  const b = await api('GET', '/banco'), main = $('#mt-main');
+  main.innerHTML = `<h3 style="margin:0 0 4px">Banco de movimentos <span class="muted" style="font-weight:400">${b.helpers.length} helper(s)</span></h3>
+    <p class="muted">Cada helper entra no <code>from kit import *</code> de todo reel; o brief lista por momento com a foto, e o <code>render()</code> avisa a cena com momento coberto que não usou o banco. Opcional, mas preferido.</p>
+    ${MT_MOMENTOS.filter(mo => b.helpers.some(h => h.momento === mo)).map(mo => `<h4 style="margin:18px 0 8px">${mo}</h4><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
+      ${b.helpers.filter(h => h.momento === mo).map(h => `<div style="border:1px solid var(--line);border-radius:10px;padding:10px">
+        ${h.jpg ? `<img src="/banco/file/${esc(h.id)}.jpg?v=${Date.now()}" style="width:100%;border-radius:6px;display:block">` : ''}
+        <div style="margin-top:6px"><b><code>${esc(h.id)}</code></b><br><span class="muted" style="font-size:12px">${esc(h.nome)} · ${esc(h.categoria)} · ${(h.params ?? []).join(', ') || 'sem parâmetros'}<br>origem ${esc(h.origem)} · ${esc(h.aprovadoEm)} · ${h.rodadas} rodada(s)</span></div>
+        ${h.md ? `<pre class="muted" style="white-space:pre-wrap;font-size:11px;margin:6px 0">${esc(h.md)}</pre>` : ''}
+        ${h.orig ? `<details><summary class="muted" style="font-size:11px;cursor:pointer">quadro do original (referência interna)</summary><img src="/banco/file/${esc(h.id)}.orig.jpg" style="width:100%;border-radius:6px"></details>` : ''}
+        <button type="button" class="mt-rm" data-id="${esc(h.id)}" style="margin-top:6px">Tirar do banco</button></div>`).join('')}</div>`).join('') || '<p class="muted">Nenhum helper aprovado ainda. Mande um trecho e aprove um movimento.</p>'}
+    <h4 style="margin:24px 0 8px">Negativo <span class="muted" style="font-weight:400">(reprovado: o compositor não reproduz)</span></h4>
+    ${b.negativo.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">${b.negativo.map(n => `<div style="border:1px solid var(--line);border-radius:10px;padding:8px">${n.frame ? `<img src="/banco/file/negativo/${esc(n.frame)}" style="width:100%;border-radius:6px">` : ''}<p style="font-size:13px;margin:6px 0 0">${esc(n.motivo)}</p><span class="muted" style="font-size:11px">${esc(n.origem)}</span></div>`).join('')}</div>` : '<p class="muted">nada reprovado</p>'}`;
+  main.querySelectorAll('.mt-rm').forEach(bt => bt.onclick = e => act(e.target, async () => { if (confirm(`Tirar ${bt.dataset.id} do banco? O .py vai para banco/_removidos/.`)) { await api('DELETE', `/banco/${encodeURIComponent(bt.dataset.id)}`); mtBanco(); } }));
+}
+
 function route() {
   es?.close();
   clearTimer();
   clearInterval(cortesPoll);
+  mtEs?.close(); mtEs = null;
   const h = location.hash.slice(1) || "/";
   const m = h.match(/^\/p\/(.+)$/);
   const b = h.match(/^\/brands\/?(.*)$/);
@@ -11342,10 +11538,12 @@ function route() {
   const skl = h.match(/^\/skills\/?(.*)$/);
   const cfg = h.match(/^\/config\/?(.*)$/);
   const ct = h.match(/^\/cortes\/?(.*)$/);
+  const mt = h.match(/^\/motion-think\/?(.*)$/);
   $("#nav-cortes")?.classList.toggle("active", !!ct);
+  $("#nav-mt")?.classList.toggle("active", !!mt);
 
   // Atualiza destaque na top navbar
-  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !skl && !cfg && !m && !ct);
+  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !skl && !cfg && !m && !ct && !mt);
   $("#nav-brands")?.classList.toggle("active", !!b);
   $("#nav-formats")?.classList.toggle("active", !!f);
   $("#nav-styles")?.classList.toggle("active", !!sty);
@@ -11375,6 +11573,8 @@ function route() {
       stylesView().catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (ct) {
       cortes(ct[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
+    } else if (mt) {
+      motionThink(mt[1] ? decodeURIComponent(mt[1]) : undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (cfg) {
       configSettings(cfg[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else {

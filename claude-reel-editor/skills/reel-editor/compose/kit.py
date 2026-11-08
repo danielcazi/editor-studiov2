@@ -132,7 +132,7 @@ def ladder(p, hi, bg, fg, rows, at=.05):
 S = []
 TRS = ('push', 'fade', 'slide', 'wipe', 'cut')
 TRD = .3   # duração da saída da cena anterior, sobreposta à entrada da nova (crossfade)
-def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push', move=1.05, world=None, signature=False):
+def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push', move=1.05, world=None, signature=False, momento=None):
     # cta=True marca a cena do call to action: o lint exige locutor XXL nela
     # tr: como esta cena entra (a anterior sai por baixo em TRD s): push (zoom+fade) | fade | slide (da direita) | wipe (de baixo) | cut
     # move: escala final do fundo ao longo da cena (push-in lento, sine.inOut); 1 = parado
@@ -140,7 +140,9 @@ def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push',
     #   e opcionais d (s, padrão = a cena), ease (padrão sine.inOut), snap=True (pula para a pose no início em vez de ir da pose anterior).
     #   A pose fica para a cena seguinte: um oner é uma cena longa ou cenas vizinhas sem snap. Limites em WORLD_LIM.
     # signature=True: o plano-assinatura (DIRETOR.md §3); o lint avisa quando nenhum existe
-    S.append(dict(n=n, a=a, b=b, bg=bg, cam=cam, back=back, front=front, sfx=sfx, cta=cta, tr=tr, move=move, world=world, signature=signature))
+    # momento: o momento da fala que a cena serve (gancho, prova, numero, lista, virada, cta), opcional; com ele o render avisa quando
+    #   o banco de movimentos (estilos/banco/) tem helper para esse momento e a cena não usou nenhum
+    S.append(dict(n=n, a=a, b=b, bg=bg, cam=cam, back=back, front=front, sfx=sfx, cta=cta, tr=tr, move=move, world=world, signature=signature, momento=momento))
 
 # câmera de mundo: perspectiva do palco e profundidade de cada camada (translateZ), compensada em escala para o repouso ser idêntico
 WORLD_P = 1800
@@ -376,7 +378,7 @@ def render():
         ext = round(min(TRD, (nxt['b'] - nxt['a']) / 2), 3) if nxt and nxt['tr'] != 'cut' else 0   # sobra para sair sob a próxima cena
         for kind in ('b', 's'):
             cid = f"{kind}{n:02d}"
-            _ENG_USED.clear()
+            _ENG_USED.clear(); _BANCO_SCENE[0] = n
             if kind == 'b':
                 h, js = s['back'](cid, d) if s['back'] else ("", "")
                 body = f'<div class="bgfill" style="{BGS[s["bg"]]}"></div>' + h
@@ -511,6 +513,7 @@ def render():
         return [[round(W / 2 - 420 * k), round(H - 1080 * k), round(840 * k), round(1080 * k)]]
     json.dump([dict(t0=s['a'], ignore=_mask(s)) for s in S], open('motion_mask.json', 'w'))
     if MISSING: aviso('T() sem palavra na fala (a batida caiu em `after`): ' + '; '.join(MISSING))
+    AVISOS.extend(lint_banco())
     AVISOS.extend(lint_variety(open(sys.argv[0], encoding='utf8').read() if sys.argv and os.path.isfile(sys.argv[0]) else '', '\n'.join(all_html), '\n'.join(all_js)))
     for m in AVISOS: print('aviso:', m)
     if ERROS: raise AssertionError('\n'.join(ERROS))
@@ -971,6 +974,49 @@ tl.fromTo(st,{s:0},{s:1,duration:.5,ease:'back.out(1.8)',onUpdate:U},AT);
 tl.to(st,{s:0,duration:.3,ease:'power2.in',onUpdate:U},AT+D-.3);
 tl.to({},{duration:Math.max(D-.8,.01),onUpdate:U},AT+.5);
 })();"""
+
+# Banco de movimentos (estilos/banco/<helper>.py, aprovados na aba Motion Think): cada .py define um helper no padrão do kit e entra
+# neste namespace, então `from kit import *` em scenes.py traz os helpers do banco junto com os nativos. banco.json diz o momento de cada um.
+BANCO = {}            # nome do helper -> {'momento': ..., 'categoria': ...}
+_BANCO_USED = {}      # cena -> set de helpers do banco chamados nela (o wrapper abaixo registra)
+_BANCO_SCENE = [None]
+def _banco_wrap(name, fn):
+    def wrapped(*a, **kw):
+        _BANCO_USED.setdefault(_BANCO_SCENE[0], set()).add(name)
+        return fn(*a, **kw)
+    wrapped.__name__ = name; wrapped.__doc__ = fn.__doc__; wrapped.__wrapped__ = fn
+    return wrapped
+def _load_banco():
+    d = os.path.join('estilos', 'banco')
+    if not os.path.isdir(d): return
+    meta = {}
+    if os.path.exists(os.path.join(d, 'banco.json')):
+        try: meta = {h['id']: h for h in json.load(open(os.path.join(d, 'banco.json'), encoding='utf8')).get('helpers', [])}
+        except Exception as e: print('aviso: estilos/banco/banco.json ilegível:', e)
+    import importlib.util
+    for f in sorted(os.listdir(d)):
+        if not f.endswith('.py') or f.startswith('_'): continue
+        name = f[:-3]
+        try:
+            spec = importlib.util.spec_from_file_location(f'banco_{name}', os.path.join(d, f))
+            mod = importlib.util.module_from_spec(spec); mod.__dict__.update({k: v for k, v in globals().items() if not k.startswith('__')}); spec.loader.exec_module(mod)
+        except Exception as e:
+            print(f'aviso: helper do banco {name} não carregou: {e}'); continue
+        fn = getattr(mod, name, None)
+        if not callable(fn): print(f'aviso: estilos/banco/{f} não define {name}()'); continue
+        globals()[name] = _banco_wrap(name, fn)
+        BANCO[name] = {'momento': meta.get(name, {}).get('momento'), 'categoria': meta.get(name, {}).get('categoria')}
+
+def lint_banco():
+    """Aviso por cena com `momento=` coberto pelo banco que não chamou nenhum helper dele (o banco é preferido, não obrigatório)."""
+    out = []
+    for s in S:
+        m = s.get('momento')
+        if not m: continue
+        have = sorted(h for h, v in BANCO.items() if v.get('momento') == m)
+        if have and not (_BANCO_USED.get(s['n']) or set()) & set(have):
+            out.append(f"cena {s['n']}: momento '{m}' tem {len(have)} helper{'s' if len(have) > 1 else ''} no banco ({', '.join(have)}) e a cena não usou nenhum")
+    return out
 
 # Motores por estilo (engines/<nome>.js, copiados de compose/engines/): funções de desenho testadas de um estilo, expostas ao draw
 # como um objeto (SK silkscreen, BB briefing, SW swiss, AD deco). O código entra uma vez por composição de cena, antes do script.
@@ -1557,3 +1603,5 @@ def select_box(p, x, y, w, h, label='', at=0.0, color=None, guides=True, d=None,
     js = f'tl.fromTo("#{i}",{{opacity:0,scale:1.04}},{{opacity:1,scale:1,duration:.35,ease:"power3.out"}},{at:.2f});'
     if d is not None: js += f'tl.to("#{i}",{{opacity:0,duration:.25}},{at + d - .25:.2f});'
     return html, js
+
+_load_banco()   # estilos/banco/*.py (Motion Think) por último: os helpers do banco usam os do kit
