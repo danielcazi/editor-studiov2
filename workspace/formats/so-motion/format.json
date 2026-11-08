@@ -12,11 +12,11 @@
     "right": 70
   },
   "name": "Só Motion",
-  "order": 5,
+  "order": 3,
   "description": "Sem locutor na tela: só ilustrações, imagens, objetos e tipografia explicando a fala (a voz continua).",
   "planos": [
     "none"
   ],
   "janelas": null,
-  "regras": ""
+  "regras": "Sem locutor na tela do início ao fim (o vídeo cru fica na camada 1, oculto, só como backup). O gancho é um texto grande, dinâmico, em fonte pesada e chamativo, acompanhado de um elemento ilustrado ou 3D. Cada ideia da fala vira uma peça visual (texto, imagem, objeto ou ilustração); nunca uma tela só com legenda. Todo texto dentro dos limites do Instagram (safe zones)."
 }

@@ -15,9 +15,10 @@ import { synthesize, synthesizeLong } from './voice.ts';
 import { carregarEmbrulho, compor, conferirCampos, extrairQuadro, listarEmbrulhos, precosDoSrt, renderCamadas, sugerirQuadros } from './embrulhos.ts';
 import { download as brollDownload, extOf, type Kind, pick as brollPick, rightsOf, search as brollSearch } from './broll.ts';
 import { afterEffectsCmd, NPM, NPX, PYTHON, WIN } from './host.ts';
+import { bancoBrief, copyBancoTo, readBanco } from './banco.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const SKILL = join(ROOT, 'claude-reel-editor/skills/reel-editor');
+export const SKILL = join(ROOT, 'claude-reel-editor/skills/reel-editor');
 const S = join(SKILL, 'scripts');
 const K_DIR = join(SKILL, 'compose');
 export const WS = resolve(process.env.WORKSPACE ?? join(ROOT, 'workspace'));
@@ -118,7 +119,7 @@ export function logFromClient(id: string, text: string) {
   return { ok: true };
 }
 
-const emit = (id: string, event: string, data: unknown) => {
+export const emit = (id: string, event: string, data: unknown) => {
   if (event === 'log' && typeof data === 'string') {
     appendProjectLog(id, data);
   }
@@ -1264,7 +1265,7 @@ export function createFormat(id: string, data?: any) {
 // A style is the motion design cloned from references (typography, camera, beats, sfx, GSAP recipes); the format owns layout,
 // face tracking and rhythm. Rhythm and sound hits are measured here with ffmpeg; Opus only reads the frames and writes the
 // visual direction, so those numbers never come from the model's eye.
-const execP = (cmd: string, args: string[]) => new Promise<string>((ok, ko) =>
+export const execP = (cmd: string, args: string[]) => new Promise<string>((ok, ko) =>
   execFile(cmd, args, { maxBuffer: 64 << 20 }, (e, out, err) => e ? ko(new Error(`${cmd} failed: ${String(err || e.message).slice(-400)}`)) : ok(out + err)));
 
 // Sound-effect hits of a clip: energy jumps above 2.5 kHz (a voice carries little there, whooshes/clicks/pops a lot), as seconds.
@@ -1598,6 +1599,8 @@ export async function createProject(o: {
   voice?: { provider: string; voice: string; language?: string };
   /** Brand character name (optionally a pose) that plays the speaker in formats with a cut-out. */
   character?: { name: string; pose?: string };
+  /** Reaction video (formats with refVideo: Reação): a local file or upload (`path`) or a link (`url`, downloaded whole). Stored as <project>/react.mp4; not a style reference. */
+  reactVideo?: { path?: string; url?: string };
 }) {
   const textMode = typeof o.text === 'string' && o.text.trim() !== '';
   const rawList = o.videos && o.videos.length
@@ -1623,6 +1626,13 @@ export async function createProject(o: {
   const extraReferenceUrls = refUrls.filter(u => u !== referenceUrl);
   const referenceNote = referenceUrl ? o.referenceNote?.trim().slice(0, 1000) || undefined : undefined;
   if (subtitle && (!SUB_EXT.includes(extname(subtitle).toLowerCase()) || !existsSync(subtitle))) fail(`subtitle must be an existing ${SUB_EXT.join('/')} file`);
+  // reaction video: required by a format with refVideo (Reação), refused elsewhere so a stray file never reaches the compose
+  let fmtNeedsReact = false;
+  try { fmtNeedsReact = !!getFormat(o.formatId || 'business-reels').refVideo; } catch {}
+  const reactPath = o.reactVideo?.path ? expandHome(o.reactVideo.path) : undefined, reactUrl = o.reactVideo?.url?.trim() || undefined;
+  if (fmtNeedsReact && !reactPath && !reactUrl) fail('este formato precisa de um vídeo de reação (arquivo ou link)');
+  if (reactPath && (!VIDEO_EXT.includes(extname(reactPath).toLowerCase()) || !existsSync(reactPath))) fail(`vídeo de reação inválido ou não encontrado: ${reactPath}`);
+  if (reactUrl && !/^https?:\/\/\S+$/.test(reactUrl)) fail(`link do vídeo de reação inválido (use http/https): ${reactUrl}`);
   
   const slug = String(o.name ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!slug) fail('name is required');
@@ -1683,6 +1693,17 @@ export async function createProject(o: {
     if (subtitle) {
       appendProjectLog(id, `📝 Legenda importada: ${basename(subtitle)}`);
       take(subtitle, join(P, subName!));
+    }
+    if (fmtNeedsReact) {
+      const dst = join(P, 'react.mp4');
+      if (reactPath) {
+        appendProjectLog(id, `🎬 Vídeo de reação importado: ${basename(reactPath)}`);
+        if (extname(reactPath).toLowerCase() === '.mp4') copyFileSync(reactPath, dst);   // copied, not moved: a batch of projects can share one reaction video
+        else await run(id, 'ffmpeg', ['-y', '-v', 'error', '-i', reactPath, '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', dst]);
+      } else {
+        appendProjectLog(id, `🎬 Baixando o vídeo de reação: ${reactUrl}`);
+        await run(id, YT_DLP, ['-f', 'best[ext=mp4]/best', '-o', dst, '--', reactUrl!]);   // whole, unlike the 60 s style reference
+      }
     }
 
     writeFileSync(join(P, '.gitignore'), '._*\nactivity.log\nraw.*\n*.mp4\n*.wav\nproj/\n*_whisper/\nqa_transcript/\nframes/\nref/\ncutout/\ncutout.webm\ncutout.json\nnose.json\nfillers.json\ncut_filter.txt\nafter-effects/\nref_extra/\nassets/user/\n' + COMPOSE_IGNORE);
@@ -2729,10 +2750,10 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     sfxManifest[f.replace(/\.[^.]+$/, '')] = { file: f, duration: (await probeMedia(join(sfxLib, f)).catch(() => ({ duration: 1 }))).duration, description: `efeito do estúdio (${f})`, onset: 0, peak: 0, source: 'workspace/library/sfx' };
   }
   writeJSON(join(A, 'sfx', 'manifest.json'), sfxManifest);
-  // react (SPEC-v9 §4): the reference video of the script step (ref/ref.mp4) goes beside the speaker; the kit lints a react scene without it
-  const refMp4 = join(P, 'ref', 'ref.mp4'), hasRef = !noSpeaker && !!fmtOf(st).refVideo && existsSync(refMp4);
+  // react (SPEC-v9 §4): the reaction video (react.mp4, or the style reference's ref/ref.mp4 for old projects) goes beside the speaker; the kit lints a react scene without it
+  const refMp4 = existsSync(join(P, 'react.mp4')) ? join(P, 'react.mp4') : join(P, 'ref', 'ref.mp4'), hasRef = !noSpeaker && !!fmtOf(st).refVideo && existsSync(refMp4);   // react.mp4 (the reaction video chosen at creation) wins over the style reference's clip
   if (hasRef) copyFileSync(refMp4, join(A, 'ref.mp4'));
-  for (const [from, to] of [['cutout.webm', 'cut.webm'], ['master.mp4', 'raw.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json'], ['talk.mp4', 'talk.mp4']].filter(([f]) => (!noSpeaker || f === 'voice.m4a' || f === 'transcript.json') && (f !== 'talk.mp4' || existsSync(join(P, f))))) if (media || (existsSync(join(P, from)) && !cutoutJobs.has(id))) { const src = join(P, from), dst = join(A, to); if (!existsSync(dst) || statSync(dst).size !== statSync(src).size || statSync(dst).mtimeMs < statSync(src).mtimeMs) copyFileSync(src, dst); }   // deferred: RVM writes cutout.webm in place, so a running job means a partial file
+  for (const [from, to] of [['cutout.webm', 'cut.webm'], ['master.mp4', 'raw.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json'], ['talk.mp4', 'talk.mp4']].filter(([f]) => (!noSpeaker || f === 'voice.m4a' || f === 'transcript.json' || f === 'master.mp4') && (f !== 'talk.mp4' || existsSync(join(P, f))))) if (media || (existsSync(join(P, from)) && !cutoutJobs.has(id))) { const src = join(P, from), dst = join(A, to); if (!existsSync(dst) || statSync(dst).size !== statSync(src).size || statSync(dst).mtimeMs < statSync(src).mtimeMs) copyFileSync(src, dst); }   // deferred: RVM writes cutout.webm in place, so a running job means a partial file. Só Motion keeps master.mp4 too: the hidden layer 1 (kit.py #pcam) for Edição and the After export
   // the brand as it is now (global + this project's override): the copy in the project folder goes stale when the brand gains a font or colour
   const brand = writeBrand(st);
   const fontFile = brandFontFile(st, brand);
@@ -2855,6 +2876,9 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const packOf = (x: any): string | null => x?.pack && safeId(x.pack) && existsSync(join(K, 'estilos', x.pack)) ? join(K, 'estilos', x.pack) : null;
   if (style && packOf(style)) copyFileSync(packOf(style)!, join(C, 'ESTILO.md'));
   else if (!style && !skill) for (const x of styleList) if (packOf(x)) { mkdirSync(join(C, 'estilos'), { recursive: true }); copyFileSync(packOf(x)!, join(C, 'estilos', x.pack)); }
+  // the bank of approved movements (Motion Think): helpers + photos into estilos/banco/ (kit.py loads them) and a section in the brief
+  const banco = copyBancoTo(C);
+  const bancoSection = bancoBrief(banco, recentBancoHelpers(st, banco.helpers.map(h => h.id)));
   const imgDesc = imgFiles.length ? `img/ (${imgFiles.length} imagens da referência disponíveis: ${imgFiles.join(', ')}; olhe cada uma com Read antes de usar, e mostre com <img src="assets/img/..."> em back/front)` : 'img/ (vazio)';
 
   const fmtBlock = `## Formato${skill?.format?.planos ? ' (travado pela skill)' : ` escolhido (${fmt.name})`}\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmtR.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmtR.regras ? `\nQuando: ${fmtR.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`;
@@ -2879,6 +2903,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     libLines.length ? `## Biblioteca compartilhada (assets/lib/)\nObjetos, imagens e trilhas do estúdio (workspace/library/): ${libLines.slice(0, 80).join(', ')}${libLines.length > 80 ? ` e mais ${libLines.length - 80}` : ''}. PNG com alfa entra como floatimg; .glb com obj3d; música (assets/lib/music/) com music(src, vol=.16), uma por reel, só quando a biblioteca do reel não trouxe uma.` : '',
     !noSpeaker && script.moments?.length ? `## Momentos do roteiro\nUm bloco por momento: tempo, fala e ação visual sugerida. O kit.py é opcional: use um helper só quando ele for a melhor ideia para o momento.\n${script.moments.map((m: any) => `- ${m.t_start}s–${m.t_end}s · "${m.texto ?? ''}" · ${m.visual_action ?? ''}`).join('\n')}` : '',
     charLines.length || brand.animation?.style ? `## Brandkit de animação\n${brand.animation?.style ? `Estilo de movimento: ${brand.animation.style}\n` : ''}${charLines.length ? `Personagens (PNG com fundo transparente; olhe cada um com Read). Anime entrada, gesto e troca de pose em GSAP, escolhendo a pose pela emoção da fala. Sem boca sincronizada: o personagem é voz em off, só reage.${st.character ? ` O locutor (cut.webm) é o personagem ${st.character.name}, parado e respirando: faça-o reagir com câmera e com as outras poses por cima (front), nunca invente outro rosto.` : ''}\n${charLines.join('\n')}` : ''}` : '',
+    bancoSection,
     script.accentWords?.length ? `## Palavras-chave sugeridas\n${script.accentWords.join(', ')}` : '',
     srt ? `## Roteiro e tempos (.srt)\n${srt}` : '',
     `## Transcript por palavra\nassets/transcript.json (${words.length} palavras).`,
@@ -2887,6 +2912,17 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     `Siga GUIDE.md. Escreva scenes.py, valide, olhe os snapshots e corrija antes de renderizar.`].filter(Boolean).join('\n\n'));
   return { dir: C };
 }
+
+// Bank helpers called in the brand's last 3 composed reels (other projects): the brief asks for variation (DIRETOR §8, Motion Think §8).
+function recentBancoHelpers(st: State, ids: string[]): string[] {
+  if (!ids.length) return [];
+  const used = new Set<string>();
+  const others = listProjects().filter(p => p !== st.id).map(p => { try { const o = load(p); return o.brand === st.brand && existsSync(join(projDir(p), 'compose', 'scenes.py')) ? { p, t: statSync(join(projDir(p), 'compose', 'scenes.py')).mtimeMs } : null; } catch { return null; } })
+    .filter((x): x is { p: string; t: number } => !!x).sort((a, b) => b.t - a.t).slice(0, 3);
+  for (const { p } of others) { const src = readFileSync(join(projDir(p), 'compose', 'scenes.py'), 'utf8'); for (const id of ids) if (new RegExp(`\\b${id}\\(`).test(src)) used.add(id); }
+  return [...used];
+}
+export { readBanco };
 
 // Agent composer (formats with composer: "agent"): Opus writes compose/scenes.py, which writes compose/index.html, and loops check + snapshot.
 // The review player plays that index.html live; only final() renders it. The motion-only test (mode "motion") still renders preview-motion.mp4.

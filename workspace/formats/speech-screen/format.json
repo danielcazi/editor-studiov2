@@ -12,7 +12,7 @@
     "right": 70
   },
   "name": "Speech Screen",
-  "order": 3,
+  "order": 1,
   "description": "Locutor em vídeo no painel de baixo e a animação em cima; recorte só no gancho, no meio e na CTA.",
   "planos": [
     "cut",
@@ -39,5 +39,5 @@
     "side": "bottom",
     "top": 0.42
   },
-  "regras": "Recorte do locutor só nas janelas (gancho, meio e CTA); fora delas ele aparece cru no painel de baixo e a animação ocupa a parte de cima."
+  "regras": "Recorte em tela cheia só nas janelas: gancho, meio e CTA. Fora delas, locutor cru no painel de baixo e a animação em cima. Cena sem locutor (none) só quando a ilustração precisa da tela toda, nunca dentro de uma janela de recorte."
 }

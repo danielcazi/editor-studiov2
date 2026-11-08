@@ -2,6 +2,9 @@
 
 Você compõe o reel inteiro, cena a cena, em HyperFrames 0.8.217 + GSAP 3.14.2. `brief.md` diz o que e para quem; este guia diz como. Dentro das regras abaixo, a liberdade criativa é sua: invente dinâmicas de texto, cards e transições. **Helpers primeiro:** monte cada cena com os helpers do `kit.py` (seção "Estilos prontos do kit") e as peças de `assets/` (biblioteca do reel, biblioteca compartilhada, imagens do site, objetos 3D); escreva HTML/CSS e GSAP à mão só para um movimento que nenhum helper faz (medido no mesmo trecho: GSAP à mão levou 2,2× o tempo e 3× o código para o mesmo resultado). Um movimento novo que valeu a pena vira helper do kit depois. Pode escrever HTML/JS próprio em `back`/`front`, criar helpers em `scenes.py` e usar qualquer asset de `assets/`.
 
+## Banco de movimentos (`estilos/banco/`)
+Movimentos que o Daniel aprovou na aba Motion Think: cada um é um helper testado, com geometria fixa e uma foto (`estilos/banco/<helper>.jpg`, o que se espera na tela) e um `.md` de três linhas. O `from kit import *` já carrega todos; o brief lista os do banco por momento da fala (gancho, prova, numero, lista, virada, cta). **Quando o banco tem um helper para o momento da cena, use-o; invente só onde o banco não cobre.** Passe `momento='gancho'` em `scene()` para o `render()` conferir: ele avisa a cena de momento coberto que não usou o banco. `estilos/banco/negativo.md` lista o que foi reprovado: não reproduza.
+
 ## Fluxo
 1. Leia `brief.md`, `DIRETOR.md`, `treatment.md` (se existir) e `assets/transcript.json` (tempo de cada palavra: os cortes caem nas palavras).
 2. Escreva `scenes.py`: `from kit import *`, chamadas `scene(...)`, `render()` no fim. Rode `python3 -B scenes.py`. Todo tempo de batida vem de `T('palavra')` / `T('frase', after=, end=True)` (segundos do reel; dentro da cena use `T(...) - a`); uma palavra que não existe na fala vira aviso no render.
