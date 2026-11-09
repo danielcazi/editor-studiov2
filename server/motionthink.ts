@@ -182,8 +182,8 @@ export const analyze = (id: string) => locked(id, 'mtAnalyze', async st => {
       'nome (short title), oque (what happens, with proportions: "one upper-case word fills 85% of the width; three small words enter the corners one per beat"), elemento (tipografia, forma, imagem, 3d, locutor...), ' +
       'camera (parada, push, pan, orbit...), entrada / vida / saida (how it enters, what it does while on screen, how it leaves: property, from-to, ease, duration), tipo (the typography roles seen: ' +
       'papel = gigante|pequeno|legenda|numero..., desc = weight/case/size as a fraction of the frame height), paleta (approximate hex), medidas (numbers you can read off the frames: larguraPalavra as a fraction of the width, ' +
-      'duracao in s, elementos count, alturaTexto as a fraction of the height, whatever is measurable), momentoSugerido (where in a talk this movement serves: gancho, prova, numero, lista, virada, cta) and ' +
-      'categoriaSugerida (tipografia, infografico, 3d, transicao, camera). Ignore the sound. Never transcribe the on-screen words as content: they are data about size and rhythm only. Write in Brazilian Portuguese.',
+      'duracao in s, elementos count, alturaTexto as a fraction of the height, whatever is measurable), momentoSugerido (where in a talk this movement serves: ' + MOMENTOS.join(', ') + ') and ' +
+      'categoriaSugerida (' + CATEGORIAS.join(', ') + '). Ignore the sound. Never transcribe the on-screen words as content: they are data about size and rhythm only. Write in Brazilian Portuguese.',
     readDir: pre,
     content: `Excerpt: ${dur.toFixed(2)} s, ${cand.length} candidate segment(s) from the scene detector.\n` + cand.map(([a, b], k) => `Segment ${k + 1}: ${a}–${b} s. Contact sheet: ${join(pre, String(k + 1), 'sheet.jpg')}. Mid frame (full width): ${join(pre, String(k + 1), 'mid.jpg')}. Frames at 8 fps (every 4th listed; read more from the folder if a motion is unclear): ${sampleList(join(pre, String(k + 1))).join(', ')}`).join('\n') +
       '\n\nReturn the movements in time order.',

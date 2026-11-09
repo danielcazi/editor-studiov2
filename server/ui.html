@@ -11286,7 +11286,7 @@ async function cortes(sel) {
 
 // ---- Motion Think: Daniel teaches one movement at a time (excerpt → movements → marks → synthesis → demo → bank). SSE per session. ----
 let mtEs = null;
-const MT_MOMENTOS = ['gancho', 'prova', 'numero', 'lista', 'virada', 'cta'], MT_CATS = ['tipografia', 'infografico', '3d', 'transicao', 'camera'];
+const MT_MOMENTOS = ['gancho', 'contexto', 'problema', 'definicao', 'exemplo', 'historia', 'prova', 'numero', 'lista', 'comparacao', 'passo-a-passo', 'virada', 'resumo', 'cta'], MT_CATS = ['tipografia', 'infografico', 'grafico', 'ilustracao', 'icone', 'foto', 'foto-antiga', 'colagem', 'exemplo', 'broll', '3d', 'transicao', 'camera'];
 const MT_STATUS = { baixando: '⏳ Guardando o vídeo...', pronto: 'Escolha o trecho (início e fim, até 60 s) e corte.', cortado: 'Trecho cortado. Clique em Analisar.', analisando: '🧠 Opus separando os movimentos...', analisado: 'Aponte o que gosta em cada movimento; só "gosto" vai para a síntese.', error: '✗ Erro' };
 const MT_MOV = { novo: '', sintetizando: '⏳ sintetizando', aguardando: 'aguardando veredito', aprovado: '✓ no banco', parado: '⏸ parado (3 rodadas)' };
 const mtFile = (id, rel) => `/motion-think/${encodeURIComponent(id)}/file/${rel.split('/').map(encodeURIComponent).join('/')}`;
@@ -11310,7 +11310,7 @@ async function motionThink(sel) {
         </div></details>
       ${list.map(c => `<a class="bitem ${c.id === sel ? 'on' : ''}" href="#/motion-think/${esc(c.id)}">${esc(c.name)} <span class="muted">· ${c.in != null ? `${Math.round(c.out - c.in)} s` : c.status}${c.movimentos ? ` · ${c.movimentos} mov` : ''}${c.aprovados ? ` · ${c.aprovados} ✓` : ''}</span></a>`).join('') || '<p class="muted">nenhum trecho ainda</p>'}
     </aside>
-    <section id="mt-main">${!sel ? '<p class="muted">Mande um trecho de vídeo que você gosta. O modelo separa em movimentos e quadros; você aponta o que gosta e o que não gosta; o modelo monta o movimento como helper do kit e renderiza uma demo com o locutor de acervo; aprovado, entra no banco e o compositor passa a preferi-lo.</p>' : ''}</section></div>`;
+    <section id="mt-main" style="min-width:0">${!sel ? '<p class="muted">Mande um trecho de vídeo que você gosta. O modelo separa em movimentos e quadros; você aponta o que gosta e o que não gosta; o modelo monta o movimento como helper do kit e renderiza uma demo com o locutor de acervo; aprovado, entra no banco e o compositor passa a preferi-lo.</p>' : ''}</section></div>`;
   const upload = f => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=video&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
   $('#mt-pick').onclick = async () => { if (!NATIVE_PICKER) return $('#mt-file').click(); try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#mt-video').value = r.path; } catch { $('#mt-file').click(); } };
   $('#mt-file').onchange = async e => { if (e.target.files[0]) { $('#mt-video').value = 'enviando…'; $('#mt-video').value = await upload(e.target.files[0]); } };
@@ -11318,13 +11318,16 @@ async function motionThink(sel) {
   if (banco) return mtBanco();
   if (!st) return;
   const main = $('#mt-main'), an = st.analysis, notes = st.notes, mm = n => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
-  const srcName = st.src ? st.src.split(/[\\/]/).pop() : '';
+  const srcName = st.src ? st.src.split(/[\\/]/).pop() : '', lastErr = st.log.at(-1)?.startsWith('ERRO') ? st.log.at(-1) : '';
+  const tally = () => { const ms = Object.values(st.movimentos), c = k => ms.filter(x => x.status === k).length, g = Object.values(notes.movimentos).filter(x => x.veredito === 'gosto').length;
+    return `${an.movimentos.length} movimentos · ${g} com "gosto" · ${c('aguardando')} aguardando veredito · ${c('aprovado')} no banco${c('parado') ? ` · ${c('parado')} parado` : ''}. Só "gosto" vai para a síntese; a demo aparece na coluna da direita.`; };
   main.innerHTML = `
     <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${st.duration ? mm(st.duration) : ''}${st.in != null ? ` · trecho ${st.in}–${st.out} s` : ''}</span></h3>
-    <p id="mt-status" class="${st.status === 'error' ? 'err' : 'muted'}">${busyStep ? `⏳ ${busyStep} em andamento...` : MT_STATUS[st.status]} ${esc(st.error ?? '')}</p>
-    <pre id="mt-log" class="muted" style="font-size:12px;max-height:160px;overflow:auto;${busyStep || st.status === 'error' ? '' : 'display:none'}">${esc(st.log.join('\n'))}</pre>
-    ${st.duration ? `<div style="display:grid;grid-template-columns:minmax(200px,320px) 1fr;gap:16px;align-items:start">
-      <video id="mt-src" src="${mtFile(st.id, srcName)}" controls style="width:100%;background:#000;border-radius:10px"></video>
+    <p id="mt-status" class="${st.status === 'error' || lastErr ? 'err' : 'muted'}">${busyStep ? `⏳ ${busyStep} em andamento...` : lastErr ? esc(lastErr) : an && st.status === 'analisado' ? tally() : MT_STATUS[st.status]} ${esc(st.error ?? '')}</p>
+    <pre id="mt-log" class="muted" style="font-size:12px;max-height:160px;overflow:auto;${busyStep || st.status === 'error' || lastErr ? '' : 'display:none'}">${esc(st.log.join('\n'))}</pre>
+    ${st.duration ? `<details ${an ? '' : 'open'}><summary class="muted" style="cursor:pointer;margin-bottom:10px">Vídeo e corte${st.in != null ? ` · trecho ${st.in}–${st.out} s` : ''} · ${an ? 'cortar ou analisar de novo apaga os apontamentos' : 'escolha o trecho'}</summary>
+    <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:start">
+      <video id="mt-src" src="${mtFile(st.id, srcName)}" ${st.thumbs ? `poster="${mtFile(st.id, 'thumbs/001.jpg')}"` : ''} preload="metadata" controls style="height:240px;max-width:360px;background:#000;border-radius:10px"></video>
       <div>
         <div id="mt-strip" style="position:relative;height:72px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--panel);user-select:none">
           <div style="display:flex;height:100%">${Array.from({ length: st.thumbs ?? 0 }, (_, k) => `<img src="${mtFile(st.id, `thumbs/${String(k + 1).padStart(3, '0')}.jpg`)}" style="height:100%;flex:1 1 0;min-width:0;object-fit:cover" draggable="false">`).join('')}</div>
@@ -11340,8 +11343,8 @@ async function motionThink(sel) {
           <button id="mt-cut" ${busyStep ? 'disabled' : ''}>Cortar trecho</button>
           <button id="mt-analyze" class="primary" ${busyStep || !st.in && st.in !== 0 || st.status === 'pronto' ? 'disabled' : ''}>${an ? 'Analisar de novo' : 'Analisar'}</button>
         </div>
-        ${st.in != null ? `<video id="mt-trecho" src="${mtFile(st.id, 'trecho.mp4')}" controls muted loop style="width:180px;margin-top:10px;background:#000;border-radius:8px"></video>` : ''}
-      </div></div>` : ''}
+        ${st.in != null ? `<video id="mt-trecho" src="${mtFile(st.id, 'trecho.mp4')}#t=0.1" preload="metadata" controls muted loop style="height:160px;margin-top:10px;background:#000;border-radius:8px"></video>` : ''}
+      </div></div></details>` : ''}
     <div id="mt-movs" style="display:grid;gap:16px;margin-top:20px"></div>
     <p style="margin-top:24px"><button id="mt-del" class="muted">Apagar este trecho</button></p>`;
   $('#mt-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este trecho, seus quadros e rodadas?')) { await api('DELETE', `/motion-think/${encodeURIComponent(st.id)}`); location.hash = '#/motion-think'; } });
@@ -11383,20 +11386,33 @@ async function motionThink(sel) {
   movs.innerHTML = an.movimentos.map(mv => {
     const n = noteOf(mv.m), ms = st.movimentos[mv.m] ?? { status: 'novo', rodadas: 0 }, rounds = st.rounds.filter(r => r.m === mv.m);
     const frames = mv.frames.filter((_, k) => k % 2 === 0).slice(0, 24);
-    return `<article class="mt-card" data-m="${mv.m}" style="border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;grid-template-columns:minmax(260px,46%) 1fr;gap:16px">
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline"><b>${mv.m}. ${esc(mv.nome)}</b><span class="muted">${mv.a}–${mv.b} s · ${esc(mv.elemento)} · ${esc(mv.camera)} ${MT_MOV[ms.status] ? `· ${MT_MOV[ms.status]}` : ''}</span></div>
+    const badge = { sintetizando: ['⏳ sintetizando', 'var(--yellow)'], aguardando: ['aguardando seu veredito', 'var(--yellow)'], aprovado: ['✓ no banco', 'var(--green)'], parado: ['⏸ parado (3 rodadas)', 'var(--mute)'] }[ms.status];
+    const lab = t => `<div class="muted" style="font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">${t}</div>`;
+    const round = (r, latest) => `<div class="mt-round" data-r="${r.r}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>Rodada ${r.r}/3 · ${esc(r.helper ?? '')}()</b><span class="muted" style="font-size:12px">${r.veredito ? (r.veredito.ok ? '✓ aprovada' : '✗ reprovada') : 'aguardando veredito'}</span></div>
+          ${r.demo ? `<video src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/demo.mp4`)}" ${r.sheet ? `poster="${mtFile(st.id, `rounds/${mv.m}/${r.r}/demo.jpg`)}"` : ''} controls loop muted playsinline ${latest ? 'autoplay' : ''} style="display:block;height:420px;max-width:100%;margin:8px auto 0;background:#000;border-radius:8px"></video>` : '<p class="muted">a síntese não deixou demo.mp4</p>'}
+          <details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:12px">folhas de contato · original × demo</summary>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div>${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : ''}</div><div>${r.sheet ? `<img src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : '<span class="muted">sem folha</span>'}</div></div></details>
+          ${r.proposta ? `<details><summary class="muted" style="cursor:pointer;font-size:12px">proposta.md · o que o modelo fixou e deixou livre</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(r.proposta)}</pre></details>` : ''}
+          ${r.summary ? `<details><summary class="muted" style="cursor:pointer;font-size:12px">resumo do modelo</summary><p class="muted" style="font-size:12px">${esc(r.summary.slice(0, 600))}</p></details>` : ''}
+          ${r.veredito ? `<p style="font-size:13px;margin:8px 0 0">${esc(r.veredito.texto)}</p>${r.veredito.ok && ms.status !== 'aprovado' ? `<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button type="button" class="mt-approve primary" data-r="${r.r}">Entrar no banco</button><label class="muted">foto <select class="mt-frame"><option value="sheet.jpg">folha de contato</option><option value="demo.jpg">quadro do meio</option></select></label></div>` : ''}`
+            : `<textarea class="mt-vtext" placeholder="Ficou bom? O que falta? (a reprovação vai para a próxima rodada)" style="min-height:56px;margin-top:8px;width:100%"></textarea><div style="display:flex;gap:8px;margin-top:6px"><button type="button" class="mt-ok primary" data-r="${r.r}">Aprovar</button><button type="button" class="mt-no" data-r="${r.r}">Reprovar</button></div>`}
+        </div>`;
+    const older = rounds.slice(0, -1).reverse(), latest = rounds.at(-1);
+    return `<article class="mt-card" data-m="${mv.m}" style="border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:minmax(240px,30%) minmax(0,1fr) minmax(280px,34%);gap:18px">
+      <div style="grid-column:1/-1;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px">
+        <b style="font-size:16px">${mv.m}. ${esc(mv.nome)}</b><span class="muted">${mv.a}–${mv.b} s · ${esc(mv.elemento)} · ${esc(mv.camera)}</span>
+        ${badge ? `<span style="margin-left:auto;font:600 12px var(--mono);color:${badge[1]};border:1px solid ${badge[1]};border-radius:999px;padding:2px 10px">${badge[0]}</span>` : ''}
+      </div>
+      <div style="min-width:0">${lab('Original')}
+        <video class="mt-prev" src="${mtFile(st.id, 'trecho.mp4')}#t=${mv.a},${mv.b}" data-a="${mv.a}" data-b="${mv.b}" muted playsinline style="display:block;width:100%;max-height:300px;background:#000;border-radius:8px"></video>
         <div class="mt-sheet" style="position:relative;margin-top:8px;cursor:default">${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;display:block;border-radius:8px" draggable="false">` : ''}<div class="mt-pins" style="position:absolute;inset:0;pointer-events:none"></div></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-          <video class="mt-prev" src="${mtFile(st.id, 'trecho.mp4')}#t=${mv.a},${mv.b}" data-a="${mv.a}" data-b="${mv.b}" muted playsinline style="width:120px;background:#000;border-radius:6px"></video>
-          <button type="button" class="mt-pin">📍 Marcar ponto</button>
-          <span class="muted" style="font-size:12px">clique no botão e depois na folha de contato; o tempo é o da prévia</span>
-        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><button type="button" class="mt-pin">📍 Marcar ponto</button><span class="muted" style="font-size:12px">depois clique na folha de contato; o tempo é o da prévia</span></div>
         <div class="mt-frames" style="display:flex;gap:3px;overflow:auto;margin-top:8px">${frames.map(f => `<img src="${mtFile(st.id, `frames/${mv.m}/${f}`)}" style="height:54px;border-radius:3px" loading="lazy">`).join('')}</div>
         <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">O que o modelo viu</summary>
-          <p style="font-size:13px"><b>O que:</b> ${esc(mv.oque)}<br><b>Entrada:</b> ${esc(mv.entrada)}<br><b>Vida:</b> ${esc(mv.vida)}<br><b>Saída:</b> ${esc(mv.saida)}<br><b>Tipo:</b> ${esc(Object.entries(mv.tipo).map(([k, v]) => `${k} = ${v}`).join('; '))}<br><b>Paleta:</b> ${mv.paleta.map(c => `<span style="display:inline-block;width:12px;height:12px;background:${esc(c)};border-radius:3px;vertical-align:middle"></span> ${esc(c)}`).join(' ')}<br><b>Medidas:</b> ${esc(JSON.stringify(mv.medidas))}</p></details>
+          <p style="font-size:13px"><b>O que:</b> ${esc(mv.oque)}<br><b>Entrada:</b> ${esc(mv.entrada)}<br><b>Vida:</b> ${esc(mv.vida)}<br><b>Saída:</b> ${esc(mv.saida)}<br><b>Tipo:</b> ${esc(Object.entries(mv.tipo).map(([k, v]) => `${k} = ${v}`).join('; '))}<br><b>Paleta:</b> ${mv.paleta.map(c => `<span style="display:inline-block;width:12px;height:12px;background:${esc(c)};border-radius:3px;vertical-align:middle"></span> ${esc(c)}`).join(' ')}<br><b>Medidas:</b> <span style="overflow-wrap:anywhere">${esc(JSON.stringify(mv.medidas))}</span></p></details>
       </div>
-      <div style="display:grid;gap:8px;align-content:start">
+      <div style="display:grid;gap:8px;align-content:start;min-width:0">${lab('Sua leitura')}
         <div style="display:flex;gap:6px">${[['gosto', '👍 gosto'], ['neutro', '😐 neutro'], ['nao-gosto', '👎 não gosto']].map(([v, l]) => `<button type="button" class="mt-ver ${n.veredito === v ? 'primary' : ''}" data-v="${v}" style="flex:1">${l}</button>`).join('')}</div>
         <div style="display:flex;gap:8px"><label class="muted" style="flex:1">momento <select class="mt-mom" style="width:100%">${MT_MOMENTOS.map(x => `<option ${n.momento === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
           <label class="muted" style="flex:1">categoria <select class="mt-cat" style="width:100%">${MT_CATS.map(x => `<option ${n.categoria === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
@@ -11407,18 +11423,12 @@ async function motionThink(sel) {
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button type="button" class="mt-save">Salvar apontamentos</button>
           <button type="button" class="mt-synth primary" ${n.veredito !== 'gosto' || busyStep || ['sintetizando', 'aguardando', 'aprovado', 'parado'].includes(ms.status) ? 'disabled' : ''}>Sintetizar (rodada ${Math.min(3, rounds.length + 1)}/3)</button>
-          ${ms.status === 'parado' ? '<span class="muted">parado: mude as notas e marque "gosto" de novo para retomar</span>' : ''}
+          ${ms.status === 'parado' ? '<span class="muted">parado: mude as notas e marque "gosto" de novo para retomar</span>' : ms.status === 'aguardando' ? '<span class="muted">dê o veredito da demo ao lado antes da próxima rodada</span>' : ''}
         </div>
-        ${rounds.map(r => `<div class="mt-round" data-r="${r.r}" style="border-top:1px dashed var(--line);padding-top:10px">
-          <div style="display:flex;justify-content:space-between"><b>Rodada ${r.r}/3 · ${esc(r.helper ?? '')}()</b><span class="muted">${r.veredito ? (r.veredito.ok ? '✓ aprovada' : '✗ reprovada') : 'aguardando veredito'}</span></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div><div class="muted" style="font-size:11px">original</div>${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : ''}</div>
-            <div><div class="muted" style="font-size:11px">demo</div>${r.sheet ? `<img src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : '<span class="muted">sem folha</span>'}</div></div>
-          ${r.demo ? `<video src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/demo.mp4`)}" controls style="width:200px;margin-top:6px;background:#000;border-radius:6px"></video>` : ''}
-          ${r.proposta ? `<details><summary class="muted" style="cursor:pointer">proposta.md</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(r.proposta)}</pre></details>` : ''}
-          ${r.summary ? `<p class="muted" style="font-size:12px">${esc(r.summary.slice(0, 600))}</p>` : ''}
-          ${r.veredito ? `<p style="font-size:13px">${esc(r.veredito.texto)}</p>${r.veredito.ok && ms.status !== 'aprovado' ? `<div style="display:flex;gap:8px;align-items:center"><button type="button" class="mt-approve primary" data-r="${r.r}">Entrar no banco</button><label class="muted">foto <select class="mt-frame"><option value="sheet.jpg">folha de contato</option><option value="demo.jpg">quadro do meio</option></select></label></div>` : ''}`
-            : `<textarea class="mt-vtext" placeholder="O que falta ou o que ficou bom" style="min-height:50px;margin-top:6px"></textarea><div style="display:flex;gap:8px"><button type="button" class="mt-ok primary" data-r="${r.r}">Aprovar</button><button type="button" class="mt-no" data-r="${r.r}">Reprovar</button></div>`}
-        </div>`).join('')}
+      </div>
+      <div style="min-width:0">${lab('Demo (o movimento refeito no kit)')}
+        ${latest ? round(latest, true) : `<p class="muted" style="font-size:13px">${ms.status === 'sintetizando' ? '⏳ O Opus está escrevendo o helper e renderizando a demo (2 a 7 min). Esta coluna recarrega sozinha.' : 'Marque "gosto" e clique em Sintetizar: o Opus refaz o movimento como helper do kit e a demo em vídeo aparece aqui para você aprovar ou reprovar.'}</p>`}
+        ${older.map(r => `<details style="margin-top:12px;border-top:1px dashed var(--line);padding-top:8px"><summary class="muted" style="cursor:pointer">Rodada ${r.r} · ${r.veredito ? (r.veredito.ok ? '✓ aprovada' : '✗ reprovada') : 'sem veredito'}</summary>${round(r, false)}</details>`).join('')}
       </div></article>`;
   }).join('');
   for (const card of movs.querySelectorAll('.mt-card')) {

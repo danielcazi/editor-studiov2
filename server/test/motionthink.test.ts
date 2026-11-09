@@ -39,6 +39,7 @@ test('helperName/helperParams: the kit convention (p first, everything else defa
   assert.throws(() => BK.helperName('def _x(p): pass'), /não define/);
   assert.throws(() => BK.helperName('def x(sel, a): pass'), /`p`/);
   assert.throws(() => BK.helperName('def x(p, giant, at=0): pass'), /sem valor padrão \(giant\)/);
+  assert.equal(BK.helperName("def pilha(p, chip='Em 2026,', ink=\"a,b\", at=0.0, d=None, k='pr'):\n    pass"), 'pilha');
 });
 
 test('bancoBrief lists helpers by moment with photo, params and the negative list', () => {
