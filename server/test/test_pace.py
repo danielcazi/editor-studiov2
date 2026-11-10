@@ -4,7 +4,7 @@ from pathlib import Path
 PACE = Path(__file__).resolve().parents[2] / "claude-reel-editor/skills/reel-editor/scripts/pace.py"
 d = Path(tempfile.mkdtemp())
 subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=1080x1920:d=4:r=30", "-pix_fmt", "yuv420p", d / "still.mp4"], check=True)
-subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "gradients=s=1080x1920:d=4:r=30:speed=0.8",
+subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "gradients=s=1080x1920:d=4:r=30:speed=0.8:c0=0x606060:c1=0xA8A8A8",   # fixed greys 72 apart: above pace.py's PX (24), below MASK_PX (90). The random default (seed does not pin it) failed about half the runs
                 "-vf", "drawbox=x=0:y=0:w=1080:h=1000:color=white:t=fill:enable='lt(mod(t\\,1.4)\\,0.7)'", "-pix_fmt", "yuv420p", d / "busy.mp4"], check=True)
 json.dump([{"t0": 0, "ignore": [[0, 0, 1080, 1920]]}], open(d / "mask.json", "w"))
 run = lambda *a: subprocess.run([sys.executable, str(PACE), *map(str, a)], capture_output=True, text=True)

@@ -8,6 +8,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { textContrast } from './lib.ts';
 
 // uso: node layout_check.mjs [-v] <pasta do compose>; -v imprime cada caixa medida, para calibrar as zonas
 const VERBOSO = process.argv.includes('-v');
@@ -15,6 +16,7 @@ const DIR = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('-')) ?
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const RUNTIME = path.resolve(HERE, '../claude-reel-editor/skills/reel-editor/engine/hf/hyperframe.runtime.iife.js');
 const SRC_W = 1920, SRC_H = 1080;                      // fonte no palco do compositor (FIT_STAGE)
+const CONTRASTE = 3;                                   // WCAG para texto grande (todo texto do reel tem 28 px ou mais)
 const COBERTO = 0.5;                                   // acima disso a palavra deixa de estar visível (GUIDE §4)
 
 const cfg = JSON.parse(fs.readFileSync(path.join(DIR, 'compose.json'), 'utf8'));
@@ -110,6 +112,7 @@ function coletaNaPagina(ids) {
       if (opac(n.parentElement) < 0.05) continue;
       const cs = getComputedStyle(n.parentElement);
       ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const firme = opac(n.parentElement) >= 0.95;   // contraste só se mede em texto assentado (sem fade em curso)
       const fa = ctx.measureText('H').fontBoundingBoxAscent, cap = ctx.measureText('H').actualBoundingBoxAscent;
       const r = document.createRange();
       r.selectNodeContents(n);
@@ -122,7 +125,7 @@ function coletaNaPagina(ids) {
         const left = solo ? b.left - m.actualBoundingBoxLeft : b.left, right = solo ? b.left + m.actualBoundingBoxRight : b.right;
         const v = visivel(n.parentElement, { left, top: b.top + (fa - cap), right, bottom: b.top + fa });
         if (v.frac < 0.05) continue;   // escondido pelo recorte ou fora do quadro
-        texts.push({ t: t.slice(0, 32), x: v.x, y: v.y, w: v.w, h: v.h, frac: v.frac });
+        texts.push({ t: t.slice(0, 32), x: v.x, y: v.y, w: v.w, h: v.h, frac: v.frac, firme });
       }
     }
     for (const el of host.querySelectorAll('*')) {
@@ -243,6 +246,21 @@ try {
         if (x.x < ZONA.left || x.x + x.w > ZONA.right || x.y < zonaTop || x.y + x.h > zonaBottom) {
           const msg = `cena ${c.n}: "${x.t}" fora da zona segura (topo ${zonaTop}, base ${H - zonaBottom}${zonaBottom !== ZONA.bottom || zonaTop !== ZONA.top ? ', painel do locutor' : ''}, laterais ${ZONA.left})`;
           reporta('erro', msg, msg);
+        }
+      }
+      // contraste: dois retratos do mesmo quadro, com o texto e com ele transparente; a diferença é a tinta e o segundo é o fundo sob ela
+      // shortcut: só aviso, nunca erro; sombra e contorno do texto não entram na conta. Vira erro quando três reels reais não derem falso positivo
+      const lidos = [...back, ...(out[ids[1]]?.texts ?? [])].filter((x) => x.firme && x.frac >= 0.9);
+      if (lidos.length) {
+        const retrato = async () => { try { return execFileSync('ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { input: await page.screenshot({ type: 'png' }), maxBuffer: 1 << 27 }); } catch { return null; } };
+        const com = await retrato();
+        await page.evaluate(() => { const s = document.createElement('style'); s.id = 'lc-sem-texto'; s.textContent = '*{color:transparent!important;-webkit-text-fill-color:transparent!important;transition:none!important}'; document.head.append(s); });
+        const sem = await retrato();
+        await page.evaluate(() => document.getElementById('lc-sem-texto').remove());
+        if (com && sem && com.length === W * H * 3 && sem.length === com.length) for (const x of lidos) {
+          const k = textContrast(com, sem, W, x);
+          if (VERBOSO) console.log(`  ${c.n} contraste "${x.t}": ${k === null ? 'não medido' : k.toFixed(1) + ':1'}`);
+          if (k !== null && k < CONTRASTE) reporta('aviso', `${c.n}|contraste|${x.t}`, `cena ${c.n}: "${x.t}" com contraste ${k.toFixed(1)}:1 sobre o fundo (mínimo ${CONTRASTE}:1); troque a cor do texto ou do fundo, ou ponha uma placa atrás`);
         }
       }
       if (!locutor || !COM_LOCUTOR) break amostra;

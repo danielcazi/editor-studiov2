@@ -142,3 +142,25 @@ export function paceFromSkill(k: any): (typeof PACE)[Pace] | null {
   // shortcut: pace is seconds per CUT, and a continuous take (the 18 s Build) has few cuts yet many graphics, so `every` never gets slower than lento
   return { ...PACE[p <= 1.8 ? 'dinamico' : p <= 2.8 ? 'normal' : 'lento'], every: Math.min(p, PACE.lento.every) };
 }
+
+const luminance = (r: number, g: number, b: number) => {
+  const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+};
+/** WCAG contrast of the text inside `box`, from two screenshots of the same frame (3 bytes per pixel, `w` px wide): `com` as rendered and
+ *  `sem` with the text made transparent. A pixel is ink where the two differ; the text colour is read from `com` and the background under it from `sem`,
+ *  on the half of the ink that differs most (antialiased edges stay out). null when under 3% of the box is ink: the text is hidden, covered or still entering. */
+export function textContrast(com: Uint8Array, sem: Uint8Array, w: number, box: { x: number; y: number; w: number; h: number }): number | null {
+  const ink: { d: number; a: number; b: number }[] = [], h = com.length / 3 / w;
+  let n = 0;
+  for (let y = Math.max(0, Math.floor(box.y)); y < Math.min(h, box.y + box.h); y += 2) for (let x = Math.max(0, Math.floor(box.x)); x < Math.min(w, box.x + box.w); x += 2) {
+    const i = (y * w + x) * 3, d = Math.max(Math.abs(com[i] - sem[i]), Math.abs(com[i + 1] - sem[i + 1]), Math.abs(com[i + 2] - sem[i + 2]));
+    n++;
+    if (d >= 6) ink.push({ d, a: luminance(com[i], com[i + 1], com[i + 2]), b: luminance(sem[i], sem[i + 1], sem[i + 2]) });
+  }
+  if (n < 20 || ink.length < 0.03 * n) return null;
+  const core = ink.sort((p, q) => q.d - p.d).slice(0, Math.ceil(ink.length / 2));
+  const mid = (k: 'a' | 'b') => core.map(p => p[k]).sort((p, q) => p - q)[core.length >> 1];
+  const fg = mid('a'), bg = mid('b');
+  return (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05);
+}

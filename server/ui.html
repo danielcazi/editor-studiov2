@@ -3246,6 +3246,17 @@ function appendToProjectLog(projId, message, persistToServer = false) {
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+// Cola de termos de movimento ao lado dos campos de nota (Revisão e Motion Think). Seleção do glossário animation-vocabulary de Emil Kowalski (MIT), com o nome do kit quando há.
+const COLA_MOV = `<details style="margin:0 0 6px"><summary>Termos de movimento</summary><div style="font-size:12px;line-height:1.55;padding:0 0 10px;max-height:170px;overflow:auto">${[
+  ['Entrada e saída', [['fade', 'aparece ou some por opacidade'], ['slide', 'entra deslizando de fora do quadro'], ['escala', 'cresce de 0,9 a 1 enquanto aparece'], ['pop', 'entra passando do ponto e assenta'], ['revelar', 'é descoberto por máscara ou recorte (wipe)']]],
+  ['Vários elementos', [['junto', 'todos partem no mesmo instante'], ['escalonado (stagger)', 'um depois do outro, com pequeno atraso'], ['em passos', 'pula de valor em valor, sem deslizar']]],
+  ['Transição', [['corte seco', 'troca de um quadro para o outro'], ['crossfade', 'um some enquanto o outro aparece no mesmo lugar'], ['push', 'a nova cena entra com zoom'], ['morph', 'uma forma vira outra'], ['elemento compartilhado', 'a peça viaja e vira a peça da cena seguinte'], ['zoom through', 'o card cresce até encher a tela']]],
+  ['Câmera', [['push / pull', 'aproxima / afasta'], ['pan / crane', 'anda para o lado / para cima ou baixo'], ['tilt / orbit / roll', 'inclina / gira em volta / gira no eixo'], ['parallax', 'camadas em velocidades diferentes']]],
+  ['Curva', [['ease-out', 'começa rápido e freia (entradas)'], ['ease-in', 'começa devagar e acelera (saídas)'], ['ease-in-out', 'devagar, rápido, devagar (o que anda na tela)'], ['linear', 'velocidade constante'], ['mola', 'passa do ponto e volta; "mais mola" ou "sem mola"']]],
+  ['Enquanto fica na tela', [['flutuar', 'deriva leve de sobe e desce'], ['pulso', 'escala ou opacidade indo e voltando'], ['esteira', 'conteúdo correndo em loop'], ['órbita', 'uma peça circula outra'], ['tremor', 'sacode rápido para os lados']]],
+  ['Acabamento', [['linha que se desenha', 'o traço aparece como caneta'], ['contador', 'número que conta até o valor'], ['máquina de escrever', 'texto letra a letra'], ['blur', 'desfoque na entrada, na saída ou na troca'], ['antecipação', 'pequeno recuo antes do movimento'], ['esticar', 'a peça deforma na direção em que anda']]],
+].map(([g, ts]) => `<div class="muted" style="margin-top:6px;font:500 11px var(--mono);text-transform:uppercase">${g}</div>${ts.map(([t, d]) => `<div><b>${t}</b>: ${d}</div>`).join('')}`).join('')}</div></details>`;
 // create dialog: a format with no reel rendered yet shows a sketch per plano (speaker in yellow, motion in grey; panel = raw video band), cycled like the real frames
 function formatSketch(f) {
   const W = 90, H = 160, top = f.panel?.top ?? 0.5;
@@ -8194,7 +8205,7 @@ async function reviewStep(id, body, st) {
           <div class="tabs"><button data-f="open">Abertas</button><button data-f="all">Todas</button></div></div>
         <div class="rv-list" id="rv-list"></div>
         <div class="rv-compose">
-          <textarea id="rv-text" placeholder="Pause no momento e descreva a alteração... (Enter adiciona, Shift+Enter quebra a linha)"></textarea>
+          ${COLA_MOV}<textarea id="rv-text" placeholder="Pause no momento e descreva a alteração... (Enter adiciona, Shift+Enter quebra a linha)"></textarea>
           <div class="rv-compose-row">
             <span class="chip" id="rv-at" title="Tempo da anotação">00:00:00:00</span>
             <button id="rv-in" title="Início do trecho = posição atual (I)">⇤ Início</button>
@@ -11417,7 +11428,7 @@ async function motionThink(sel) {
         <div style="display:flex;gap:8px"><label class="muted" style="flex:1">momento <select class="mt-mom" style="width:100%">${MT_MOMENTOS.map(x => `<option ${n.momento === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
           <label class="muted" style="flex:1">categoria <select class="mt-cat" style="width:100%">${MT_CATS.map(x => `<option ${n.categoria === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
         <input class="mt-tags" placeholder="tags livres, separadas por vírgula" value="${esc(n.tags.join(', '))}">
-        <textarea class="mt-texto" placeholder="O que te pega neste movimento (o que aprender: movimento, ritmo, proporção)" style="min-height:70px">${esc(n.texto)}</textarea>
+        ${COLA_MOV}<textarea class="mt-texto" placeholder="O que te pega neste movimento (o que aprender: movimento, ritmo, proporção)" style="min-height:70px">${esc(n.texto)}</textarea>
         <input class="mt-nao" placeholder="Não levar: a fonte, a cor, o mascote..." value="${esc(n.naoLevar)}">
         <ul class="mt-pinlist muted" style="margin:0;padding-left:18px;font-size:13px"></ul>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">

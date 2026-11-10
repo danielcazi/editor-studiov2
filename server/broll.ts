@@ -1,4 +1,5 @@
-// Asset sources: search and download for Pexels, Pixabay, Wikimedia Commons, Openverse (CC images and audio), Iconify (SVG icons), Poly Pizza (CC0 3D models)
+// Asset sources: search and download for Pexels, Pixabay, Wikimedia Commons, Openverse (CC images and audio), Iconify (SVG icons), Poly Pizza (CC0 3D models),
+// the Cleveland Museum of Art and the Met (CC0 open access)
 // and YouTube (yt-dlp, no license: editorial use, the b-roll step only).
 // Every result carries a stated license. Artlist and Higgsfield are not here: they have no public search/download API that we could confirm; see keys.ts.
 import { execFile } from 'node:child_process';
@@ -117,6 +118,33 @@ const polypizza: Source = {
   },
 };
 
+// Museum open access, no key, CC0 only: paintings, engravings, old photographs and objects. fetchAssets asks for them with kind "art".
+// The Art Institute of Chicago and the Library of Congress answer scripts with a bot challenge, so they are not here.
+const cleveland: Source = {
+  id: 'cleveland', needsKey: false, hosts: /^openaccess-cdn\.clevelandart\.org$/,
+  async search(q, kind, limit) {
+    if (kind !== 'image') return [];
+    const j = await getJson(`https://openaccess-api.clevelandart.org/api/artworks/?${qs({ q, cc0: 1, has_image: 1, limit })}`);
+    return (j.data ?? []).flatMap((d: any): Candidate[] => {
+      const im = d.images?.print?.url ? d.images.print : d.images?.web;   // print is a ~3400 px jpg; full is a tif of hundreds of MB
+      return im?.url ? [{ provider: 'cleveland', id: String(d.id), kind, title: d.title || q, author: d.creators?.[0]?.description || 'desconhecido', license: 'CC0',
+        pageUrl: d.url, previewUrl: d.images.web?.url ?? im.url, downloadUrl: im.url, width: +im.width || undefined, height: +im.height || undefined }] : [];
+    });
+  },
+};
+const met: Source = {
+  id: 'met', needsKey: false, hosts: /^images\.metmuseum\.org$/,
+  async search(q, kind, limit) {
+    if (kind !== 'image') return [];
+    const base = 'https://collectionapi.metmuseum.org/public/collection';
+    const j = await getJson(`${base}/v1.1/search?${qs({ q, hasImages: 'true', isPublicDomain: 'true', limit, offset: 0 })}`);   // v1 search was retired on 2026-10-01
+    const objs = await Promise.all((j.objectIDs ?? []).slice(0, limit).map((id: number) => getJson(`${base}/v1/objects/${id}`).catch(() => null)));
+    // primaryImage is the full-size jpg (0.6 to 4 MB in the ones measured); primaryImageSmall is about 460 px wide, too small for a 1080 px frame
+    return objs.filter((o: any) => o?.isPublicDomain && o.primaryImage).map((o: any): Candidate => ({ provider: 'met', id: String(o.objectID), kind, title: o.title || q,
+      author: o.artistDisplayName || 'desconhecido', license: 'CC0', pageUrl: o.objectURL, previewUrl: o.primaryImageSmall || o.primaryImage, downloadUrl: o.primaryImage }));
+  },
+};
+
 // YouTube through yt-dlp: search needs no key; the download takes a short section (SECTION s) so a keynote does not cost 2 GB.
 // No license: these are for the b-roll step, which the user turns on knowing the footage is used editorially.
 const YT_DLP = () => process.env.YT_DLP ?? 'yt-dlp';
@@ -144,7 +172,7 @@ const youtube: Source = {
   },
 };
 
-export const SOURCES: Source[] = [pexels, pixabay, commons, openverse, iconify, polypizza, youtube];
+export const SOURCES: Source[] = [pexels, pixabay, commons, openverse, iconify, polypizza, cleveland, met, youtube];
 
 /** Searches every source that has a key (Commons always). One source failing does not hide the others. */
 export async function search(q: unknown, opts: { kind?: Kind; providers?: string[]; limit?: number } = {}) {

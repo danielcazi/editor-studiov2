@@ -130,11 +130,45 @@ Composições do catálogo HyperFrames já instaladas em `motions/`. Use só no 
 - Uma timeline pausada por composição em `window.__timelines[id]`.
 - Cenas encostadas cobrindo 0→DUR (o `render()` confere com assert).
 
+## Coreografia (dois ou mais elementos na mesma batida)
+Adaptado das skills de Emil Kowalski (github.com/emilkowalski/skills, MIT) e das palestras de design da Apple que ele resume. As durações de lá são de interface; as daqui são de vídeo.
+- **Toda animação diz por quê:** explica o que a fala diz, mostra uma mudança de estado, mostra de onde a peça veio ou para onde foi, ou evita um teleporte. "Fica bonito" só vale no gancho, na virada e na CTA.
+- **Papéis antes dos tempos.** Em cada batida, tudo na tela tem um papel: **protagonista** (um só: parte primeiro, percorre a maior distância, fica mais tempo), **apoio** (segue com deslocamento e duração menores), **decoração** (só fade, sem deslocamento) e **parado** (o resto, inclusive o contêiner cujo conteúdo anima). Dois protagonistas na mesma batida é problema de hierarquia: corte um.
+- **Uma entrada por contêiner.** Se o card entra, o conteúdo já está nele: não some a entrada do card com as linhas entrando uma a uma. Linha que cai numa palavra da fala (`T('palavra')`) é evento da fala, não entrada do card: essa pode.
+- **Junto por padrão.** Partes do mesmo objeto ou do mesmo momento partem juntas. Escalone (o segundo parte com o primeiro ainda andando) só quando a ordem diz algo: ordem de leitura, causa e efeito. Em sequência (um acaba, o outro começa) só quando os dois juntos se atropelam, e mesmo então o segundo parte um pouco antes de o primeiro acabar: é isso que separa um gesto de uma fila.
+- **Escalonamento nunca uniforme.** Passos de 0,08 a 0,15 s em entradas de 0,5 a 0,6 s, encolhendo ao longo do grupo (0,14 · 0,11 · 0,08), e o tratamento muda com o papel: o protagonista desliza mais longe, o apoio menos, a decoração só aparece. O último parte no máximo 0,5 s depois do primeiro; em lista longa, escalone os 4 ou 5 primeiros e traga o resto junto com o último. Título e primeira linha podem ser a mesma batida.
+- **Acento cai no impacto.** Brilho, linha de movimento, tremor e SFX se prendem a um instante do protagonista (partida, impacto ou assentamento) e terminam nos últimos 20% do movimento dele; o acento principal primeiro, os outros ~0,04 s depois. Nunca um atraso "no olho".
+- **Mola só com impulso.** Passar do ponto (`back.out`, `elastic.out`, `spring`) é de quem chegou com velocidade: caiu, foi lançado, cruzou a tela. Quem surge no lugar (fade, escala de 0,9) assenta sem passar (`power3.out`, `expo.out`, `CD`). A mola é proporcional ao tamanho: peça grande (card de meia tela, painel, a cena inteira) passa do ponto no máximo 1 a 2% (`back.out(1.05)` ou nenhuma mola), senão o quadro todo balança; peça pequena (selo, ícone, check, número) pode passar 10 a 20% (`back.out(1.8)` a `back.out(2.5)`). Mola forte e escalonamento generoso ficam no gancho, na virada e na CTA.
+- **Nada nasce do nada.** Entrada de escala parte de 0,9 ou mais, com opacidade: `pop(sel, at, frm="scale:.9,rotation:-12")` (o padrão do `pop` é 0). E cresce de onde veio: `transformOrigin` no que a causou (a palavra, o botão, o dedo); centro só para o que aparece sozinho no meio do quadro.
+- **Mesmo caminho na volta.** Quem entrou pela direita sai pela direita. Saídas juntas, mais curtas e mais simples que a entrada, sem escalonar ao contrário. Quem sai libera o espaço na hora: os vizinhos fecham o vão enquanto ele some, não depois.
+- **Um objeto, uma família de tempo.** As partes de uma peça (o card cresce, o conteúdo troca) usam a mesma curva e durações próximas: 0,5 s numa parte e 0,2 s na outra viram dois objetos. Uma família por reel: `ONE` para o que se transforma na tela, `CD` ou `expo.out` para o que chega.
+- **Duração pela distância.** A peça que cruza a tela leva mais tempo que a que anda 40 px: a mesma duração nas duas deixa uma lenta e faz a outra piscar.
+- **O quadro do meio aponta o destino.** A peça que vai virar outra já cresce ou se inclina para o lado em que vai abrir; o meio do movimento não é só interpolação.
+- **Rápido demais estroba a 30 fps.** Peça que anda centenas de px em poucos quadros recebe esticamento na direção do movimento (`scaleX`/`scaleY`) ou blur na própria peça durante a travessia, ou um percurso menor. Peça grande atravessando o quadro viaja meio transparente.
+- **Troca que não casa: blur.** Se no crossfade entre dois estados se veem dois objetos, ponha blur de 2 a 4 px na própria peça durante a troca (nunca acima de 20 px).
+- **Foco por recuo.** Para destacar uma peça, escureça e afaste o resto (opacidade e escala um pouco menores) em vez de dar mais movimento ao destaque.
+- **O que se lê não se mexe por estilo.** Durante o tempo de leitura, o texto, o número e o gráfico que a pessoa compara ficam firmes: o movimento sustentado da cena mora na imagem, no fundo e na câmera. Número que conta usa `font-variant-numeric:tabular-nums` para não tremer de largura.
+- **Sem salto de luz.** Fundo escuro para claro (ou o contrário) em corte seco só na batida forte; fora dela, passe por transição.
+- **Ensaie com o pior texto da fala.** A coreografia se decide com a linha mais longa e a mais curta da cena, não com a do meio; linha revelada por máscara precisa de folga para acento e cedilha em maiúscula (Ç, Ã, Ó cortam com entrelinha apertada); "1 dias" não existe.
+
+## Palavra vaga vira decisão
+Nota de revisão, pedido de marca ou estilo com palavra vaga não se executa "no sentimento": traduza para valores que se veem no quadro e diga no resumo o que mudou. Palavra que não vira decisão observável não é motivo para mexer. (Ideia das skills oil-ui, de oil-oil, MIT.)
+| Pedido | Vira |
+| --- | --- |
+| mais dinâmico | um evento a cada batida tônica (0,4 a 0,8 s) em vez de um por frase; cena mais curta dentro de `pace.scene`; movimento de mundo (`world=`) onde a câmera estava parada; transição desenhada em vez de `fade` |
+| mais suave, menos agitado | entradas de 0,6 a 0,7 s em `power2.out` ou `sine.out`, sem mola; menos eventos por cena; `world=` com amplitude menor e `sine.inOut` |
+| mais impacto, mais forte | escala: o destaque ocupa pelo menos um terço da altura; contraste de claro e escuro maior; pouso na palavra tônica com SFX de impacto; um silêncio antes |
+| premium, sofisticado, elegante | no máximo duas cores além do neutro; mais espaço vazio em volta do destaque; movimentos lentos e sem mola; uma só família de curva; nada de emoji nem selo |
+| limpo, clean, simples | tirar elementos até sobrar um destaque e um apoio por cena; uma cor de destaque; decoração só com fade |
+| apagado, sem vida | contraste do texto acima de 4,5:1; uma cor saturada da marca no destaque; corpo do texto maior; grão e sombra para dar corpo |
+| divertido, descontraído | mola nas peças pequenas (10 a 20%), rotação de 2 a 6°, cor de destaque em área maior, escalonamento generoso |
+| moderno | não decide nada: pergunte ou escolha um estilo de `workspace/styles` e diga qual |
+
 ## Checagem automática do locutor (com locutor)
 Roda sozinha dentro de `render()` (`kit.py`); sem locutor mede só texto e zonas seguras. Erro para o render; aviso fica para a sua revisão. Medido no Chrome com o runtime do HyperFrames (`server/layout_check.mjs`) e no alfa do `cut.webm`.
 - **Erro, na hora (lint do kit)**: câmera fora de `FR`/modos; `broll` com locutor; CTA (`cta=True` em `scene(...)`) sem XXL; `-webkit-text-stroke`; tipografia gigante (`class="giant"`) em `front`.
 - **Erro, medido**: cartão ou texto da frente sobre o rosto ou o queixo; cabeça cobrindo mais de 50% de palavra atrás (desça o locutor); texto fora das zonas seguras (topo 200, base 380, laterais 70 px).
-- **Aviso**: mesmo enquadramento em cenas vizinhas; cena de locutor parado por mais de 4 s; corpo ou mão cobrindo mais de 50% de palavra atrás; cabeça fora do `faceX` em mais de 50 px; resto de cenário no topo do recorte.
+- **Aviso**: texto com contraste abaixo de 3:1 sobre o que está atrás dele (medido nos pixels do quadro; troque a cor do texto ou do fundo, ou ponha uma placa atrás); mesmo enquadramento em cenas vizinhas; cena de locutor parado por mais de 4 s; corpo ou mão cobrindo mais de 50% de palavra atrás; cabeça fora do `faceX` em mais de 50 px; resto de cenário no topo do recorte.
 - Grava `review/recorte.png`: 10 quadros do recorte sobre verde. Olhe antes de montar.
 - A cabeça (topo ≈170, queixo ≈445, meia-largura ≈110, em px da fonte) foi medida num clipe real. Se outro enquadramento não bater, ajuste `head` em compose.json.
 
