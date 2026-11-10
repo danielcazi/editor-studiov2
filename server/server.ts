@@ -199,6 +199,8 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && me) return sessEvents(MT, decodeURIComponent(me[1]), res);
     const ee = path.match(/^\/embrulhos\/([^/]+)\/events$/);
     if (req.method === 'GET' && ee) return sessEvents(E, decodeURIComponent(ee[1]), res);
+    const mi = path.match(/^\/embrulhos\/miniatura\/([^/]+)$/);
+    if (req.method === 'GET' && mi) return file(await E.miniatura(decodeURIComponent(mi[1])), req, res);
     const em = path.match(/^\/embrulhos\/molde\/(.+)$/);
     if (req.method === 'GET' && em) return file(E.moldeFile(decodeURIComponent(em[1])), req, res);
     const ef = path.match(/^\/embrulhos\/([^/]+)\/file\/(.+)$/);
