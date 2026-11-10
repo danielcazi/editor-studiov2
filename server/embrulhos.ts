@@ -1,8 +1,8 @@
-// Embrulhos (só 9:16, texto estático): os 9 modelos do PDF do editor, em embrulhos/modelos/<id>/{manifest.json, 9x16/index.html}.
+// Embrulhos (só 9:16, texto estático): os 9 modelos do PDF do editor e os refeitos da gravação do Lateralizador, em embrulhos/modelos/<id>/{manifest.json, 9x16/index.html}.
 // O vídeo entra no slot "video"; as camadas são PNGs com alfa: "fundo" (tudo, com um furo no slot) vai por cima do vídeo e
 // "frente" (ex.: avatar que invade a janela) por cima de tudo. Portado do kit antigo (compilador-studio/embrulhos.mjs).
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -17,9 +17,12 @@ export type Campo = { id: string; papel: string; max: number; padrao?: string; f
 export type Modelo = {
   id: string; nome: string; tipo: string;
   formatos: { '9x16': { film: string; slots: Record<string, { x: number; y: number; w: number; h: number; raio?: number }>; camadas: string[] } };
+  zonasTexto?: Caixa[];   // o que a moldura desenha por cima do vídeo (frações do quadro): o encaixe confere se cobre o rosto
   campos: Campo[]; midia?: { id: string; tipo: string; opcional?: boolean }[];
-  perfil: { tom: string[]; serveA: string[]; exige: string[]; evita: string[] };
+  // exige: 'quadro_marcante', 'preco_no_srt', 'perfil_nome', 'perfil_arroba' (os dois últimos vêm da etapa Marca); dica: frase a mais para a IA
+  perfil: { tom: string[]; serveA: string[]; exige: string[]; evita: string[]; dica?: string };
 };
+export type Caixa = { x: number; y: number; w: number; h: number };
 export type Item = { nivel: 'erro' | 'aviso'; campo: string; msg: string };
 
 export const listarEmbrulhos = () => readdirSync(EMB).filter(d => existsSync(join(EMB, d, 'manifest.json'))).sort();
@@ -31,6 +34,28 @@ export function carregarEmbrulho(id: string): Modelo {
   if (!m.formatos?.['9x16']?.slots?.video || !Array.isArray(m.campos) || !m.perfil) throw new Error(`manifesto de ${id} inválido`);
   return m;
 }
+/* O vídeo cabe no modelo sem estragar o rosto? `rostos` = a caixa do maior rosto em cada instante amostrado (frações do vídeo, origem
+   em cima à esquerda; null = sem rosto). Em cada instante o rosto é "cortado" quando menos de 80% dele sobra no recorte que o
+   `compor` faz para o slot, e "coberto" quando mais de 15% dele fica debaixo de uma `zonasTexto`. Com mais de 20% dos instantes
+   ruins o modelo pede adaptação. Sem rosto nenhum, encaixa. */
+export function encaixe(m: Modelo, rostos: (Caixa | null)[], video: { largura: number; altura: number }, foco = { x: 0.5, y: 0.5 }): { ok: boolean; motivo: string } {
+  const s = m.formatos['9x16'].slots.video, ar = video.largura / video.altura, sar = (s.w * QUADRO.w) / (s.h * QUADRO.h);
+  // parte do vídeo que aparece no slot (frações do vídeo)
+  const vw = Math.min(1, sar / ar), vh = Math.min(1, ar / sar), v = { x: (1 - vw) * foco.x, y: (1 - vh) * foco.y, w: vw, h: vh };
+  const inter = (a: Caixa, b: Caixa) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  let n = 0, cortado = 0, coberto = 0;
+  for (const r of rostos) {
+    if (!r || r.w <= 0 || r.h <= 0) continue;
+    n++;
+    if (inter(r, v) / (r.w * r.h) < 0.8) { cortado++; continue; }
+    // o rosto no quadro 9:16
+    const q = { x: s.x + (r.x - v.x) / v.w * s.w, y: s.y + (r.y - v.y) / v.h * s.h, w: r.w / v.w * s.w, h: r.h / v.h * s.h };
+    if ((m.zonasTexto ?? []).some(z => inter(q, z) / (q.w * q.h) > 0.15)) coberto++;
+  }
+  if (!n || (cortado + coberto) / n <= 0.2) return { ok: true, motivo: '' };
+  return { ok: false, motivo: cortado >= coberto ? 'O rosto fica cortado em parte do vídeo.' : 'O rosto fica coberto em parte do vídeo.' };
+}
+
 /* slots em pixels do quadro 1080×1920 (pares, para o encoder) */
 export function slotsPx(m: Modelo) {
   const par = (v: number) => Math.round(v / 2) * 2, out: Record<string, { x: number; y: number; w: number; h: number }> = {};
@@ -74,7 +99,7 @@ export function conferirCampos(m: Modelo, campos: Record<string, unknown> = {}, 
   }
   // números sem fonte no texto (fora preços): aviso para marcar como ilustrativo
   const fonte = norm(srt + ' ' + textoFonte), vistos: string[] = [];
-  for (const c of m.campos) if (!/^preco_/.test(c.id)) for (const n of String(campos[c.id] || '').match(/\d+(?:[.,]\d+)?/g) || []) if (!fonte.includes(norm(n)) && !vistos.includes(n)) { vistos.push(n); add('aviso', c.id, `número "${n}" não aparece no texto do vídeo: marque como ilustrativo ou remova`); }
+  for (const c of m.campos) if (!/^preco_/.test(c.id) && c.papel !== 'contador') for (const n of String(campos[c.id] || '').match(/\d+(?:[.,]\d+)?/g) || []) if (!fonte.includes(norm(n)) && !vistos.includes(n)) { vistos.push(n); add('aviso', c.id, `número "${n}" não aparece no texto do vídeo: marque como ilustrativo ou remova`); }
   return r;
 }
 
@@ -101,7 +126,7 @@ export function sugerirQuadros(video: string, n = 3) {
 /* ---------- camadas e composição ---------- */
 const CHROME = findChrome();
 
-export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, { quadroImg = null as string | null, avatarImg = null as string | null, destino = '' }) {
+export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, { quadroImg = null as string | null, avatarImg = null as string | null, semAvatar = false, destino = '' }) {
   if (!CHROME) throw new Error('Chrome não encontrado. Instale o Google Chrome ou defina CHROME_PATH.');
   const puppeteer = createRequire(import.meta.url)('puppeteer-core');
   mkdirSync(destino, { recursive: true });
@@ -110,6 +135,7 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
   const q = new URLSearchParams({ c: Buffer.from(JSON.stringify(txt)).toString('base64url') });
   if (quadroImg) q.set('quadro', pathToFileURL(quadroImg).href);
   if (avatarImg) q.set('avatar', pathToFileURL(avatarImg).href);
+  if (semAvatar) q.set('semavatar', '1');
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--hide-scrollbars', '--disable-lcd-text', '--font-render-hinting=none', '--allow-file-access-from-files'] });
   const out: { fundo?: string; frente?: string; textoNaoCabe?: string[] } = {};
   try {
@@ -130,13 +156,13 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
   return out;
 }
 
-/* vídeo (qualquer proporção, com áudio) + camadas → mp4 1080×1920. O vídeo cobre o slot e é cortado ao centro.
-   shortcut: foco fixo no centro; passar o foco do format.json quando um 16:9 cortar o rosto. */
-export function compor(m: Modelo, video: string, camadas: { fundo?: string; frente?: string }, saida: string, { duracao, fps = 30 }: { duracao: number; fps?: number }) {
-  const s = slotsPx(m).video;
+/* vídeo (qualquer proporção, com áudio) + camadas → mp4 1080×1920. O vídeo (9:16, 1:1, 16:9...) cobre o slot e o que sobra é cortado:
+   `focoY` (0 topo, 1 base) escolhe a faixa quando ele é mais alto que o slot, `focoX` (0 esquerda, 1 direita) quando é mais largo. Assíncrono: um vídeo inteiro leva dezenas de segundos e o servidor segue respondendo. */
+export function compor(m: Modelo, video: string, camadas: { fundo?: string; frente?: string }, saida: string, { duracao, fps = 30, focoY = 0.5, focoX = 0.5 }: { duracao: number; fps?: number; focoY?: number; focoX?: number }) {
+  const s = slotsPx(m).video, f01 = (v: number) => Math.min(1, Math.max(0, Number(v) || 0)), fy = f01(focoY), fx = f01(focoX);
   const ins = ['-f', 'lavfi', '-i', `color=c=black:s=${QUADRO.w}x${QUADRO.h}:r=${fps}:d=${duracao}`, '-i', video, '-loop', '1', '-framerate', String(fps), '-i', camadas.fundo!];
-  let fc = `[1:v]scale=${s.w}:${s.h}:force_original_aspect_ratio=increase,crop=${s.w}:${s.h},setsar=1[v];[0:v][v]overlay=${s.x}:${s.y}:shortest=1[a];[a][2:v]overlay=0:0:shortest=1[b]`, ult = 'b';
+  let fc = `[1:v]scale=${s.w}:${s.h}:force_original_aspect_ratio=increase,crop=${s.w}:${s.h}:(iw-ow)*${fx}:(ih-oh)*${fy},setsar=1[v];[0:v][v]overlay=${s.x}:${s.y}:shortest=1[a];[a][2:v]overlay=0:0:shortest=1[b]`, ult = 'b';
   if (camadas.frente) { ins.push('-loop', '1', '-framerate', String(fps), '-i', camadas.frente); fc += `;[b][3:v]overlay=0:0:shortest=1[c]`; ult = 'c'; }
-  const r = spawnSync('ffmpeg', ['-v', 'error', '-y', ...ins, '-filter_complex', fc, '-map', `[${ult}]`, '-map', '1:a?', '-t', String(duracao), '-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', saida], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error('composição: ' + (r.stderr || '').slice(-300));
+  return new Promise<void>((ok, ko) => execFile('ffmpeg', ['-v', 'error', '-y', ...ins, '-filter_complex', fc, '-map', `[${ult}]`, '-map', '1:a?', '-t', String(duracao), '-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', saida],
+    { maxBuffer: 1 << 24 }, (e, _o, err) => e ? ko(new Error('composição: ' + String(err || e.message).slice(-300))) : ok()));
 }

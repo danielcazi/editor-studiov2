@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "tweet",
+  "nome": "Tweet",
+  "origem": "gravação do Lateralizador (2026-11-09), refeito no editor",
+  "tipo": "janela",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.0741,
+          "y": 0.3854,
+          "w": 0.8518,
+          "h": 0.375
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "texto",
+      "papel": "texto_do_post",
+      "max": 140
+    }
+  ],
+  "midia": [
+    {
+      "id": "avatar",
+      "tipo": "imagem",
+      "opcional": true
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "opiniao",
+      "conversa",
+      "primeira pessoa"
+    ],
+    "serveA": [
+      "opiniao",
+      "prova",
+      "bastidor"
+    ],
+    "exige": [
+      "perfil_nome"
+    ],
+    "evita": [],
+    "dica": "texto é um post curto de rede social em primeira pessoa, na voz de quem assina, sem hashtags."
+  }
+}

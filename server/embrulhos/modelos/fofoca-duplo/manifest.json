@@ -51,6 +51,14 @@
       "opcional": false
     }
   ],
+  "zonasTexto": [
+    {
+      "x": 0.4306,
+      "y": 0.5458,
+      "w": 0.1389,
+      "h": 0.0781
+    }
+  ],
   "perfil": {
     "tom": [
       "fofoca",

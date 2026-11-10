@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "fofoca-rosa",
+  "nome": "Fofoca (rosa)",
+  "origem": "gravação do Lateralizador (2026-11-09), refeito no editor",
+  "tipo": "split",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "quadro": {
+          "x": 0,
+          "y": 0.2917,
+          "w": 0.5,
+          "h": 0.4688
+        },
+        "video": {
+          "x": 0.5,
+          "y": 0.2917,
+          "w": 0.5,
+          "h": 0.4688
+        }
+      },
+      "camadas": [
+        "fundo",
+        "frente"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "manchete",
+      "papel": "manchete",
+      "max": 80
+    },
+    {
+      "id": "selo",
+      "papel": "selo",
+      "max": 10,
+      "padrao": "URGENTE",
+      "fixo": true
+    }
+  ],
+  "zonasTexto": [
+    {
+      "x": 0.3981,
+      "y": 0.7083,
+      "w": 0.2037,
+      "h": 0.1146
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "fofoca",
+      "revelacao",
+      "curiosidade"
+    ],
+    "serveA": [
+      "revelacao",
+      "curiosidade"
+    ],
+    "exige": [
+      "quadro_marcante"
+    ],
+    "evita": [],
+    "dica": "manchete é uma chamada de página de fofoca, em terceira pessoa, sobre o que acontece no vídeo."
+  }
+}

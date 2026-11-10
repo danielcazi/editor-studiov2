@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "live",
+  "nome": "Live",
+  "origem": "gravação do Lateralizador (2026-11-09), refeito no editor",
+  "tipo": "sobreposicao",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "espectadores",
+      "papel": "contador",
+      "max": 8,
+      "padrao": "1.284",
+      "fixo": true
+    },
+    {
+      "id": "rodape",
+      "papel": "rodape",
+      "max": 40,
+      "padrao": "Os comentários foram desabilitados.",
+      "fixo": true
+    }
+  ],
+  "midia": [
+    {
+      "id": "avatar",
+      "tipo": "imagem",
+      "opcional": true
+    }
+  ],
+  "zonasTexto": [
+    {
+      "x": 0.0,
+      "y": 0.0312,
+      "w": 1.0,
+      "h": 0.0781
+    },
+    {
+      "x": 0.0,
+      "y": 0.8854,
+      "w": 1.0,
+      "h": 0.0677
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "ao vivo",
+      "urgencia"
+    ],
+    "serveA": [
+      "abertura",
+      "prova"
+    ],
+    "exige": [
+      "perfil_arroba"
+    ],
+    "evita": []
+  }
+}

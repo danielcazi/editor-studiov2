@@ -1,4 +1,4 @@
-/* Parâmetros por URL: ?c=<base64url JSON dos campos> &quadro=<imagem> &avatar=<imagem> &layer=fundo|frente &marca=1
+/* Parâmetros por URL: ?c=<base64url JSON dos campos> &quadro=<imagem> &avatar=<imagem> &semavatar=1 (esconde a foto de perfil) &layer=fundo|frente &marca=1
    Texto estático: window.seek não anima nada. Cada .t[data-c="campo"] recebe o texto; data-fit="max,min" encolhe a fonte até caber. */
 (() => {
   const q = new URLSearchParams(location.search);
@@ -6,6 +6,7 @@
   window.CAMPOS = C;
   if (q.get('layer')) document.body.classList.add('layer-' + q.get('layer'));
   if (q.get('marca') === '1') document.body.classList.add('marca');
+  if (q.get('semavatar') === '1') document.querySelectorAll('.avatar').forEach((e) => { e.style.display = 'none'; });
   const S = document.getElementById('stage') || document.body;
   document.querySelectorAll('[data-c]').forEach((e) => {
     const v = C[e.dataset.c];

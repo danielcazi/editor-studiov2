@@ -3129,6 +3129,7 @@
       <a href="#/skills" class="nav-tab" id="nav-skills">Skills</a>
       <a href="#/cortes" class="nav-tab" id="nav-cortes">Cortes</a>
       <a href="#/motion-think" class="nav-tab" id="nav-mt">Motion Think</a>
+      <a href="#/embrulhos" class="nav-tab" id="nav-emb">Embrulhos</a>
       <a href="#/config" class="nav-tab" id="nav-config">Configurações</a>
     </nav>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
@@ -3211,8 +3212,6 @@ function setNowLine(entries) {
 }
 // terse server log lines → a sentence a user understands (the raw line stays in the log below)
 const HUMAN_LOG = [
-  [/^embrulho (.+): renderizando$/, (_, n) => `Renderizando o embrulho "${n}": o reel está sendo colocado dentro da moldura.`],
-  [/^embrulhos: corrigindo (\d+)/, (_, n) => `A IA está corrigindo ${n} problema(s) na copy dos embrulhos antes de renderizar.`],
   [/^🎬 Renderizando a composição (\S+?)\.*$/, (_, f) => `Renderizando o vídeo ${f} quadro a quadro em alta definição.`],
   [/^clipe \S*?([^/\s]+) \((\d+) quadros\)/, (_, f, n) => `After Effects: gravando a peça "${f}" como clipe com transparência (${n} quadros).`],
   [/^(size|duration|loudness|overlap|words|pace)\b/, () => 'O QA automático está conferindo tamanho, duração, volume e ritmo do vídeo.'],
@@ -7241,13 +7240,6 @@ const STEP_INFO = {
     desc: 'O reel é tocado quadro a quadro num navegador invisível e cada peça vira uma camada do After: textos ficam editáveis, imagens e vídeos entram como arquivos e o resto vira clipe com transparência. Se o After estiver aberto, ele monta o .aep no fim.',
     short: 'After Effects'
   },
-  embrulhos: {
-    index: 5,
-    name: '5 Entrega',
-    title: 'Gerando os embrulhos',
-    desc: 'A IA lê o texto do vídeo, escolhe até 3 molduras, escreve a copy de cada uma e renderiza o reel dentro da janela de cada moldura.',
-    short: 'Embrulhos'
-  }
 };
 
 let es;
@@ -9234,12 +9226,6 @@ async function deliveryStep(id, body, st) {
   const runStep = (window.getProjectRunning?.() || st.running)?.step;   // the button of a running step stays busy across re-renders
   // a clip without a license never blocks the render: it is only a reminder to swap it later
   const unlic = await api('GET', `/projects/${id}/layers`).then(l => (l.edits?.added || []).filter(a => a.rights?.status === 'unlicensed').length).catch(() => 0);
-  const hooks = await api('GET', `/projects/${id}/files/embrulhos.json`).then(r => r.embrulhos || []).catch(() => []);
-  const hookList = list => list.map(h => `<div class="box" style="margin-top:8px"><b>${h.rec ? '★ ' : ''}${esc(h.nome || h.embrulho)} · ${esc(h.angulo || '')}</b><p class="muted" style="margin:4px 0">${esc(h.porque || '')}</p>
-      ${Object.entries(h.campos || {}).map(([k, v]) => `<p style="margin:2px 0"><span class="muted">${esc(k)}:</span> ${esc(v)}</p>`).join('')}
-      <p><b>Copy:</b> ${esc(h.copy || '')}</p>
-      ${(h.erros || []).map(e => `<p class="err">✗ ${esc(e)}</p>`).join('')}${(h.avisos || []).map(a => `<p class="muted">⚠ ${esc(a)}</p>`).join('')}
-      ${h.arquivo ? `<video controls style="max-height:420px" src="/projects/${id}/files/${h.arquivo}?${Date.now()}"></video>` : ''}</div>`).join('');
   const sec = (title, desc, inner) => `<div class="box" style="margin-top:16px;padding:20px;background:var(--panel2);border:1px solid var(--line-strong);border-radius:12px">
       <h4 style="margin:0 0 6px 0;font-size:12px;color:var(--cream);letter-spacing:.08em">${title}</h4><p class="muted" style="margin:0 0 12px 0;font-size:12px">${desc}</p>${inner}</div>`;
   body.innerHTML = `<div class="box"><h3>Etapa 5: entrega</h3>
@@ -9258,7 +9244,7 @@ async function deliveryStep(id, body, st) {
         <details><summary>Relatório</summary><pre>${esc(st.qa.report)}</pre></details>
         ${((st.readyFinals && st.readyFinals.length > 0) ? st.readyFinals : (st.formats || []).filter(f => f === (st.primaryFormat || '9:16'))).map(f => `<p style="font-weight:600;margin-top:16px">${esc(f)}</p><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><video controls src="/projects/${id}/files/final-${f.replace(':', '-')}.mp4?${Date.now()}"></video><button class="dl-save" data-file="final-${f.replace(':', '-')}.mp4">💾 Salvar</button></div>`).join('')}</div>` : ''}`)}
     ${sec('2 · ARQUIVO PARA AFTER EFFECTS', 'Scripts .jsx e clipes do projeto; gera o .aep quando o After Effects está disponível.', `${runStep === 'ae' ? '<button id="dl-ae" class="is-busy" disabled>Exportando… acompanhe em Progresso</button>' : '<button id="dl-ae">🎬 Exportar para After Effects</button>'}<div id="dl-ae-out" class="muted" style="margin-top:8px;font-size:12px"></div>`)}
-    ${sec('3 · EMBRULHOS (9:16)', 'A IA escolhe até 3 molduras do PDF pelo texto do vídeo, escreve a copy em tom de conversa e renderiza cada uma com o reel dentro da janela.', `${runStep === 'embrulhos' ? '<button id="dl-hooks" class="is-busy" disabled>Gerando… acompanhe em Progresso</button>' : `<button id="dl-hooks">✨ ${hooks.length ? 'Gerar de novo' : 'Gerar embrulhos'} (IA)</button>`}<div id="dl-hook-list">${hookList(hooks)}</div>`)}
+    ${sec('3 · EMBRULHOS (9:16)', 'Leva o vídeo 9:16 deste projeto para a aba Embrulhos, onde você escolhe os formatos de anúncio, edita o texto de cada um, confere a prévia e exporta.', '<button id="dl-hooks">🎁 Embrulhar este vídeo</button>')}
     ${sec('4 · STATUS & ENCERRAMENTO DO PROJETO', 'Finalize o ciclo deste vídeo marcando-o como concluído para arquivá-lo na esteira e retirar os alertas de ação pendente.', `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
@@ -9397,15 +9383,7 @@ async function deliveryStep(id, body, st) {
       showToast({ title: '✓ After Effects', message: msg, type: 'success', duration: 10000 });
     } finally { stepOk(b, '🎬 Exportar para After Effects'); }
   });
-  $('#dl-hooks').onclick = e => act(e.target, async () => {
-    const b = e.target;
-    stepStarted(b, 'Gerando… acompanhe em Progresso', 'A IA começou a gerar os embrulhos.');
-    try {
-      const r = await api('POST', `/projects/${id}/embrulhos`);
-      $('#dl-hook-list').innerHTML = hookList(r.embrulhos || []);
-      showToast({ title: '✓ Embrulhos prontos', message: `${(r.embrulhos || []).length} embrulho(s) gerado(s), logo abaixo do botão.`, type: 'success' });
-    } finally { stepOk(b, '✨ Gerar de novo (IA)'); }
-  });
+  $('#dl-hooks').onclick = e => act(e.target, async () => { const r = await api('POST', '/embrulhos', { projeto: id }); location.hash = `#/embrulhos/${r.id}`; });
 }
 
 
@@ -11295,6 +11273,214 @@ async function cortes(sel) {
   if (busy) cortesPoll = setInterval(() => cortes(sel).catch(() => {}), 3000);
 }
 
+// ---- Embrulhos: a finished video wrapped in static 9:16 frames (SPEC-embrulhos.md). One session per video, SSE per session. ----
+let embEs = null, embModelos = null, embFiltro = 'todos';
+const embAnalise = new Set();   // sessions whose analysis this page already started (one try, so a failure does not loop)
+const embEtapa = {}, embPick = {};   // session id → stage the user is on / formats ticked in the catalogue, kept across re-renders (the analysis ending redraws the page)
+const embFile = (id, rel) => `/embrulhos/${encodeURIComponent(id)}/file/${rel.split('/').map(encodeURIComponent).join('/')}`;
+const embB64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const embRotulo = c => (c.papel || c.id).replace(/_/g, ' ').replace(/^./, x => x.toUpperCase());
+// the model's own page in a scaled <iframe>, with the given texts, over a placeholder where the video goes
+const embThumb = (m, campos, w = 150, extra = '') => `<div style="position:relative;width:${w}px;height:${Math.round(w * 16 / 9)}px;overflow:hidden;border-radius:10px;background:linear-gradient(#9ed4f5 0 58%,#7cb518 58%)"><iframe src="/embrulhos/molde/${m.id}/${m.film}?c=${embB64(campos)}${extra}&layer=fundo" loading="lazy" scrolling="no" tabindex="-1" style="width:1080px;height:1920px;border:0;transform:scale(${w / 1080});transform-origin:0 0;pointer-events:none"></iframe></div>`;
+async function embrulhosView(sel) {
+  embEs?.close(); embEs = null;
+  embModelos ??= await api('GET', '/embrulhos/modelos');
+  const list = await api('GET', '/embrulhos');
+  let st = sel ? await api('GET', `/embrulhos/${encodeURIComponent(sel)}`) : null;
+  const mm = n => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
+  app.innerHTML = `<div style="display:grid;grid-template-columns:260px 1fr;gap:24px">
+    <aside><h4>Embrulhos</h4>
+      <details ${!sel ? 'open' : ''} style="margin:10px 0 14px"><summary class="muted" style="cursor:pointer">Novo vídeo</summary>
+        <div style="display:grid;gap:6px;margin-top:8px">
+          <input id="emb-name" placeholder="Nome (opcional)">
+          <input id="emb-video" placeholder="Caminho do vídeo">
+          <button id="emb-pick">Escolher vídeo…</button>
+          <input id="emb-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" hidden>
+          <button id="emb-go" class="primary">Enviar</button>
+        </div></details>
+      ${list.map(c => `<a class="bitem ${c.id === sel ? 'on' : ''}" href="#/embrulhos/${esc(c.id)}">${esc(c.name)} <span class="muted">· ${mm(c.duracao)}${c.formatos ? ` · ${c.formatos} formato(s)` : ''}${c.exportados ? ` · ${c.exportados} ✓` : ''}</span></a>`).join('') || '<p class="muted">nenhum vídeo ainda</p>'}
+    </aside>
+    <section id="emb-main" style="min-width:0">${!sel ? '<p class="muted">Envie um vídeo pronto (9:16, 1:1 ou 16:9). Você escolhe os formatos de anúncio, a IA lê o vídeo e escreve o texto de cada um, você edita o que quiser, confere a prévia e exporta.</p>' : ''}</section></div>`;
+  const upload = (f, kind) => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=${kind}&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(JSON.parse(x.responseText).error || x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
+  $('#emb-pick').onclick = async () => { if (!NATIVE_PICKER) return $('#emb-file').click(); try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#emb-video').value = r.path; } catch { $('#emb-file').click(); } };
+  $('#emb-file').onchange = e => act($('#emb-go'), async () => { if (e.target.files[0]) { $('#emb-video').value = 'enviando…'; $('#emb-video').value = await upload(e.target.files[0], 'video').catch(er => { $('#emb-video').value = ''; throw er; }); } });
+  $('#emb-go').onclick = e => act(e.target, async () => { const r = await api('POST', '/embrulhos', { name: $('#emb-name').value, video: $('#emb-video').value || undefined }); location.hash = `#/embrulhos/${r.id}`; });
+  if (!st) return;
+
+  const id = encodeURIComponent(st.id), main = $('#emb-main'), busy = st.busy?.step;
+  const M = Object.fromEntries(embModelos.map(m => [m.id, m]));
+  const sels = () => embModelos.filter(m => st.formatos[m.id]?.selecionado);
+  const temErro = f => f.itens.some(i => i.nivel === 'erro');
+  const etapa = embEtapa[st.id] ?? (sels().length ? 'edicao' : 'formatos');
+  const go = e => { embEtapa[st.id] = e; embrulhosView(sel).catch(er => app.innerHTML = `<p class="err">${esc(er.message)}</p>`); };
+  const lastErr = st.log.at(-1)?.startsWith('ERRO') ? st.log.at(-1) : '';
+  const P = st.perfil, embP = () => ({ perfil_nome: P.nome, perfil_arroba: P.mostrarArroba ? P.arroba : '' });
+  // what the model page needs to show this session's profile: the photo, or no photo at all
+  const embX = () => !P.mostrarLogo ? '&semavatar=1' : P.avatar ? `&avatar=${encodeURIComponent(embFile(st.id, P.avatar) + '?' + st.version)}` : '';
+  const ETAPAS = [['video', 'Vídeo', true], ['marca', 'Marca', true], ['formatos', 'Formatos', true], ['edicao', 'Edição', sels().length > 0], ['export', 'Exportação', sels().some(m => st.formatos[m.id].exportadoEm)]];
+  const BUSY = { analisar: 'Analisando o vídeo (fala e rosto) para indicar os melhores formatos', embrulhos: 'A IA está lendo o vídeo e escrevendo os formatos', previa: 'Renderizando a prévia', exportar: 'Exportando os vídeos' };
+  main.innerHTML = `
+    <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${mm(st.duracao)} · ${st.largura}×${st.altura}</span></h3>
+    <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">${ETAPAS.map(([k, n, ok], i) => `<button class="emb-etapa ${k === etapa ? 'primary' : ''}" data-e="${k}" ${ok ? '' : 'disabled'}>${i + 1} · ${n}</button>`).join('')}</div>
+    <p id="emb-status" class="${lastErr ? 'err' : 'muted'}">${busy ? `⏳ ${BUSY[busy] || busy}...` : esc(lastErr)}</p>
+    <pre id="emb-log" class="muted" style="font-size:12px;max-height:140px;overflow:auto;${busy || lastErr ? '' : 'display:none'}">${esc(st.log.join('\n'))}</pre>
+    <div id="emb-etapa"></div>`;
+  main.querySelectorAll('.emb-etapa').forEach(b => b.onclick = () => go(b.dataset.e));
+  embEs = new EventSource(`/embrulhos/${id}/events`);
+  embEs.addEventListener('log', e => { const l = $('#emb-log'); if (!l) return; l.style.display = ''; l.textContent += (l.textContent ? '\n' : '') + JSON.parse(e.data); l.scrollTop = l.scrollHeight; });
+  embEs.addEventListener('step', e => { const d = JSON.parse(e.data); if (d.status === 'start') { const s = $('#emb-status'); if (s) { s.className = 'muted'; s.textContent = `⏳ ${BUSY[d.step] || d.step}...`; } } else if (location.hash === `#/embrulhos/${st.id}`) embrulhosView(sel).catch(() => {}); });
+  // the analysis (transcript, face track for the fit badges) starts by itself the first time a session is opened
+  if (!st.analisado && !busy && !embAnalise.has(st.id)) { embAnalise.add(st.id); api('POST', `/embrulhos/${id}/analisar`).catch(() => {}); }
+  const box = $('#emb-etapa'), dis = busy ? 'disabled' : '';
+  const src = embFile(st.id, st.src.split(/[\\/]/).pop());
+
+  if (etapa === 'video') {
+    box.innerHTML = `<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+      <video src="${src}#t=0.1" controls preload="metadata" style="max-height:420px;max-width:420px;background:#000;border-radius:10px"></video>
+      <div><p class="muted">Este é o vídeo que será embrulhado. Ele entra inteiro em cada formato; nos formatos com janela, o que não cabe é cortado e você escolhe o enquadramento na edição.</p>
+        <p><button id="emb-next" class="primary">Continuar para marca →</button></p>
+        <p style="margin-top:24px"><button id="emb-del" class="muted" ${dis}>Apagar este vídeo e seus embrulhos</button></p></div></div>`;
+    $('#emb-next').onclick = () => go('marca');
+    $('#emb-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este vídeo, as prévias e os vídeos exportados?')) { await api('DELETE', `/embrulhos/${id}`); location.hash = '#/embrulhos'; } });
+  }
+
+  if (etapa === 'marca') {
+    const demo = embModelos.find(m => m.mostraNome) ?? embModelos.find(m => m.usaPerfil);   // one that shows photo, name and handle
+    const usam = embModelos.filter(m => m.usaPerfil).map(m => m.nome).join(', ');
+    box.innerHTML = `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:start">
+      <div class="box" style="display:grid;gap:12px;margin:0">
+        <b>Quem assina os anúncios</b><span class="muted" style="font-size:13px">Sua identidade nos formatos com perfil (hoje: ${esc(usam || 'nenhum')}).</span>
+        <div style="display:flex;gap:16px;align-items:center">
+          <canvas id="emb-av" width="400" height="400" style="width:110px;height:110px;border-radius:50%;background:var(--panel2);cursor:grab;touch-action:none"></canvas>
+          <div style="display:grid;gap:6px"><div style="display:flex;gap:8px"><button id="emb-av-pick">Trocar imagem</button><button id="emb-av-del" ${P.avatar ? '' : 'hidden'}>Remover</button></div>
+            <input id="emb-av-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            <label id="emb-av-zoom" class="muted" style="font-size:12px" hidden>Tamanho <input type="range" min="1" max="4" step="0.01" value="1"></label>
+            <span class="muted" style="font-size:12px">Foto de perfil ou logo (PNG ou JPG). Depois de escolher, arraste para posicionar e ajuste o tamanho.</span>
+            <button id="emb-av-ok" class="primary" hidden>Usar esta foto</button></div></div>
+        <label style="display:grid;gap:2px;font-size:13px">Nome da marca<input id="emb-p-nome" maxlength="40" value="${esc(P.nome)}"></label>
+        <label style="display:grid;gap:2px;font-size:13px">@ do Instagram<input id="emb-p-arroba" maxlength="31" value="${esc(P.arroba)}" placeholder="@suamarca"></label>
+        <div style="display:flex;gap:20px;font-size:13px"><label><input type="checkbox" id="emb-p-logo" ${P.mostrarLogo ? 'checked' : ''}> Mostrar logo</label><label><input type="checkbox" id="emb-p-ar" ${P.mostrarArroba ? 'checked' : ''}> Mostrar @</label></div>
+        <label style="font-size:13px"><input type="checkbox" id="emb-p-padrao"> Salvar como padrão <span class="muted">(usar nos próximos vídeos)</span></label>
+        <div id="emb-p-err" class="err"></div>
+      </div>
+      <div><div class="muted" style="font-size:13px;margin-bottom:6px">Assim aparece no anúncio${demo ? ` (${esc(demo.nome)})` : ''}</div><div id="emb-p-demo"></div><div class="muted" style="font-size:12px;margin-top:6px">Exemplo ilustrativo.</div></div></div>
+      <div style="display:flex;margin-top:20px"><button id="emb-volta">← Vídeo</button><button id="emb-next" class="primary" style="margin-left:auto">Escolher formatos →</button></div>`;
+    const demoHtml = () => demo ? embThumb(demo, { ...Object.fromEntries(demo.campos.map(c => [c.id, c.id === 'nome_pagina' && P.nome ? P.nome : c.padrao || embRotulo(c)])), ...embP() }, 230, embX()) : '<p class="muted">Nenhum modelo usa o perfil ainda.</p>';
+    $('#emb-p-demo').innerHTML = demoHtml();
+    // every change is saved on its own; the demo is redrawn from the answer
+    let fila = Promise.resolve();
+    const salvar = patch => fila = fila.then(async () => { try { st = await api('PUT', `/embrulhos/${id}/perfil`, { ...patch, padrao: $('#emb-p-padrao').checked, version: st.version }); Object.assign(P, st.perfil); if (!st.perfil.avatar) delete P.avatar; $('#emb-p-err').textContent = ''; $('#emb-p-demo').innerHTML = demoHtml(); $('#emb-av-del').hidden = !P.avatar; } catch (e) { $('#emb-p-err').textContent = e.message; } });
+    $('#emb-p-nome').onchange = e => salvar({ nome: e.target.value });
+    $('#emb-p-arroba').onchange = e => salvar({ arroba: e.target.value }).then(() => { e.target.value = P.arroba; });
+    $('#emb-p-logo').onchange = e => salvar({ mostrarLogo: e.target.checked });
+    $('#emb-p-ar').onchange = e => salvar({ mostrarArroba: e.target.checked });
+    $('#emb-p-padrao').onchange = e => { if (e.target.checked) salvar({}); };
+    // photo: the picked image is drawn on a square canvas (drag to place, slider to size) and that square is what gets uploaded
+    const cv = $('#emb-av'), cx = cv.getContext('2d'), zoom = $('#emb-av-zoom input'), pos = { x: 0, y: 0 }; let img = null;
+    const desenha = () => { cx.clearRect(0, 0, 400, 400); if (!img) return; const s = Math.max(400 / img.width, 400 / img.height) * +zoom.value, w = img.width * s, h = img.height * s;
+      pos.x = Math.min(0, Math.max(400 - w, pos.x)); pos.y = Math.min(0, Math.max(400 - h, pos.y)); cx.drawImage(img, pos.x, pos.y, w, h); };
+    const carrega = (url, novo) => { const i = new Image(); i.onload = () => { img = i; zoom.value = 1; zoom.dataset.z = 1; const s = Math.max(400 / i.width, 400 / i.height); pos.x = (400 - i.width * s) / 2; pos.y = (400 - i.height * s) / 2; desenha(); $('#emb-av-zoom').hidden = $('#emb-av-ok').hidden = !novo; }; i.src = url; };
+    if (P.avatar) carrega(embFile(st.id, P.avatar) + '?' + st.version, false);
+    $('#emb-av-pick').onclick = () => $('#emb-av-file').click();
+    $('#emb-av-file').onchange = e => { if (e.target.files[0]) carrega(URL.createObjectURL(e.target.files[0]), true); };
+    zoom.oninput = () => { const c = 200, antes = +zoom.dataset.z || 1, k = +zoom.value / antes; pos.x = c - (c - pos.x) * k; pos.y = c - (c - pos.y) * k; zoom.dataset.z = zoom.value; desenha(); };
+    cv.onpointerdown = e => { if (!img || $('#emb-av-ok').hidden) return; cv.setPointerCapture(e.pointerId); const k = 400 / cv.clientWidth, o = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y };
+      cv.onpointermove = m => { pos.x = o.px + (m.clientX - o.x) * k; pos.y = o.py + (m.clientY - o.y) * k; desenha(); }; cv.onpointerup = () => { cv.onpointermove = null; }; };
+    $('#emb-av-ok').onclick = e => act(e.target, async () => { const blob = await new Promise(r => cv.toBlob(r, 'image/png')); await salvar({ avatar: await upload(new File([blob], 'avatar.png', { type: 'image/png' }), 'media') }); $('#emb-av-zoom').hidden = $('#emb-av-ok').hidden = true; });
+    $('#emb-av-del').onclick = () => salvar({ avatar: null }).then(() => { img = null; desenha(); });
+    $('#emb-volta').onclick = () => go('video');
+    $('#emb-next').onclick = async () => { document.activeElement?.blur?.(); await fila; go('formatos'); };
+  }
+
+  if (etapa === 'formatos') {
+    box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><span class="muted" style="margin-right:auto">Modelos de referência: as prévias com o seu vídeo vêm na próxima etapa.</span>${st.encaixe ? '<button id="emb-rec">Selecionar recomendados</button>' : ''}<button id="emb-all">Selecionar todos</button><button id="emb-none">Limpar</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px">${embModelos.map(m => `<label class="emb-pick" style="cursor:pointer;display:grid;gap:6px;justify-items:center">
+        ${embThumb(m, { ...Object.fromEntries(m.campos.map(c => [c.id, c.padrao || embRotulo(c)])), ...embP() }, 150, embX())}
+        <span><input type="checkbox" value="${m.id}" ${(embPick[st.id] ? embPick[st.id].includes(m.id) : st.formatos[m.id]?.selecionado) ? 'checked' : ''}> <b>${esc(m.nome)}</b></span>
+        ${st.encaixe?.[m.id] ? `<span style="font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);color:${st.encaixe[m.id].ok ? 'var(--green, #4caf50)' : 'var(--yellow)'}">${st.encaixe[m.id].ok ? 'Encaixa' : 'Adaptar'}</span>${st.encaixe[m.id].ok ? '' : `<span class="muted" style="font-size:12px;text-align:center">${esc(st.encaixe[m.id].motivo)}</span>`}` : ''}
+        ${st.formatos[m.id] ? '<span class="muted" style="font-size:12px">já escrito: seu texto é mantido</span>' : ''}</label>`).join('')}</div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:20px"><span id="emb-count" class="muted" style="margin-right:auto"></span><button id="emb-gerar" class="primary" ${dis}>Gerar prévias e editar →</button></div>`;
+    const checks = [...box.querySelectorAll('.emb-pick input')], marcados = () => checks.filter(c => c.checked).map(c => c.value);
+    const conta = () => { const n = (embPick[st.id] = marcados()).length; $('#emb-count').textContent = n ? `${n} formato(s) selecionado(s)` : 'Nenhum formato selecionado'; $('#emb-gerar').disabled = !n || !!busy; };
+    checks.forEach(c => c.onchange = conta);
+    $('#emb-all').onclick = () => { checks.forEach(c => c.checked = true); conta(); };
+    if ($('#emb-rec')) $('#emb-rec').onclick = () => { checks.forEach(c => c.checked = st.encaixe[c.value].ok); conta(); };
+    $('#emb-none').onclick = () => { checks.forEach(c => c.checked = false); conta(); };
+    $('#emb-gerar').onclick = e => act(e.target, async () => { e.target.classList.add('is-busy'); try { await api('POST', `/embrulhos/${id}/gerar`, { modelos: marcados() }); } finally { e.target.classList.remove('is-busy'); } delete embPick[st.id]; go('edicao'); });
+    conta();
+  }
+
+  if (etapa === 'edicao') {
+    const ver = k => { const f = st.formatos[k]; return embFiltro === 'todos' || (embFiltro === 'revisados') === f.aprovado; };
+    const L = st.leitura;
+    box.innerHTML = `<div style="display:flex;gap:8px;margin-bottom:12px">${[['todos', 'Todos'], ['revisar', 'Para revisar'], ['revisados', 'Revisados']].map(([k, n]) => `<button class="emb-filtro ${embFiltro === k ? 'primary' : ''}" data-f="${k}">${n} (${sels().filter(m => k === 'todos' || (k === 'revisados') === st.formatos[m.id].aprovado).length})</button>`).join('')}</div>
+      ${L ? `<div class="box" style="padding:12px 16px;font-size:13px"><b>Leitura da IA:</b> <span class="muted">Oferta:</span> ${esc(L.oferta)} · <span class="muted">Público:</span> ${esc(L.publico)} · <span class="muted">Promessa:</span> ${esc(L.promessa)} · <span class="muted">CTA:</span> ${esc(L.cta)}</div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:16px">${sels().filter(m => ver(m.id)).map(m => { const f = st.formatos[m.id], ar = st.largura / st.altura, sar = (m.slot.w * 1080) / (m.slot.h * 1920);
+        return `<div class="box emb-card" data-m="${m.id}" style="display:grid;grid-template-columns:190px minmax(0,1fr);gap:16px;margin:0">
+        <div>${f.previaEm ? `<video src="${embFile(st.id, `previa/${m.id}.mp4`)}?${f.previaEm}" controls preload="metadata" style="width:190px;border-radius:10px;background:#000"></video>` : embThumb(m, { ...f.campos, ...embP() }, 190, embX())}
+          <div class="emb-velha muted" style="font-size:12px;margin-top:4px"></div></div>
+        <div style="display:grid;gap:8px;align-content:start">
+          <div style="display:flex;align-items:center;gap:8px"><b style="margin-right:auto">${esc(m.nome)} <span class="muted" style="font-weight:400;font-size:12px">prévia: primeiros 15 s</span></b><label style="font-size:13px"><input type="checkbox" class="emb-inc" ${f.incluir ? 'checked' : ''}> Incluir na entrega</label></div>
+          ${m.campos.map(c => `<label style="display:grid;gap:2px;font-size:13px"><span style="display:flex"><span style="margin-right:auto">${esc(embRotulo(c))}${c.opcional ? ' <span class="muted">(opcional)</span>' : ''}</span><span class="muted emb-n" data-max="${c.max}"></span></span>
+            <textarea class="emb-campo" data-c="${c.id}" rows="2" style="min-height:0;font:14px/1.4 var(--sans)">${esc(f.campos[c.id] ?? '')}</textarea></label>`).join('')}
+          ${m.pedeQuadro ? `<div style="font-size:13px;display:grid;gap:4px"><span>Imagem parada</span>
+            <div style="display:flex;gap:8px;align-items:center">${f.ajustes.imagem ? `<img src="${embFile(st.id, f.ajustes.imagem)}?${f.editadoEm}" style="height:64px;border-radius:6px"><button class="emb-frame">Usar um frame do vídeo</button>`
+              : `<video class="emb-qv" src="${src}#t=${f.ajustes.quadro_t ?? 0}" muted preload="metadata" style="height:64px;border-radius:6px;background:#000"></video><input type="range" class="emb-quadro" min="0" max="${st.duracao}" step="0.1" value="${f.ajustes.quadro_t ?? 0}" style="flex:1"><span class="muted emb-qt">${mm(f.ajustes.quadro_t ?? 0)}</span>`}
+              <button class="emb-img">Subir imagem</button><input type="file" class="emb-imgf" accept="image/png,image/jpeg,image/webp" hidden></div></div>` : ''}
+          ${Math.abs(ar - sar) / sar > 0.02 ? `<label style="font-size:13px;display:grid;gap:2px">${ar < sar ? 'Enquadramento vertical do vídeo' : 'Enquadramento horizontal do vídeo'}
+            <input type="range" class="emb-foco" data-k="${ar < sar ? 'foco_y' : 'foco_x'}" min="0" max="1" step="0.05" value="${f.ajustes[ar < sar ? 'foco_y' : 'foco_x'] ?? 0.5}">
+            <span class="muted" style="font-size:12px">${ar < sar ? 'Mais à esquerda mostra o topo do vídeo; mais à direita, a parte de baixo.' : 'Mais à esquerda mostra o lado esquerdo do vídeo; mais à direita, o lado direito.'}</span></label>` : ''}
+          <div class="emb-itens" style="font-size:12px"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="emb-ok"></button><button class="emb-previa" ${dis}>Atualizar prévia</button></div>
+        </div></div>`; }).join('') || '<p class="muted">Nenhum formato neste filtro.</p>'}</div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:20px"><button id="emb-volta">← Formatos</button><span id="emb-rev" class="muted" style="margin-right:auto"></span><button id="emb-exportar" class="primary" ${dis}></button></div>`;
+    box.querySelectorAll('.emb-filtro').forEach(b => b.onclick = () => { embFiltro = b.dataset.f; go('edicao'); });
+    $('#emb-volta').onclick = () => go('formatos');
+    const rodape = () => { const s = sels(), inc = s.filter(m => st.formatos[m.id].incluir).length; $('#emb-rev').textContent = `${s.filter(m => st.formatos[m.id].aprovado).length} de ${s.length} revisados`; $('#emb-exportar').textContent = `Exportar ${inc} vídeo(s)`; $('#emb-exportar').disabled = !inc || !!busy; };
+    // what the server answered for one card: checks, stale preview, approval
+    const pinta = card => { const f = st.formatos[card.dataset.m];
+      card.querySelector('.emb-itens').innerHTML = f.itens.map(i => `<div class="${i.nivel === 'erro' ? 'err' : 'muted'}">${i.nivel === 'erro' ? '✗' : '⚠'} ${esc(i.campo)}: ${esc(i.msg)}</div>`).join('') + f.avisos.map(a => `<div class="muted">⚠ ${esc(a)}</div>`).join('');
+      card.querySelector('.emb-velha').textContent = !f.previaEm ? 'sem prévia ainda' : f.editadoEm > f.previaEm ? 'prévia desatualizada' : '';
+      const ok = card.querySelector('.emb-ok'); ok.textContent = f.aprovado ? '✓ Aprovado' : 'Aprovar'; ok.classList.toggle('primary', f.aprovado); ok.disabled = temErro(f);
+      card.querySelectorAll('.emb-campo').forEach(t => { const n = t.closest('label').querySelector('.emb-n'); n.textContent = `${t.value.length}/${n.dataset.max}`; n.classList.toggle('err', t.value.length > +n.dataset.max); });
+      rodape(); };
+    // saves go one after the other: each one carries the version the previous answer returned
+    let fila = Promise.resolve();
+    const salvar = (card, patch) => fila = fila.then(async () => { const er = card.querySelector('.emb-itens');
+      try { st = await api('PUT', `/embrulhos/${id}/formatos/${card.dataset.m}`, { ...patch, version: st.version }); pinta(card); } catch (e) { er.innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } });
+    box.querySelectorAll('.emb-card').forEach(card => {
+      pinta(card);
+      card.querySelectorAll('.emb-campo').forEach(t => { t.oninput = () => { const n = t.closest('label').querySelector('.emb-n'); n.textContent = `${t.value.length}/${n.dataset.max}`; n.classList.toggle('err', t.value.length > +n.dataset.max); }; t.onchange = () => salvar(card, { campos: { [t.dataset.c]: t.value } }); });
+      card.querySelector('.emb-inc').onchange = e => salvar(card, { incluir: e.target.checked });
+      card.querySelector('.emb-ok').onclick = () => salvar(card, { aprovado: !st.formatos[card.dataset.m].aprovado });
+      const q = card.querySelector('.emb-quadro');
+      if (q) { q.oninput = () => { card.querySelector('.emb-qv').currentTime = +q.value; card.querySelector('.emb-qt').textContent = mm(+q.value); }; q.onchange = () => salvar(card, { ajustes: { quadro_t: +q.value } }); }
+      const fo = card.querySelector('.emb-foco'); if (fo) fo.onchange = () => salvar(card, { ajustes: { [fo.dataset.k]: +fo.value } });
+      const ib = card.querySelector('.emb-img'), inp = card.querySelector('.emb-imgf');
+      if (ib) { ib.onclick = () => inp.click(); inp.onchange = async () => { if (!inp.files[0]) return; try { await salvar(card, { ajustes: { imagem: await upload(inp.files[0], 'media') } }); go('edicao'); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } }; }
+      const fr = card.querySelector('.emb-frame'); if (fr) fr.onclick = async () => { await salvar(card, { ajustes: { imagem: null, quadro_t: st.formatos[card.dataset.m].ajustes.quadro_t ?? 0 } }); go('edicao'); };
+      card.querySelector('.emb-previa').onclick = e => act(e.target, async () => { document.activeElement?.blur?.(); await fila; e.target.classList.add('is-busy'); try { await api('POST', `/embrulhos/${id}/formatos/${card.dataset.m}/previa`); } finally { e.target.classList.remove('is-busy'); } });
+    });
+    $('#emb-exportar').onclick = e => act(e.target, async () => { await fila; e.target.classList.add('is-busy'); let r; try { r = await api('POST', `/embrulhos/${id}/exportar`); } finally { e.target.classList.remove('is-busy'); }
+      if (r.falhas.length) showToast({ title: 'Alguns formatos não exportaram', message: r.falhas.join(' · '), type: 'info', duration: 12000 });
+      go('export'); });
+    rodape();
+  }
+
+  if (etapa === 'export') {
+    const pasta = st.src.replace(/[\\/][^\\/]+$/, '') + '/saida';
+    box.innerHTML = `<p class="muted">Os vídeos ficam em <code>${esc(pasta)}</code>. Depois de ajustar um formato, exporte de novo.</p>
+      ${sels().filter(m => st.formatos[m.id].incluir).map(m => { const f = st.formatos[m.id], velho = f.editadoEm > f.exportadoEm;
+        return `<div class="box" style="display:flex;gap:12px;align-items:center;padding:12px 16px;margin-bottom:8px"><div style="margin-right:auto;min-width:0"><b>${esc(m.nome)}</b><div class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis">${esc(f.arquivo ? f.arquivo.split('/').pop() : 'ainda não exportado')}</div></div>
+          <span class="${f.exportadoEm && !velho ? '' : 'muted'}">${!f.exportadoEm ? '—' : velho ? 'editado depois: exporte de novo' : '✓ Concluído'}</span>
+          ${f.arquivo ? `<a href="${embFile(st.id, f.arquivo)}" download="${esc(f.arquivo.split('/').pop())}"><button>↓ Baixar</button></a>` : ''}<button class="emb-editar">✎ Editar</button></div>`; }).join('')}
+      <div style="display:flex;gap:12px;margin-top:16px"><button id="emb-volta">← Voltar à edição</button><button id="emb-re" style="margin-left:auto" ${dis}>Exportar de novo</button></div>`;
+    box.querySelectorAll('.emb-editar').forEach(b => b.onclick = () => go('edicao'));
+    $('#emb-volta').onclick = () => go('edicao');
+    $('#emb-re').onclick = e => act(e.target, async () => { e.target.classList.add('is-busy'); try { await api('POST', `/embrulhos/${id}/exportar`); } finally { e.target.classList.remove('is-busy'); } });
+  }
+}
+
 // ---- Motion Think: Daniel teaches one movement at a time (excerpt → movements → marks → synthesis → demo → bank). SSE per session. ----
 let mtEs = null;
 const MT_MOMENTOS = ['gancho', 'contexto', 'problema', 'definicao', 'exemplo', 'historia', 'prova', 'numero', 'lista', 'comparacao', 'passo-a-passo', 'virada', 'resumo', 'cta'], MT_CATS = ['tipografia', 'infografico', 'grafico', 'ilustracao', 'icone', 'foto', 'foto-antiga', 'colagem', 'exemplo', 'broll', '3d', 'transicao', 'camera'];
@@ -11513,11 +11699,13 @@ function route() {
   const cfg = h.match(/^\/config\/?(.*)$/);
   const ct = h.match(/^\/cortes\/?(.*)$/);
   const mt = h.match(/^\/motion-think\/?(.*)$/);
+  const emb = h.match(/^\/embrulhos\/?(.*)$/);
+  $("#nav-emb")?.classList.toggle("active", !!emb);
   $("#nav-cortes")?.classList.toggle("active", !!ct);
   $("#nav-mt")?.classList.toggle("active", !!mt);
 
   // Atualiza destaque na top navbar
-  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !skl && !cfg && !m && !ct && !mt);
+  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !skl && !cfg && !m && !ct && !mt && !emb);
   $("#nav-brands")?.classList.toggle("active", !!b);
   $("#nav-formats")?.classList.toggle("active", !!f);
   $("#nav-styles")?.classList.toggle("active", !!sty);
@@ -11549,6 +11737,8 @@ function route() {
       cortes(ct[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (mt) {
       motionThink(mt[1] ? decodeURIComponent(mt[1]) : undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
+    } else if (emb) {
+      embrulhosView(emb[1] ? decodeURIComponent(emb[1]) : undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (cfg) {
       configSettings(cfg[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else {

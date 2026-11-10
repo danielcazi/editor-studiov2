@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Embrulho · Fofoca (rosa)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=block" rel="stylesheet">
+<link rel="stylesheet" href="../../_shared/embrulho.css">
+<style>
+.rosa{left:0;width:1080px;background:
+  radial-gradient(circle,#fff9 0 5px,#fff0 6px) 0 0/34px 34px,
+  radial-gradient(circle,#fff5 0 4px,#fff0 5px) 17px 17px/34px 34px,
+  linear-gradient(160deg,#c4005f,#ff3fa0 45%,#ff8cc8 70%,#d4006e)}
+.r1{top:0;height:380px}.r2{top:1460px;height:460px}
+.slot{left:540px;top:560px;width:540px;height:900px}
+.quadro{position:absolute;left:0;top:560px;width:540px;height:900px;object-fit:cover}
+.faixa{left:0;top:380px;width:1080px;height:180px;background:#fff;color:#111;font-weight:800;text-align:center;align-items:center;text-transform:uppercase;line-height:1.1;padding:0 50px}
+.div{left:537px;top:560px;width:6px;height:900px;background:#fff}
+.estrela{left:420px;top:1350px;width:240px;height:240px}
+.estrela i{position:absolute;inset:20px;background:#d90429;border-radius:14px}
+.estrela i:nth-child(2){transform:rotate(30deg)}.estrela i:nth-child(3){transform:rotate(60deg)}
+.selo-t{left:420px;top:1350px;width:240px;height:240px;color:#fff;font-weight:900;align-items:center;text-align:center;text-transform:uppercase;transform:rotate(-8deg)}
+</style>
+</head>
+<body>
+<div class="abs rosa r1"></div><div class="abs rosa r2"></div>
+<div class="slot"></div>
+<img class="quadro" data-src="quadro" alt="">
+<div class="abs div"></div>
+<div class="t faixa" data-c="manchete" data-fit="50,28"></div>
+<div class="abs estrela frente"><i></i><i></i><i></i></div>
+<div class="t selo-t frente"><span data-c="selo" style="font-size:34px"></span></div>
+<script src="../../_shared/embrulho.js"></script>
+</body>
+</html>

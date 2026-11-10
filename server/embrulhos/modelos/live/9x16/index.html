@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Embrulho · Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=block" rel="stylesheet">
+<link rel="stylesheet" href="../../_shared/embrulho.css">
+<style>
+.sombra{left:0;width:1080px;pointer-events:none}
+.s1{top:0;height:330px;background:linear-gradient(#000a,#0000)}
+.s2{top:1420px;height:500px;background:linear-gradient(#0000,#000b)}
+.anel{left:56px;top:84px;width:100px;height:100px;border-radius:50%;background:linear-gradient(45deg,#f9a03f,#e1306c 55%,#833ab4)}
+.av{left:62px;top:90px;width:88px;height:88px;border:4px solid #000}
+.id{left:176px;top:84px;width:420px;height:100px;flex-direction:row;align-items:center;gap:10px;color:#fff;font-weight:700;white-space:nowrap;text-shadow:0 1px 6px #0008}
+.id span{overflow:hidden;text-overflow:ellipsis}
+.selo{flex:none}
+.live{left:616px;top:104px;width:132px;height:60px;background:#ed0c7d;color:#fff;font-weight:800;font-size:32px;letter-spacing:1px;border-radius:10px;align-items:center}
+.olho{left:762px;top:104px;width:190px;height:60px;background:#0007;color:#fff;font-weight:600;border-radius:10px;flex-direction:row;align-items:center;justify-content:center;gap:10px;white-space:nowrap}
+.x{left:972px;top:104px;width:60px;height:60px}
+.rod{left:56px;top:1716px;width:860px;height:96px;border:2px solid #fff6;border-radius:48px;padding:0 40px;color:#fffc;font-weight:400}
+.cor{left:944px;top:1724px;width:80px;height:80px}
+</style>
+</head>
+<body>
+<div class="abs sombra s1"></div><div class="abs sombra s2"></div>
+<div class="abs anel"></div>
+<img class="avatar av" src="../../_shared/avatar.svg" data-src="avatar" alt="">
+<div class="t id"><span data-c="perfil_arroba" data-fit="34,22"></span><svg class="selo" width="30" height="30" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1d9bf0"/><path d="M7 12.5l3.2 3.2L17 8.8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<div class="t live">LIVE</div>
+<div class="t olho"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/></svg><span data-c="espectadores" style="font-size:30px"></span></div>
+<svg class="abs x" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+<div class="t rod" data-c="rodape" data-fit="34,22"></div>
+<svg class="abs cor" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><path d="M12 20.5S3 15 3 8.8A4.8 4.8 0 0 1 12 6.3 4.8 4.8 0 0 1 21 8.8C21 15 12 20.5 12 20.5z"/></svg>
+<script src="../../_shared/embrulho.js"></script>
+<script>if (!window.CAMPOS.perfil_arroba) document.querySelector('.selo').style.display = 'none';</script>
+</body>
+</html>
