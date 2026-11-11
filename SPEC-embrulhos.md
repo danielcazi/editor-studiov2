@@ -173,3 +173,27 @@ Conferir antes: a correspondência dos 9 atuais com os nomes da gravação foi d
 ## 10. Fora do escopo
 
 Botão de ajuda com chat; outras proporções além de 9:16; legenda automática por cima do embrulho; edição do próprio vídeo (cortes, ritmo).
+
+## 11. Proporções (as três fases feitas em 2026-11-11: os 15 modelos nas três proporções, selo de encaixe por proporção)
+
+Três saídas por embrulho: `9x16` (1080×1920, a atual), `4x5` (1080×1350) e `16x9` (1920×1080).
+
+**Onde se escolhe**: na etapa 3 · Formatos, um seletor no topo (pode marcar mais de uma; padrão só 9:16). Não na Exportação: cortar o 9:16 pronto perde manchete, selo e rodapé.
+
+**Dados**
+- Sessão: `proporcoes: string[]`.
+- Formato: `campos` é um só para todas as proporções. O que depende do desenho passa a ser por proporção: `por[prop] = { ajustes, imagens, caixas, avisos, previaEm, exportadoEm, arquivo }`. Uma sessão antiga é lida como `por['9x16']`.
+- Manifesto: `formatos[prop] = { film, slots, camadas }` (a chave `9x16` já existe). Modelo sem a chave não aparece naquela proporção. `zonasTexto` também por proporção.
+
+**Desenho dos modelos** (como ficou): a mesma página serve as três; `?p=4x5` ou `?p=16x9` põe a classe `p-<prop>` no `<html>` e o css do modelo reposiciona as peças (`html.p-4x5 .tarja{...}`). O manifesto repete o bloco em `formatos['4x5']` e `formatos['16x9']`. Os dados por proporção ficaram em `formato.por[prop]`, com a 9:16 no próprio formato (sem migração). `_shared/embrulho.css` e `embrulho.js` deixam de assumir 1080×1920 (a página declara o tamanho; `CAIXAS` e `mexer` usam o tamanho real).
+
+**16:9**: a janela do vídeo é horizontal. Vídeo horizontal cobre a janela; vídeo 9:16 ou 1:1 entra inteiro e centralizado (escala abaixo de 1, automática) e o resto é a imagem de fundo da etapa Marca ou, sem ela, o próprio vídeo desfocado. É o mecanismo que o `compor` já tem para escala menor que 1.
+
+**Render**: `QUADRO` vira função da proporção; `renderCamadas` e `compor` recebem a proporção (prévia na metade do tamanho, como hoje). Arquivo exportado: `<Modelo> - <sessão> - 4x5.mp4`.
+
+**Tela**: no cartão da Edição, abas por proporção, cada uma com sua prévia, seus controles e seu "Posicionar na prévia". Exportação lista modelo × proporção. Selo Encaixa/Adaptar calculado por proporção.
+
+**Fases**
+1. Base: proporção na sessão, no manifesto, no render e na tela, com os modelos de sobreposição (Tarja, Tarja pincel, Pergunta, Headline + legenda, Live) em 4:5 e 16:9.
+2. Modelos de janela (Tweet, Cinema, Meme, POV, Notícia, Oferta, Fofoca headline) em 4:5 e 16:9.
+3. Modelos de tela dividida (Fofoca duplo, Fofoca rosa, Split) e selo de encaixe por proporção.

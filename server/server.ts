@@ -29,7 +29,7 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['POST', /^\/embrulhos\/([^/]+)\/gerar$/, (m, b) => E.gerar(m[1], b)],
   ['PUT', /^\/embrulhos\/([^/]+)\/perfil$/, (m, b) => E.perfil(m[1], b)],
   ['PUT', /^\/embrulhos\/([^/]+)\/formatos\/([^/]+)$/, (m, b) => E.salvar(m[1], m[2], b)],
-  ['POST', /^\/embrulhos\/([^/]+)\/formatos\/([^/]+)\/previa$/, m => E.previa(m[1], m[2])],
+  ['POST', /^\/embrulhos\/([^/]+)\/formatos\/([^/]+)\/previa$/, (m, b) => E.previa(m[1], m[2], b?.prop)],
   ['POST', /^\/embrulhos\/([^/]+)\/exportar$/, m => E.exportar(m[1])],
   ['GET', /^\/motion-think$/, () => MT.list()],
   ['POST', /^\/motion-think$/, (_, b) => MT.create(b)],

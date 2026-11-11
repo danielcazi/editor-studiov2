@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { carregarEmbrulho, conferirCampos, encaixe, listarEmbrulhos, precosDoSrt, slotsPx } from '../embrulhos.ts';
 
-test('the 14 models load and every slot is even-sized', () => {
-  assert.equal(listarEmbrulhos().length, 14);
+test('the 15 models load and every slot is even-sized', () => {
+  assert.equal(listarEmbrulhos().length, 15);
   for (const id of listarEmbrulhos()) for (const s of Object.values(slotsPx(carregarEmbrulho(id)))) assert.equal((s.w % 2) + (s.h % 2), 0, id);
 });
 
@@ -46,5 +46,11 @@ test('encaixe: a face under the model text or cut by the crop asks for adaptatio
   assert.equal(encaixe(meme, [rosto(0.35, 0.05)], v916, { x: 0.5, y: 0 }).ok, true);
   // a 16:9 video in a full 9:16 frame keeps only the middle column
   assert.match(encaixe(carregarEmbrulho('live'), [{ x: 0.05, y: 0.3, w: 0.15, h: 0.3 }], { largura: 1920, altura: 1080 }).motivo, /cortado/);
+  // per proportion: in 16:9 a vertical video goes in whole (nothing cut) and the band sits at the middle of the frame
+  assert.equal(encaixe(meme, [rosto(0.35, 0.05)], v916, undefined, '16x9').ok, true);
+  assert.match(encaixe(tarja, [rosto(0.35, 0.42)], v916, undefined, '16x9').motivo, /coberto/);
+  assert.equal(encaixe(tarja, [rosto(0.35, 0.1)], v916, undefined, '16x9').ok, true);
+  // 4:5 cuts a vertical video in height: a face at the very top is lost
+  assert.match(encaixe(tarja, [rosto(0.35, 0.02)], v916, undefined, '4x5').motivo, /cortado/);
   for (const id of listarEmbrulhos()) for (const z of carregarEmbrulho(id).zonasTexto ?? []) assert.ok([z.x, z.y, z.w, z.h].every(n => n >= 0 && n <= 1) && z.x + z.w <= 1.001 && z.y + z.h <= 1.001, id);
 });

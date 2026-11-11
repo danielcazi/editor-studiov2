@@ -4,6 +4,9 @@
 html, body { width: 1080px; height: 1920px; overflow: hidden; background: transparent; font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
 .abs { position: absolute; }
 .slot { position: absolute; background: transparent; }
+/* outras proporções: a mesma página com ?p=4x5 ou ?p=16x9; cada modelo reposiciona as peças com html.p-4x5 / html.p-16x9 no seu css */
+html.p-4x5, html.p-4x5 body { height: 1350px; }
+html.p-16x9, html.p-16x9 body { width: 1920px; height: 1080px; }
 body.marca .slot { background: #6ed934; }
 .t { position: absolute; display: flex; flex-direction: column; justify-content: center; white-space: pre-line; word-break: break-word; }
 body.layer-fundo .frente { display: none !important; }

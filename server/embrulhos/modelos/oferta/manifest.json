@@ -18,6 +18,36 @@
       "camadas": [
         "fundo"
       ]
+    },
+    "4x5": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.17593,
+          "y": 0.03704,
+          "w": 0.64815,
+          "h": 0.44444
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": []
+    },
+    "16x9": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.04167,
+          "y": 0.09259,
+          "w": 0.45833,
+          "h": 0.81481
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": []
     }
   },
   "campos": [

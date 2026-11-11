@@ -69,7 +69,7 @@ test('preview is 15 s at most and the export is a 1080x1920 mp4 with audio', { s
   // position and scale: the video inside its window, the still image inside its own, and the text blocks
   st = E.salvar(s.id, 'fofoca-duplo', { version: E.get(s.id).version, ajustes: { video_zoom: 2, foco_x: 0, quadro_zoom: 1.5, quadro_y: 1, texto_y: 40, texto_escala: 1.2 } });
   assert.equal(st.formatos['fofoca-duplo'].ajustes.video_zoom, 2);
-  assert.throws(() => E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { video_zoom: 9 } }), /video_zoom: entre 1 e 3/);
+  assert.throws(() => E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { video_zoom: 9 } }), /video_zoom: entre 0 e 3/);
   assert.throws(() => E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { texto_escala: 0 } }), /texto_escala/);
   st = await E.previa(s.id, 'fofoca-duplo');
   // where the text ended up, for the drag box of the enlarged preview: it follows the offset the user set
@@ -127,6 +127,32 @@ test('preview is 15 s at most and the export is a 1080x1920 mp4 with audio', { s
   // an edit after the export marks it stale
   st = E.salvar(s.id, 'pergunta', { version: E.get(s.id).version, campos: { pergunta: 'E se der errado?' } });
   assert.ok(st.formatos.pergunta.editadoEm > st.formatos.pergunta.exportadoEm);
+});
+
+test('a format comes out in each chosen proportion its model has a drawing for', { skip: !findChrome() && 'Chrome not found' }, async () => {
+  const s = await E.create({ video, name: 'Props' });
+  let st = E.salvar(s.id, 'tarja', { version: s.version, campos: { headline: 'Dá pra começar do zero' } });
+  st = E.salvar(s.id, 'fofoca-rosa', { version: st.version, campos: { manchete: 'Ela começou do zero e ninguém acreditou', selo: 'URGENTE' }, ajustes: { quadro_t: 1 } });
+  await assert.rejects(E.gerar(s.id, { modelos: ['tarja'], proporcoes: ['2x1'] }), /proporção desconhecida/);
+  // no new model: the AI is not called, only the missing previews are rendered
+  st = await E.gerar(s.id, { modelos: ['tarja', 'fofoca-rosa'], proporcoes: ['9x16', '4x5', '16x9'] });
+  assert.deepEqual(st.proporcoes, ['9x16', '4x5', '16x9']);
+  const dim = (rel: string) => { const v = probe(E.file(s.id, rel)).streams.find((x: any) => x.codec_type === 'video'); return [v.width, v.height]; };
+  assert.deepEqual([dim('previa/tarja.mp4'), dim('previa/tarja-4x5.mp4'), dim('previa/tarja-16x9.mp4'), dim('previa/fofoca-rosa.mp4'), dim('previa/fofoca-rosa-16x9.mp4')], [[540, 960], [540, 676], [960, 540], [540, 960], [960, 540]]);
+  // the still image is cut to the window of each proportion
+  assert.deepEqual([dim('camadas/fofoca-rosa-quadro-c.jpg'), dim('camadas/fofoca-rosa-4x5-quadro-c.jpg'), dim('camadas/fofoca-rosa-16x9-quadro-c.jpg')], [[540, 900], [540, 860], [960, 720]]);
+  // 16:9: the vertical video goes in whole and centred (scale below 1, stored so the slider shows it)
+  assert.ok(Math.abs(st.formatos.tarja.por!['16x9']!.ajustes.video_zoom! - 0.316) < 0.01);
+  // positions belong to the proportion: moving the band in 4:5 leaves 9:16 alone
+  st = E.salvar(s.id, 'tarja', { version: st.version, prop: '4x5', ajustes: { elementos: { tarja: [0, -100, 1] } } });
+  assert.equal(st.formatos.tarja.ajustes.elementos, undefined);
+  st = await E.previa(s.id, 'tarja', '4x5');
+  assert.ok(Math.abs(st.formatos.tarja.por!['4x5']!.caixas!.find(c => c.k === 'tarja')!.y * 1350 - 495) < 2);
+  const out = await E.exportar(s.id);
+  assert.deepEqual(out.falhas, []);
+  assert.deepEqual([dim(out.formatos.tarja.arquivo!), dim(out.formatos.tarja.por!['4x5']!.arquivo!), dim(out.formatos.tarja.por!['16x9']!.arquivo!)], [[1080, 1920], [1080, 1350], [1920, 1080]]);
+  assert.deepEqual(dim(out.formatos['fofoca-rosa'].por!['16x9']!.arquivo!), [1920, 1080]);
+  E.remove(s.id);
 });
 
 test('gerar fills the chosen models, previews the valid one, keeps the rejected one with its errors and never rewrites an edited one', { skip: !findChrome() && 'Chrome not found' }, async () => {

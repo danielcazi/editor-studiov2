@@ -18,6 +18,50 @@
       "camadas": [
         "fundo"
       ]
+    },
+    "4x5": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.1306,
+          "y": 0.1333,
+          "w": 0.738,
+          "h": 0.2533
+        }
+      ]
+    },
+    "16x9": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.2922,
+          "y": 0.1111,
+          "w": 0.4151,
+          "h": 0.3167
+        }
+      ]
     }
   },
   "campos": [
