@@ -3,14 +3,17 @@
 // Fica fora de embrulhos.ts porque pipeline.ts importa aquele módulo e este importa pipeline.ts.
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ask, type Cost } from './models.ts';
 import { safeId, type Word } from './lib.ts';
 import { type Caixa, type Extra, carregarEmbrulho, compor, EMB, encaixe, recortarQuadro, conferirCampos, extrairQuadro, type Item, listarEmbrulhos, type Modelo, precosDoSrt, type Prop, PROPS, renderCamadas, sugerirQuadros, zoomPadrao } from './embrulhos.ts';
 import { emit, execP, expandHome, finalName, intake, probeMedia, py, SKILL, subscribe, UserError, WS } from './pipeline.ts';
 
 // vídeo no slot: foco_x/foco_y (0 a 1) e video_zoom (1 a 3); imagem parada: quadro_t ou imagem, quadro_zoom/x/y; texto: deslocamento em px do quadro 1080×1920 e escala
-type Ajustes = { quadro_t?: number; imagem?: string | null; foco_y?: number; foco_x?: number; video_zoom?: number; quadro_zoom?: number; quadro_x?: number; quadro_y?: number; texto_x?: number; texto_y?: number; texto_escala?: number; elementos?: Record<string, number[]>; embrulho_s?: number; video2?: string | null; trocar?: boolean };   // embrulho_s: o embrulho só fica estes segundos; video2/trocar: tela dividida   // elementos: peça da moldura → [dx px, dy px, escala]
-const LIMITES: Record<string, [number, number]> = { foco_x: [0, 1], foco_y: [0, 1], video_zoom: [0, 3], quadro_zoom: [1, 3], quadro_x: [0, 1], quadro_y: [0, 1], texto_x: [-540, 540], texto_y: [-960, 960], texto_escala: [0.5, 1.8], embrulho_s: [0.5, 36000] };
+type Ajustes = { quadro_t?: number; imagem?: string | null; foco_y?: number; foco_x?: number; video_zoom?: number; quadro_zoom?: number; quadro_x?: number; quadro_y?: number; texto_x?: number; texto_y?: number; texto_escala?: number; elementos?: Record<string, number[]>; embrulho_s?: number; video2?: string | null; trocar?: boolean; foco2_x?: number; foco2_y?: number; video2_zoom?: number; foto?: string | null; moldura?: string | null; tema?: string; ocultar?: string[] };
+// video2, trocar, foto, moldura e tema valem para todas as proporções: moram nos ajustes da 9:16 (o próprio Formato). foto = a foto do meio
+// das fofocas no lugar da foto da Marca; moldura = imagem no lugar do rosa da Fofoca (rosa); ocultar = peças escondidas nesta proporção.   // embrulho_s: o embrulho só fica estes segundos; video2/trocar: tela dividida   // elementos: peça da moldura → [dx px, dy px, escala]
+const LIMITES: Record<string, [number, number]> = { foco_x: [0, 1], foco_y: [0, 1], video_zoom: [0, 3], quadro_zoom: [1, 3], quadro_x: [0, 1], quadro_y: [0, 1], texto_x: [-540, 540], texto_y: [-960, 960], texto_escala: [0.5, 1.8], embrulho_s: [0.5, 36000], foco2_x: [0, 1], foco2_y: [0, 1], video2_zoom: [0, 3] };
 // imagens: figuras que o usuário solta em qualquer lugar do quadro (arquivo dentro da sessão; centro x/y e largura em frações do quadro)
 export type Formato = { selecionado: boolean; incluir: boolean; aprovado: boolean; campos: Record<string, string>; ajustes: Ajustes; imagens?: Extra[]; angulo?: string; caixas?: (Caixa & { k: string })[]; itens: Item[]; avisos: string[];
   editadoEm: number; previaEm: number; exportadoEm: number; arquivo?: string; por?: Partial<Record<Prop, Var>> };
@@ -40,6 +43,7 @@ const log = (id: string, line: string) => { emit(KEY(id), 'log', line); appendFi
 const logCost = (st: State) => (c: Cost) => { st.cost.push(c); save(st); emit(KEY(st.id), 'cost', c); };
 const modelo = (mid: string): Modelo => { try { return carregarEmbrulho(mid); } catch (e) { return fail((e as Error).message); } };
 const usaPerfil = (m: Modelo) => (m.midia ?? []).some(x => x.id === 'avatar') || m.perfil.exige.some(x => x.startsWith('perfil_'));
+const temMidia = (m: Modelo, k: string) => (m.midia ?? []).some(x => x.id === k);
 const PADRAO = join(DIR, 'perfil.json'), PADRAO_IMG = join(DIR, 'perfil.png');
 const pedeQuadro = (m: Modelo) => m.perfil.exige.includes('quadro_marcante');
 const novo = (): Formato => ({ selecionado: true, incluir: true, aprovado: false, campos: {}, ajustes: {}, itens: [], avisos: [], editadoEm: 0, previaEm: 0, exportadoEm: 0 });
@@ -59,7 +63,7 @@ async function locked<T>(id: string, step: string, fn: (st: State) => Promise<T>
 export const events = (id: string, fn: (ev: string, data: unknown) => void) => { load(id); return subscribe(KEY(id), fn); };
 
 // ---- sessões ----
-export const modelos = () => listarEmbrulhos().map(mid => { const m = carregarEmbrulho(mid), f = m.formatos['9x16']; return { id: m.id, nome: m.nome, tipo: m.tipo, campos: m.campos, exige: m.perfil.exige, pedeQuadro: pedeQuadro(m), textoMovel: !m.textoFixo, props: Object.keys(m.formatos), dois: !!f.slots.video2, usaPerfil: usaPerfil(m), mostraNome: m.perfil.exige.includes('perfil_nome'), film: f.film, slot: f.slots.video }; });
+export const modelos = () => listarEmbrulhos().map(mid => { const m = carregarEmbrulho(mid), f = m.formatos['9x16']; return { id: m.id, nome: m.nome, tipo: m.tipo, campos: m.campos, exige: m.perfil.exige, pedeQuadro: pedeQuadro(m), textoMovel: !m.textoFixo, props: Object.keys(m.formatos), dois: !!f.slots.video2, foto: temMidia(m, 'foto'), moldura: temMidia(m, 'moldura'), temas: m.temas ?? [], ocultar: m.ocultar ?? [], usaPerfil: usaPerfil(m), mostraNome: m.perfil.exige.includes('perfil_nome'), film: f.film, slot: f.slots.video }; });
 // Miniatura do catálogo: o modelo com textos de exemplo, renderizado uma vez e guardado (png com alfa, 270 px de largura). A chave
 // é a data de alteração do modelo, então editar o html ou o manifesto refaz a imagem. Antes eram 14 <iframe> de 1080×1920 ao vivo.
 const MINI = join(DIR, '.miniaturas'), fazendo = new Map<string, Promise<string>>();
@@ -89,6 +93,8 @@ export const list = () => existsSync(DIR) ? readdirSync(DIR).filter(d => existsS
 }).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [];
 export function get(id: string) {
   const st = load(id), L = join(dirOf(id), 'log.txt');
+  // os avisos são refeitos a cada leitura: uma regra que mudou (o preço da Oferta deixou de travar) vale para sessões já salvas
+  for (const [mid, f] of Object.entries(st.formatos)) if (listarEmbrulhos().includes(mid)) f.itens = conferir(st, modelo(mid), f);
   return { ...st, proporcoes: st.proporcoes ?? ['9x16'], busy: getBusy(id), encaixe: encaixes(id), analisado: existsSync(join(dirOf(id), 'words.json')), log: existsSync(L) ? readFileSync(L, 'utf8').split('\n').filter(Boolean).slice(-60) : [] };
 }
 export function remove(id: string) { load(id); if (busy.has(id)) fail('sessão ocupada'); rmSync(dirOf(id), { recursive: true, force: true }); return { ok: true }; }
@@ -172,13 +178,14 @@ const conferir = (st: State, m: Modelo, f: Formato) => {
 };
 const temErro = (f: Formato) => f.itens.some(i => i.nivel === 'erro');
 
-// O campo de papel "contador" (espectadores da Live) varia durante o vídeo: 12 valores entre o indicado e 5% acima, sempre os mesmos
-// para o mesmo número (a prévia e a exportação saem iguais). Só quando o campo é um número ("1.284", "980").
-function contadorDe(m: Modelo, f: Formato) {
+// O campo de papel "contador" (espectadores da Live) sobe durante o vídeo: mais 3 a cada segundo, a partir do número indicado.
+// Só quando o campo é um número ("1.284", "980"). shortcut: uma imagem por segundo, no máximo 900; um vídeo de mais de 15 min
+// volta ao começo da contagem. Trocar por drawtext se isso aparecer.
+function contadorDe(m: Modelo, f: Formato, duracao: number) {
   const c = m.campos.find(x => x.papel === 'contador'), txt = c && (f.campos[c.id] ?? '').trim();
   if (!c || !txt || !/^\d[\d.]*$/.test(txt)) return null;
   const n = Number(txt.replace(/\./g, ''));
-  return { campo: c.id, valores: Array.from({ length: 12 }, (_, i) => { const v = Math.round(n * (1 + 0.05 * (i ? Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1 : 0))); return txt.includes('.') ? v.toLocaleString('pt-BR') : String(v); }) };
+  return { campo: c.id, valores: Array.from({ length: Math.min(900, Math.max(1, Math.ceil(duracao))) }, (_, i) => txt.includes('.') ? (n + 3 * i).toLocaleString('pt-BR') : String(n + 3 * i)) };
 }
 
 // ---- render: a prévia e a exportação são a mesma função, a prévia só é mais curta ----
@@ -189,18 +196,19 @@ async function render(st: State, mid: string, previa: boolean, prop: Prop = '9x1
   f.itens = conferir(st, m, f);
   if (temErro(f)) { save(st); fail(`${m.nome}: ` + f.itens.filter(i => i.nivel === 'erro').map(i => `${i.campo}: ${i.msg}`).join('; ')); }
   log(st.id, `▶ ${m.nome}${suf ? ' ' + prop : ''}: ${previa ? 'prévia' : 'exportando'}...`);
-  const a = v.ajustes, bruto = !pedeQuadro(m) ? null : a.imagem ? join(D, a.imagem) : extrairQuadro(st.src, (a.quadro_t ?? f.ajustes.quadro_t)!, join(D, 'camadas', `${mid}${suf}-quadro.jpg`));
+  const a = v.ajustes, g = f.ajustes, dur = previa ? Math.min(PREVIA_S, st.duracao) : st.duracao, arq = (r?: string | null) => r && existsSync(join(D, r)) ? join(D, r) : null, bruto = !pedeQuadro(m) ? null : a.imagem ? join(D, a.imagem) : extrairQuadro(st.src, (a.quadro_t ?? f.ajustes.quadro_t)!, join(D, 'camadas', `${mid}${suf}-quadro.jpg`));
   const quadro = bruto && recortarQuadro(m, bruto, join(D, 'camadas', `${mid}${suf}-quadro-c.jpg`), { zoom: a.quadro_zoom, x: a.quadro_x ?? 0.5, y: a.quadro_y ?? 0.5, prop });
   // nome e @ entram como campos `perfil_*` (um modelo os mostra com data-c="perfil_nome"); a foto, pelo parâmetro avatar
   const p = st.perfil, foto = p.mostrarLogo && p.avatar ? join(D, p.avatar) : null;
-  const camadas = await renderCamadas(m, { ...f.campos, perfil_nome: p.nome, perfil_arroba: p.mostrarArroba ? p.arroba : '' }, { quadroImg: quadro, avatarImg: foto, semAvatar: !p.mostrarLogo, texto: { x: a.texto_x, y: a.texto_y, escala: a.texto_escala }, pecas: a.elementos, contador: contadorDe(m, f), prop, destino: join(D, 'camadas', mid + suf) });
+  const camadas = await renderCamadas(m, { ...f.campos, perfil_nome: p.nome, perfil_arroba: p.mostrarArroba ? p.arroba : '' }, { quadroImg: quadro, avatarImg: foto, semAvatar: !p.mostrarLogo, texto: { x: a.texto_x, y: a.texto_y, escala: a.texto_escala }, pecas: a.elementos, contador: contadorDe(m, f, dur), prop,
+    url: { ...(arq(g.foto) ? { foto: pathToFileURL(arq(g.foto)!).href } : {}), ...(arq(g.moldura) ? { moldura: pathToFileURL(arq(g.moldura)!).href } : {}), ...(g.tema && g.tema !== m.temas?.[0] ? { tema: g.tema } : {}), ...(a.ocultar?.length ? { oc: a.ocultar.join(',') } : {}) }, destino: join(D, 'camadas', mid + suf) });
   v.caixas = camadas.caixas ?? [];
   v.avisos = camadas.textoNaoCabe?.length ? [`texto não coube: ${camadas.textoNaoCabe.join(', ')}`] : [];
   const rel = previa ? join('previa', `${mid}${suf}.mp4`) : join('saida', `${m.nome} - ${st.name}${suf ? ' - ' + prop : ''}.mp4`);
   // 16:9 em janela larga: o vídeo entra inteiro e centralizado. O valor fica gravado para o controle de escala da tela mostrar o que vale.
   if (a.video_zoom == null) { const z = zoomPadrao(m, prop, st.largura, st.altura); if (z < 1) a.video_zoom = +z.toFixed(3); }
   mkdirSync(join(D, previa ? 'previa' : 'saida'), { recursive: true });
-  await compor(m, st.src, camadas, join(D, rel), { prop, duracao: previa ? Math.min(PREVIA_S, st.duracao) : st.duracao, focoY: a.foco_y ?? 0.5, focoX: a.foco_x ?? 0.5, zoom: a.video_zoom, trocar: !!a.trocar, ate: a.embrulho_s && a.embrulho_s < st.duracao - 0.5 ? a.embrulho_s : null, video2: a.video2 && existsSync(join(D, a.video2)) ? await probeMedia(join(D, a.video2)).then(i => ({ arquivo: join(D, a.video2!), w: i.width, h: i.height })) : null, vw: st.largura, vh: st.altura, fundoImg: st.perfil.fundo ? join(D, st.perfil.fundo) : null, previa, contador: camadas.contador, slot: a.elementos?.slot ? v.caixas.find(c => c.k === 'slot') : null, extras: (v.imagens ?? []).map(e => ({ ...e, arquivo: join(D, e.arquivo) })) });
+  await compor(m, st.src, camadas, join(D, rel), { prop, duracao: dur, focoY: a.foco_y ?? 0.5, focoX: a.foco_x ?? 0.5, zoom: a.video_zoom, zoom2: a.video2_zoom, foco2X: a.foco2_x, foco2Y: a.foco2_y, trocar: !!g.trocar, ate: a.embrulho_s && a.embrulho_s < st.duracao - 0.5 ? a.embrulho_s : null, video2: arq(g.video2) ? await probeMedia(arq(g.video2)!).then(i => ({ arquivo: arq(g.video2)!, w: i.width, h: i.height })) : null, vw: st.largura, vh: st.altura, fundoImg: st.perfil.fundo ? join(D, st.perfil.fundo) : null, previa, contador: camadas.contador, slot: a.elementos?.slot ? v.caixas.find(c => c.k === 'slot') : null, extras: (v.imagens ?? []).map(e => ({ ...e, arquivo: join(D, e.arquivo) })) });
   // capa da prévia: a tela mostra esta imagem e só baixa o vídeo quando a pessoa dá play
   if (previa) await execP('ffmpeg', ['-v', 'error', '-y', '-ss', String(Math.min(1, st.duracao / 2)), '-i', join(D, rel), '-frames:v', '1', '-q:v', '4', join(D, 'previa', `${mid}${suf}.jpg`)]).catch(() => {});
   if (previa) v.previaEm = Date.now(); else { v.exportadoEm = Date.now(); v.arquivo = rel; }
@@ -235,7 +243,7 @@ Regras:
 - "angulo": para cada modelo, escolha um dos "angulos" dele (a explicação e um exemplo de cada um estão em "biblioteca") e escreva os campos seguindo a lógica desse ângulo, adaptada ao que o vídeo diz. Ângulos diferentes entre os modelos sempre que der. Modelo sem "angulos": "angulo" vazio.
 - "aprovados", quando o modelo traz: textos que o usuário aprovou para esse modelo em outros vídeos. Copie o jeito (tom, tamanho, pontuação, uso de maiúsculas), nunca o assunto.
 - Tudo sai do que o vídeo diz: nenhum número, preço ou promessa que não esteja nas falas.
-- Oferta: preco_por (e preco_de, se houver) têm de ser um dos precos, escritos igual.
+- Oferta: preco_por (e preco_de, se houver) têm de ser um dos precos, escritos igual. Com "precos" vazio, deixe os dois vazios: o usuário digita o preço.
 - Fofoca (duplo): nome_pagina é o nome de uma página de fofoca fictícia inventada por você.
 - Quando o modelo traz "dica", siga-a.
 - quadro_t: o instante (s) da cena mais marcante do vídeo, de preferência um dos quadrosSugeridos; 0 nos modelos com pedeQuadro:false.`;
@@ -271,7 +279,8 @@ export const gerar = (id: string, body: { modelos?: unknown; proporcoes?: unknow
       f.itens = conferir(st, m, f);
       st.formatos[m.id] = f;
     }
-    return ms.flatMap(m => st.formatos[m.id].itens.filter(i => i.nivel === 'erro').map(i => `${m.id} · ${i.campo}: ${i.msg}`));
+    // preço que as falas não trazem não se corrige: fica vazio para o usuário digitar
+    return ms.flatMap(m => st.formatos[m.id].itens.filter(i => i.nivel === 'erro' && !(i.campo === 'preco_por' && !contexto.precos.length)).map(i => `${m.id} · ${i.campo}: ${i.msg}`));
   };
   log(id, `▶ A IA está lendo o vídeo e escrevendo ${ms.length} formato(s)...`);
   let res = await ask<Resp>('embrulhos', 'embrulhos:gerar', { system: SYSTEM, content: JSON.stringify(contexto), schema: SCHEMA }, logCost(st));
@@ -314,15 +323,31 @@ export function salvar(id: string, mid: string, body: { campos?: unknown; ajuste
       if (!/^[\w-]{1,40}$/.test(k) || !(Math.abs(x) <= 1920 && Math.abs(y) <= 1920 && s >= 0.2 && s <= 4)) fail(`elementos.${k}: posição até 1920 px e escala entre 0.2 e 4`);
       (v.ajustes.elementos ??= {})[k] = [x, y, s];
     }
-    if (typeof a.trocar === 'boolean') v.ajustes.trocar = a.trocar;
-    if (a.video2 === null) { if (v.ajustes.video2) rmSync(join(dirOf(id), v.ajustes.video2), { force: true }); delete v.ajustes.video2; }
+    const g = f.ajustes;   // o que vale para todas as proporções
+    if (typeof a.trocar === 'boolean') g.trocar = a.trocar;
+    if (a.tema != null) g.tema = (m.temas ?? []).includes(String(a.tema)) ? String(a.tema) : fail(`tema: ${(m.temas ?? []).join(' ou ') || 'este formato não tem'}`);
+    if (Array.isArray(a.ocultar)) v.ajustes.ocultar = a.ocultar.map(String).filter((k: string) => (m.ocultar ?? []).includes(k));
+    for (const k of ['foto', 'moldura'] as const) {   // imagem do formato (caminho do /upload); null volta ao padrão
+      if (a[k] === null) { if (g[k]) rmSync(join(dirOf(id), g[k]!), { force: true }); delete g[k]; }
+      else if (a[k] != null) {
+        if (!temMidia(m, k)) fail(`este formato não tem ${k}`);
+        const de = expandHome(String(a[k])), ext = extname(de).toLowerCase();
+        if (!IMG_EXT.includes(ext) || !existsSync(de)) fail(`${k}: envie um png, jpg ou webp`);
+        mkdirSync(join(dirOf(id), 'img'), { recursive: true });
+        if (g[k]) rmSync(join(dirOf(id), g[k]!), { force: true });
+        g[k] = join('img', `${mid}-${k}${ext}`);
+        intake(de, join(dirOf(id), g[k]!));
+      }
+    }
+    if (a.video2 === null) { if (g.video2) rmSync(join(dirOf(id), g.video2), { force: true }); delete g.video2; }
     else if (a.video2 != null) {   // segundo vídeo da tela dividida (caminho do /upload)
       if (!m.formatos['9x16'].slots.video2) fail('este formato não tem segundo vídeo');
       const de = expandHome(String(a.video2)), ext = extname(de).toLowerCase();
       if (!VIDEO_EXT.includes(ext) || !existsSync(de)) fail('segundo vídeo: envie um mp4, mov, m4v, mkv ou webm');
       mkdirSync(join(dirOf(id), 'img'), { recursive: true });
-      v.ajustes.video2 = join('img', `${mid}${suf}-v2${ext}`);
-      intake(de, join(dirOf(id), v.ajustes.video2));
+      if (g.video2) rmSync(join(dirOf(id), g.video2), { force: true });
+      g.video2 = join('img', `${mid}-v2${ext}`);
+      intake(de, join(dirOf(id), g.video2));
     }
     if (a.imagem === null) v.ajustes.imagem = null;
     else if (a.imagem != null) {   // caminho devolvido pelo /upload (ou local); guardado na sessão

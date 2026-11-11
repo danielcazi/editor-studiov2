@@ -3,14 +3,16 @@
    &p=4x5|16x9 troca o quadro de 1080×1920 por 1080×1350 ou 1920×1080 (classe p-<prop> no <html>)
    &el=<base64url JSON {peça: [dx, dy, escala]}> move e escala cada peça da moldura. Peça = filho direto do body; os que têm o mesmo
    data-g andam juntos; sem data-g o nome vem das classes. window.CAIXAS = onde cada peça ficou (frações do quadro), medido com as duas camadas à vista.
+   &tema=<nome> põe a classe tema-<nome> no <html> (Tweet claro); &oc=<peça,peça> esconde peças; <img data-src="foto,avatar"> usa o primeiro parâmetro que vier.
    Texto estático: window.seek não anima nada. Cada .t[data-c="campo"] recebe o texto; data-fit="max,min" encolhe a fonte até caber. */
 (() => {
   const q = new URLSearchParams(location.search);
   let C = {}; try { if (q.get('c')) C = JSON.parse(decodeURIComponent(escape(atob(q.get('c').replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) {}
   window.CAMPOS = C;
   if (q.get('p')) document.documentElement.classList.add('p-' + q.get('p'));   // proporção: 4x5 (1080×1350) ou 16x9 (1920×1080)
+  if (q.get('tema')) document.documentElement.classList.add('tema-' + q.get('tema'));
   if (q.get('marca') === '1') document.body.classList.add('marca');
-  if (q.get('semavatar') === '1') document.querySelectorAll('.avatar').forEach((e) => { e.style.display = 'none'; });
+  if (q.get('semavatar') === '1') document.querySelectorAll('.avatar').forEach((e) => { if (!(e.dataset.src || '').split(',').some((k) => k !== 'avatar' && q.get(k))) e.style.display = 'none'; });
   const S = document.getElementById('stage') || document.body;
   document.querySelectorAll('[data-c]').forEach((e) => {
     const v = C[e.dataset.c];
@@ -21,7 +23,7 @@
     }
     e.textContent = v;
   });
-  document.querySelectorAll('img[data-src]').forEach((i) => { const s = q.get(i.dataset.src); if (s) i.src = s; else if (!i.getAttribute('src')) i.style.display = 'none'; });
+  document.querySelectorAll('img[data-src]').forEach((i) => { const s = i.dataset.src.split(',').map((k) => q.get(k)).find(Boolean); if (s) i.src = s; else if (!i.getAttribute('src')) i.style.display = 'none'; });
   const fit = (e) => { const [mx, mn] = (e.dataset.fit || '60,24').split(',').map(Number); let f = mx; e.style.fontSize = f + 'px'; while ((e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) && f > mn) { f -= 2; e.style.fontSize = f + 'px'; } };
   const mover = () => {
     const tx = +q.get('tx') || 0, ty = +q.get('ty') || 0, ts = +q.get('ts') || 1;
@@ -37,6 +39,7 @@
   const mexer = () => {
     let E = {}; try { if (q.get('el')) E = JSON.parse(atob(q.get('el').replace(/-/g, '+').replace(/_/g, '/'))); } catch (e) {}
     const G = pecas();
+    (q.get('oc') || '').split(',').forEach((k) => (G[k] || []).forEach((e) => { e.style.display = 'none'; }));
     for (const [k, [dx = 0, dy = 0, s = 1]] of Object.entries(E)) {
       const v = visiveis(G[k] || []); if (!v.length) continue;
       const g = borda(v.map(([, b]) => b)), gx = g.x + g.w / 2, gy = g.y + g.h / 2;

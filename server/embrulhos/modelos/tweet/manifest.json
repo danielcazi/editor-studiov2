@@ -38,10 +38,10 @@
       "film": "9x16/index.html",
       "slots": {
         "video": {
-          "x": 0.12708,
-          "y": 0.2963,
-          "w": 0.81042,
-          "h": 0.62963
+          "x": 0.52083,
+          "y": 0.07407,
+          "w": 0.4375,
+          "h": 0.85185
         }
       },
       "camadas": [
@@ -80,5 +80,9 @@
     ],
     "evita": [],
     "dica": "texto é um post curto de rede social em primeira pessoa, na voz de quem assina, sem hashtags."
-  }
+  },
+  "temas": [
+    "escuro",
+    "claro"
+  ]
 }

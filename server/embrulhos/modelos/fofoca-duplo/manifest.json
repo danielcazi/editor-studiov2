@@ -107,6 +107,11 @@
       "id": "quadro",
       "tipo": "imagem",
       "opcional": false
+    },
+    {
+      "id": "foto",
+      "tipo": "imagem",
+      "opcional": true
     }
   ],
   "zonasTexto": [

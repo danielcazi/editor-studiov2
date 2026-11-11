@@ -12,7 +12,7 @@ test('prices come only from the srt, literally', () => {
   assert.deepEqual(precosDoSrt('de R$ 197,00 por R$97. Sem R$ 1.997'), ['R$197,00', 'R$97', 'R$1.997']);
   const m = carregarEmbrulho('oferta');
   const sem = conferirCampos(m, { promessa: 'x', preco_por: 'R$97', cta: 'Toque' }, { srt: 'sem preço' });
-  assert.ok(sem.some(i => i.nivel === 'erro' && i.campo === 'preco_por'));
+  assert.ok(sem.some(i => i.nivel === 'aviso' && i.campo === 'preco_por') && !sem.some(i => i.nivel === 'erro'));   // typed by the user: a warning, not a block
   const ok = conferirCampos(m, { promessa: 'x', preco_por: 'R$ 97', cta: 'Toque' }, { srt: 'custa R$97' });
   assert.deepEqual(ok.filter(i => i.nivel === 'erro'), []);
 });

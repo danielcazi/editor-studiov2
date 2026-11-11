@@ -9,7 +9,7 @@
 <style>
 .slot{left:80px;top:740px;width:920px;height:720px;border-radius:36px;box-shadow:0 0 0 4000px #1b1c1f}
 .av{left:80px;top:440px;width:104px;height:104px}
-.id{left:204px;top:440px;width:700px;height:52px;flex-direction:row;align-items:center;gap:10px;white-space:nowrap;color:#fff;font-weight:700;font-size:34px}
+.id{left:204px;top:440px;width:700px;height:52px;flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;white-space:nowrap;color:#fff;font-weight:700;font-size:34px}
 .id .nome{overflow:hidden;text-overflow:ellipsis}
 .id .ar{color:#8b8f95;font-weight:400;font-size:28px}
 .selo{flex:none}
@@ -17,7 +17,9 @@
 .txt{left:204px;top:500px;width:796px;height:210px;color:#e9eaec;font-weight:400;line-height:1.25;justify-content:flex-start}
 /* 4:5 (1080×1350) e 16:9 (1920×1080) */
 html.p-4x5 .slot{left:80px;top:330px;width:920px;height:940px}html.p-4x5 .av{top:60px}html.p-4x5 .id{top:60px}html.p-4x5 .pts{top:60px}html.p-4x5 .txt{top:120px;height:190px}
-html.p-16x9 .slot{left:244px;top:320px;width:1556px;height:680px}html.p-16x9 .av{left:120px;top:120px}html.p-16x9 .id{left:244px;top:120px}html.p-16x9 .pts{left:1720px;top:120px}html.p-16x9 .txt{left:244px;top:180px;width:1556px;height:110px}
+html.p-16x9 .slot{left:1000px;top:80px;width:840px;height:920px}html.p-16x9 .av{left:100px;top:330px}html.p-16x9 .id{left:224px;top:330px;width:620px}html.p-16x9 .pts{left:860px;top:330px}html.p-16x9 .txt{left:224px;top:390px;width:716px;height:360px}
+/* ?tema=claro */
+html.tema-claro .slot{box-shadow:0 0 0 4000px #fff}html.tema-claro .id,html.tema-claro .txt{color:#0f1419}html.tema-claro .id .ar,html.tema-claro .pts{color:#536471}
 </style>
 </head>
 <body>

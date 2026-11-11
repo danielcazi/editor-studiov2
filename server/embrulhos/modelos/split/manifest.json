@@ -110,5 +110,8 @@
     "exige": [],
     "evita": [],
     "dica": "headline curta que liga os dois vídeos (comparação, antes e depois ou reação)."
-  }
+  },
+  "ocultar": [
+    "tarja"
+  ]
 }

@@ -1,7 +1,7 @@
 // Embrulhos (só 9:16, texto estático): os 9 modelos do PDF do editor e os refeitos da gravação do Lateralizador, em embrulhos/modelos/<id>/{manifest.json, 9x16/index.html}.
 // O vídeo entra no slot "video"; as camadas são PNGs com alfa: "fundo" (tudo, com um furo no slot) vai por cima do vídeo e
 // "frente" (ex.: avatar que invade a janela) por cima de tudo. Portado do kit antigo (compilador-studio/embrulhos.mjs).
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { execFile, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -21,6 +21,7 @@ export type Campo = { id: string; papel: string; max: number; padrao?: string; f
 export type Modelo = {
   id: string; nome: string; tipo: string;
   formatos: { '9x16': Desenho } & Partial<Record<Prop, Desenho>>;
+  temas?: string[]; ocultar?: string[];   // temas de cor da página (?tema=, o primeiro é o padrão) e peças que o usuário pode esconder (?oc=)
   textoGrupo?: boolean; textoFixo?: boolean;   // blocos de texto escalam juntos / não se movem (a barra da Live)
   zonasTexto?: Caixa[];   // o que a moldura desenha por cima do vídeo (frações do quadro): o encaixe confere se cobre o rosto
   campos: Campo[]; midia?: { id: string; tipo: string; opcional?: boolean }[];
@@ -66,11 +67,11 @@ export function encaixe(m: Modelo, rostos: (Caixa | null)[], video: { largura: n
 }
 
 /* Escala do vídeo quando a pessoa ainda não mexeu: 1 (cobre a janela), menos em 16:9 quando o vídeo é mais estreito que uma janela
-   larga: aí ele entra inteiro e centralizado (o resto é a imagem de fundo da Marca ou ele mesmo desfocado). Janela quase quadrada
+   larga (mais de 1,3:1): aí ele entra inteiro e centralizado (o resto é a imagem de fundo da Marca ou ele mesmo desfocado). Janela quase quadrada
    ou em pé (Oferta, Notícia, POV, as de tela dividida): o vídeo cobre, como na 9:16. */
 export function zoomPadrao(m: Modelo, prop: Prop, vw: number, vh: number) {
   const s = m.formatos[prop]!.slots.video, Q = PROPS[prop], w = s.w * Q.w, h = s.h * Q.h, cob = Math.max(w / vw, h / vh), cab = Math.min(w / vw, h / vh);
-  return prop === '16x9' && cab < cob && w / h > 1.5 ? cab / cob : 1;
+  return prop === '16x9' && cab < cob && w / h > 1.3 ? cab / cob : 1;
 }
 
 /* slots em pixels do quadro da proporção (pares, para o encoder) */
@@ -102,11 +103,10 @@ export function conferirCampos(m: Modelo, campos: Record<string, unknown> = {}, 
     if (c.padrao && v === c.padrao && !c.fixo) add('erro', c.id, `ainda está no valor padrão "${c.padrao}"`);
   }
   for (const k of Object.keys(campos)) if (!ids.has(k) && !RESERVADAS.has(k)) add('aviso', k, 'campo que o modelo não usa');
-  // preço: só vale se estiver no .srt
+  // preço fora das falas é só aviso: a transcrição raramente escreve "R$", e quem digita o preço é o usuário (a IA deixa vazio)
   if (ids.has('preco_por')) {
     const precos = precosDoSrt(srt).map(normPreco);
-    if (!precos.length) add('erro', 'preco_por', 'o .srt não tem preço (R$): o modelo Oferta não pode ser usado');
-    for (const k of ['preco_por', 'preco_de']) if (campos[k] && !precos.includes(normPreco(campos[k]))) add('erro', k, `"${campos[k]}" não aparece literalmente no .srt (preços do .srt: ${precos.join(', ') || 'nenhum'})`);
+    for (const k of ['preco_por', 'preco_de']) if (campos[k] && !precos.includes(normPreco(campos[k]))) add('aviso', k, `"${campos[k]}" não foi dito no vídeo (preços nas falas: ${precos.join(', ') || 'nenhum'}): confira o valor`);
     if (campos.preco_de && campos.preco_por && normPreco(campos.preco_de) === normPreco(campos.preco_por)) add('erro', 'preco_de', 'preco_de igual a preco_por');
   }
   // quadro marcante
@@ -165,7 +165,7 @@ function soltar() { if (--emUso <= 0) { emUso = 0; ocioso = setTimeout(fecharNav
 export async function fecharNavegador() { clearTimeout(ocioso); const b = nav; nav = null; await (await b?.catch(() => null))?.close().catch(() => {}); }
 
 let vez: Promise<void> = Promise.resolve();
-export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, { quadroImg = null as string | null, avatarImg = null as string | null, semAvatar = false, texto = null as { x?: number; y?: number; escala?: number } | null, pecas = null as Record<string, number[]> | null, contador = null as { campo: string; valores: string[] } | null, prop = '9x16' as Prop, destino = '' }) {
+export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, { quadroImg = null as string | null, avatarImg = null as string | null, semAvatar = false, texto = null as { x?: number; y?: number; escala?: number } | null, pecas = null as Record<string, number[]> | null, contador = null as { campo: string; valores: string[] } | null, url = {} as Record<string, string>, prop = '9x16' as Prop, destino = '' }) {   // url: parâmetros a mais da página (foto, moldura, tema, oc)
   mkdirSync(destino, { recursive: true });
   const F = m.formatos[prop], QUADRO = PROPS[prop];
   if (!F) throw new Error(`${m.nome} não tem desenho em ${prop}`);
@@ -175,6 +175,7 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
   if (quadroImg) q.set('quadro', pathToFileURL(quadroImg).href);
   if (avatarImg) q.set('avatar', pathToFileURL(avatarImg).href);
   if (semAvatar) q.set('semavatar', '1');
+  for (const [k, v] of Object.entries(url)) q.set(k, v);
   if (prop !== '9x16') q.set('p', prop);   // a mesma página, com a classe p-<prop> no <html>: o css do modelo reposiciona as peças
   if (texto && !m.textoFixo) { q.set('tx', String(texto.x ?? 0)); q.set('ty', String(texto.y ?? 0)); q.set('ts', String(texto.escala ?? 1)); if (m.textoGrupo) q.set('tg', '1'); }
   if (pecas && Object.keys(pecas).length) q.set('el', Buffer.from(JSON.stringify(pecas)).toString('base64url'));
@@ -202,6 +203,7 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
           [...document.body.children].forEach(x => { (x as HTMLElement).style.visibility = x === p ? '' : 'hidden'; });
           return { x: Math.floor(b.left), y: Math.floor(b.top), width: Math.ceil(b.width) + 1, height: Math.ceil(b.height) + 1 }; }, sel);
         if (cx) {
+          for (const f of readdirSync(destino)) if (/^c\d+\.png$/.test(f)) rmSync(join(destino, f));   // um render anterior pode ter deixado mais valores
           for (const [i, v] of contador.valores.entries()) {
             await page.evaluate((s: string, t: string) => { document.querySelector(s)!.textContent = t; }, sel, v);
             await page.screenshot({ path: join(destino, `c${String(i).padStart(2, '0')}.png`), omitBackground: true, clip: cx });
@@ -224,18 +226,20 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
    `slot` (frações do quadro) troca a janela do manifesto quando a pessoa moveu a peça `slot`; pode sair do quadro.
    `zoom` (0 a 3): 1 cobre o slot, acima aproxima, abaixo encolhe o vídeo (proporcional, até quase 0) e o resto do slot é preenchido
    por `fundoImg` ou, sem ela, pelo próprio vídeo desfocado; `vw`/`vh` são o tamanho do vídeo. Os dois focos valem sempre.
-   `video2`/`trocar`: modelos com o slot `video2` (tela dividida) mostram o segundo vídeo ali, e `trocar` inverte os dois; `ate` limita o embrulho aos primeiros segundos.
+   `video2`/`trocar`: modelos com o slot `video2` (tela dividida) mostram o segundo vídeo ali, e `trocar` inverte os dois; `zoom2`/`foco2X`/`foco2Y`
+   são a escala e o foco do segundo vídeo (ou da repetição do principal), sempre cortado na janela dele; `ate` limita o embrulho aos primeiros segundos.
    `previa` troca 1080×1920 em qualidade de entrega por 540×960 em codificação rápida: medido em 15 s de vídeo, 2,4 s e 1 MB contra
    28 s e 14 MB. As camadas entram como uma imagem só (o overlay repete o último quadro), não como vídeo em laço. */
-export function compor(m: Modelo, video: string, camadas: { fundo?: string; frente?: string }, saida: string, { duracao, fps = 30, focoY = 0.5, focoX = 0.5, zoom = 1, previa = false, extras = [], slot = null, contador = null, vw = 0, vh = 0, fundoImg = null, video2 = null, trocar = false, ate = null, prop = '9x16' }: { prop?: Prop; video2?: { arquivo: string; w: number; h: number } | null; trocar?: boolean; ate?: number | null; vw?: number; vh?: number; fundoImg?: string | null; contador?: { padrao: string; x: number; y: number } | null; duracao: number; fps?: number; focoY?: number; focoX?: number; zoom?: number; previa?: boolean; extras?: Extra[]; slot?: Caixa | null }) {
+export function compor(m: Modelo, video: string, camadas: { fundo?: string; frente?: string }, saida: string, { duracao, fps = 30, focoY = 0.5, focoX = 0.5, zoom = 1, previa = false, extras = [], slot = null, contador = null, vw = 0, vh = 0, fundoImg = null, video2 = null, trocar = false, zoom2 = 1, foco2X = 0.5, foco2Y = 0.5, ate = null, prop = '9x16' }: { prop?: Prop; zoom2?: number; foco2X?: number; foco2Y?: number; video2?: { arquivo: string; w: number; h: number } | null; trocar?: boolean; ate?: number | null; vw?: number; vh?: number; fundoImg?: string | null; contador?: { padrao: string; x: number; y: number } | null; duracao: number; fps?: number; focoY?: number; focoX?: number; zoom?: number; previa?: boolean; extras?: Extra[]; slot?: Caixa | null }) {
   const QUADRO = PROPS[prop], k = previa ? 0.5 : 1, par = (v: number) => Math.round(v * k / 2) * 2, W = par(QUADRO.w), H = par(QUADRO.h);
   const px = (r: Caixa) => ({ x: par(r.x), y: par(r.y), w: par(r.w), h: par(r.h) }), SL = slotsPx(m, prop);
   const f01 = (v: number) => Math.min(1, Math.max(0, Number(v) || 0)), fy = f01(focoY), fx = f01(focoX);
-  const z = Math.min(3, Math.max(0, Number(zoom ?? 1)));
+  const z3 = (v: unknown) => Math.min(3, Math.max(0, Number(v ?? 1)));
   const ins = ['-t', String(duracao), '-i', video, '-i', camadas.fundo!];   // a entrada 0 só dá o áudio; cada janela abre a sua
   let n = 2;
   // uma janela: o vídeo na escala pedida dentro do slot s, e o que sobra preenchido pela imagem de fundo ou por ele mesmo desfocado
-  const jan = (src: { arquivo: string; w: number; h: number; loop?: boolean }, s: { x: number; y: number; w: number; h: number }, t: number) => {
+  const jan = (src: { arquivo: string; w: number; h: number; loop?: boolean; z: number; fx: number; fy: number }, s: { x: number; y: number; w: number; h: number }, t: number) => {
+    const { z, fx, fy } = src;
     ins.push('-t', String(duracao), ...(src.loop ? ['-stream_loop', '-1'] : []), '-i', src.arquivo); const i = n++, ok = src.w > 0 && src.h > 0, cob = ok ? Math.max(s.w / src.w, s.h / src.h) : 1;
     // sem o tamanho do vídeo só dá para cobrir o slot, como antes
     const w = ok ? Math.max(2, Math.round(src.w * cob * z / 2) * 2) : Math.ceil(s.w * Math.max(1, z) / 2) * 2, h = ok ? Math.max(2, Math.round(src.h * cob * z / 2) * 2) : Math.ceil(s.h * Math.max(1, z) / 2) * 2;
@@ -246,15 +250,15 @@ export function compor(m: Modelo, video: string, camadas: { fundo?: string; fren
     // negativo = o vídeo passa do slot e o overlay corta
     return `${vv};${bg ? bg + ';' : ''}[bg${t}][vv${t}]overlay=${Math.round((s.w - w) * fx)}:${Math.round((s.h - h) * fy)}:shortest=1[j${t}]`;
   };
-  const principal = { arquivo: video, w: vw, h: vh }, outro = video2 ? { arquivo: video2.arquivo, w: video2.w, h: video2.h, loop: true } : principal;
+  const principal = { arquivo: video, w: vw, h: vh, z: z3(zoom), fx, fy }, outro = { ...(video2 ? { arquivo: video2.arquivo, w: video2.w, h: video2.h, loop: true } : principal), z: z3(zoom2), fx: f01(foco2X), fy: f01(foco2Y) };
   const rects = [slot ? px({ x: slot.x * QUADRO.w, y: slot.y * QUADRO.h, w: slot.w * QUADRO.w, h: slot.h * QUADRO.h }) : px(SL.video), ...(SL.video2 ? [px(SL.video2)] : [])];
   const fontes = trocar ? [outro, principal] : [principal, outro];   // sem segundo vídeo a segunda janela repete o principal
   let fc = `color=black:s=${W}x${H}:r=${fps}[bk]`, cur = 'bk';
   rects.forEach((r, t) => { fc += `;${jan(fontes[t], r, t)};[${cur}][j${t}]overlay=${r.x}:${r.y}:shortest=1[v${t}]`; cur = `v${t}`; });
   fc += `;[1:v]scale=${W}:${H}[f];[${cur}][f]overlay=0:0[b]`; let ult = 'b';
   if (camadas.frente) { ins.push('-i', camadas.frente); fc += `;[${n++}:v]scale=${W}:${H}[g];[b][g]overlay=0:0[c]`; ult = 'c'; }
-  // o contador troca de imagem a cada 1,5 s, em laço
-  if (contador) { ins.push('-stream_loop', '-1', '-framerate', '2/3', '-i', contador.padrao); fc += `;[${n++}:v]scale=iw*${k}:ih*${k}[ct];[${ult}][ct]overlay=${contador.x * k}:${contador.y * k}[d]`; ult = 'd'; }
+  // o contador troca de imagem a cada segundo
+  if (contador) { ins.push('-stream_loop', '-1', '-framerate', '1', '-i', contador.padrao); fc += `;[${n++}:v]scale=iw*${k}:ih*${k}[ct];[${ult}][ct]overlay=${contador.x * k}:${contador.y * k}[d]`; ult = 'd'; }
   // imagens e vídeos soltos do usuário, por cima de tudo: centro em (x, y) e largura, em frações do quadro (vídeo em laço, sem som)
   extras.forEach((e, i) => { if (e.video) ins.push('-stream_loop', '-1'); ins.push('-i', e.arquivo); fc += `;[${n++}:v]scale=${Math.max(2, Math.round(W * e.largura / 2) * 2)}:-2[x${i}];[${ult}][x${i}]overlay=${W * e.x}-w/2:${H * e.y}-h/2[y${i}]`; ult = `y${i}`; });
   // o embrulho só fica `ate` segundos: depois o vídeo aparece limpo, cobrindo o quadro todo

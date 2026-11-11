@@ -11,7 +11,7 @@
   radial-gradient(circle,#fff9 0 5px,#fff0 6px) 0 0/34px 34px,
   radial-gradient(circle,#fff5 0 4px,#fff0 5px) 17px 17px/34px 34px,
   linear-gradient(160deg,#c4005f,#ff3fa0 45%,#ff8cc8 70%,#d4006e)}
-.r1{top:0;height:380px}.r2{top:1460px;height:460px}
+.r1{top:0;height:380px}.r2{top:1460px;height:460px}.r3,.r4{display:none}
 .slot{left:540px;top:560px;width:540px;height:900px}
 .quadro{position:absolute;left:0;top:560px;width:540px;height:900px;object-fit:cover}
 .faixa{left:0;top:380px;width:1080px;height:180px;background:#fff;color:#111;font-weight:800;text-align:center;align-items:center;text-transform:uppercase;line-height:1.1;padding:0 50px}
@@ -22,11 +22,11 @@
 .selo-t{left:420px;top:1350px;width:240px;height:240px;color:#fff;font-weight:900;align-items:center;text-align:center;text-transform:uppercase;transform:rotate(-8deg)}
 /* 4:5 (1080×1350) e 16:9 (1920×1080) */
 html.p-4x5 .slot{left:540px;top:300px;width:540px;height:860px}html.p-4x5 .quadro{left:0px;top:300px;width:540px;height:860px}html.p-4x5 .r1{height:140px}html.p-4x5 .faixa{top:140px;height:160px}html.p-4x5 .div{top:300px;height:860px}html.p-4x5 .r2{top:1160px;height:190px}html.p-4x5 .estrela{top:1050px}html.p-4x5 .selo-t{top:1050px}
-html.p-16x9 .slot{left:960px;top:230px;width:960px;height:720px}html.p-16x9 .quadro{left:0px;top:230px;width:960px;height:720px}html.p-16x9 .rosa{width:1920px}html.p-16x9 .r1{height:80px}html.p-16x9 .faixa{top:80px;height:150px;width:1920px}html.p-16x9 .div{left:957px;top:230px;height:720px}html.p-16x9 .r2{top:950px;height:130px}html.p-16x9 .estrela{left:840px;top:840px}html.p-16x9 .selo-t{left:840px;top:840px}
+html.p-16x9 .slot{left:960px;top:230px;width:640px;height:720px}html.p-16x9 .quadro{left:320px;top:230px;width:640px;height:720px}html.p-16x9 .rosa{width:1920px}html.p-16x9 .r1{height:80px}html.p-16x9 .r3,html.p-16x9 .r4{display:block;top:80px;width:320px;height:870px}html.p-16x9 .r4{left:1600px}html.p-16x9 .faixa{left:320px;top:80px;height:150px;width:1280px}html.p-16x9 .div{left:957px;top:230px;height:720px}html.p-16x9 .r2{top:950px;height:130px}html.p-16x9 .estrela{left:840px;top:840px}html.p-16x9 .selo-t{left:840px;top:840px}
 </style>
 </head>
 <body>
-<div class="abs rosa r1"></div><div class="abs rosa r2"></div>
+<div class="abs rosa r1"></div><div class="abs rosa r2"></div><div class="abs rosa r3"></div><div class="abs rosa r4"></div>
 <div class="slot"></div>
 <img class="quadro" data-src="quadro" alt="">
 <div class="abs div"></div>
@@ -34,5 +34,16 @@ html.p-16x9 .slot{left:960px;top:230px;width:960px;height:720px}html.p-16x9 .qua
 <div class="abs estrela frente" data-g="selo"><i></i><i></i><i></i></div>
 <div class="t selo-t frente" data-g="selo"><span data-c="selo" style="font-size:34px"></span></div>
 <script src="../../_shared/embrulho.js"></script>
+<script>
+// as faixas mostram pedaços de um fundo só, do tamanho do quadro: o degradê rosa ou a imagem de ?moldura= (cobrindo o quadro)
+window.__ready = window.__ready.then(async () => {
+  const W = document.body.offsetWidth, H = document.body.offsetHeight, u = new URLSearchParams(location.search).get('moldura');
+  let iw = W, ih = H; if (u) { const im = new Image(); im.src = u; await im.decode().catch(() => {}); iw = im.naturalWidth || W; ih = im.naturalHeight || H; }
+  const s = Math.max(W / iw, H / ih), x0 = (W - iw * s) / 2, y0 = (H - ih * s) / 2;
+  document.querySelectorAll('.rosa').forEach((e) => { const l = e.offsetLeft, t = e.offsetTop;
+    if (u) e.style.background = `url("${u}") ${x0 - l}px ${y0 - t}px / ${iw * s}px ${ih * s}px no-repeat`;
+    else { e.style.backgroundSize = `34px 34px, 34px 34px, ${W}px ${H}px`; e.style.backgroundRepeat = 'repeat, repeat, no-repeat'; e.style.backgroundPosition = `${-l}px ${-t}px, ${17 - l}px ${17 - t}px, ${-l}px ${-t}px`; } });
+});
+</script>
 </body>
 </html>

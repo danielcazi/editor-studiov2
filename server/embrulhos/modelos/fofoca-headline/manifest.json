@@ -47,9 +47,9 @@
       "film": "9x16/index.html",
       "slots": {
         "video": {
-          "x": 0,
+          "x": 0.14583,
           "y": 0.22222,
-          "w": 1,
+          "w": 0.70833,
           "h": 0.64815
         }
       },
@@ -77,6 +77,11 @@
   "midia": [
     {
       "id": "avatar",
+      "tipo": "imagem",
+      "opcional": true
+    },
+    {
+      "id": "foto",
       "tipo": "imagem",
       "opcional": true
     }

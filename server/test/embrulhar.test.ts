@@ -40,6 +40,13 @@ test('a session takes a video, keeps edits with their checks and refuses a stale
   assert.equal(st.formatos.pergunta.aprovado, true);
   assert.throws(() => E.salvar(s.id, 'pergunta', { version: st.version, ajustes: { foco_y: 2 } }), /foco_y/);
   assert.throws(() => E.salvar(s.id, 'nao-existe', { version: st.version }), /não existe/);
+  // the theme is one for every proportion (kept on the 9:16 adjustments); hiding a piece belongs to the proportion it was sent with
+  st = E.salvar(s.id, 'tweet', { version: st.version, prop: '16x9', ajustes: { tema: 'claro' } });
+  assert.equal(st.formatos.tweet.ajustes.tema, 'claro');
+  assert.throws(() => E.salvar(s.id, 'tweet', { version: st.version, ajustes: { tema: 'roxo' } }), /tema/);
+  assert.throws(() => E.salvar(s.id, 'tweet', { version: st.version, ajustes: { foto: '/tmp/x.png' } }), /não tem foto/);
+  st = E.salvar(s.id, 'split', { version: st.version, prop: '16x9', ajustes: { ocultar: ['tarja', 'outra'], video2_zoom: 1.5 } });
+  assert.deepEqual([st.formatos.split.por!['16x9']!.ajustes.ocultar, st.formatos.split.ajustes.ocultar], [['tarja'], undefined]);
   await assert.rejects(E.gerar(s.id, { modelos: [] }), /ao menos um/);
   E.remove(s.id);
   assert.throws(() => E.get(s.id), /não existe/);
@@ -94,7 +101,9 @@ test('preview is 15 s at most and the export is a 1080x1920 mp4 with audio', { s
   st = E.perfil(s.id, { version: E.get(s.id).version, arroba: 'teste' });
   st = E.salvar(s.id, 'live', { version: st.version, campos: { espectadores: '1.284', rodape: 'Os comentários foram desabilitados.' } });
   st = await E.previa(s.id, 'live');
-  assert.ok(existsSync(E.file(s.id, 'camadas/live/c00.png')) && existsSync(E.file(s.id, 'camadas/live/c11.png')));
+  // the viewers counter: one image per second of the 3 s video (+3 each)
+  assert.ok(existsSync(E.file(s.id, 'camadas/live/c00.png')) && existsSync(E.file(s.id, 'camadas/live/c02.png')));
+  assert.throws(() => E.file(s.id, 'camadas/live/c03.png'), /sem/);
   assert.ok(Math.abs(Number(probe(E.file(s.id, 'previa/live.mp4')).format.duration) - 3) < 0.3);
   // the card's bin takes a format off the screen and keeps its text
   st = E.salvar(s.id, 'live', { version: st.version, selecionado: false });
@@ -140,7 +149,7 @@ test('a format comes out in each chosen proportion its model has a drawing for',
   const dim = (rel: string) => { const v = probe(E.file(s.id, rel)).streams.find((x: any) => x.codec_type === 'video'); return [v.width, v.height]; };
   assert.deepEqual([dim('previa/tarja.mp4'), dim('previa/tarja-4x5.mp4'), dim('previa/tarja-16x9.mp4'), dim('previa/fofoca-rosa.mp4'), dim('previa/fofoca-rosa-16x9.mp4')], [[540, 960], [540, 676], [960, 540], [540, 960], [960, 540]]);
   // the still image is cut to the window of each proportion
-  assert.deepEqual([dim('camadas/fofoca-rosa-quadro-c.jpg'), dim('camadas/fofoca-rosa-4x5-quadro-c.jpg'), dim('camadas/fofoca-rosa-16x9-quadro-c.jpg')], [[540, 900], [540, 860], [960, 720]]);
+  assert.deepEqual([dim('camadas/fofoca-rosa-quadro-c.jpg'), dim('camadas/fofoca-rosa-4x5-quadro-c.jpg'), dim('camadas/fofoca-rosa-16x9-quadro-c.jpg')], [[540, 900], [540, 860], [640, 720]]);
   // 16:9: the vertical video goes in whole and centred (scale below 1, stored so the slider shows it)
   assert.ok(Math.abs(st.formatos.tarja.por!['16x9']!.ajustes.video_zoom! - 0.316) < 0.01);
   // positions belong to the proportion: moving the band in 4:5 leaves 9:16 alone

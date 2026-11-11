@@ -59,15 +59,15 @@
       "film": "9x16/index.html",
       "slots": {
         "quadro": {
-          "x": 0,
+          "x": 0.16667,
           "y": 0.21296,
-          "w": 0.5,
+          "w": 0.33333,
           "h": 0.66667
         },
         "video": {
           "x": 0.5,
           "y": 0.21296,
-          "w": 0.5,
+          "w": 0.33333,
           "h": 0.66667
         }
       },
@@ -122,5 +122,12 @@
     ],
     "evita": [],
     "dica": "manchete é uma chamada de página de fofoca, em terceira pessoa, sobre o que acontece no vídeo."
-  }
+  },
+  "midia": [
+    {
+      "id": "moldura",
+      "tipo": "imagem",
+      "opcional": true
+    }
+  ]
 }
