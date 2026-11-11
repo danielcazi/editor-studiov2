@@ -91,6 +91,13 @@
   .now-bar.running .track::after { content: ''; position: absolute; inset: 0; width: 40%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: shimmerBar 1.4s ease-in-out infinite; }
   .now-bar .txt { font: 500 12px var(--mono); color: var(--mute); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now-bar.running .txt { color: var(--cream); }
+  .emb-midia { position: relative; width: 190px; }
+  .emb-carregando::after { content: 'Prévia sendo gerada…'; position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; text-align: center; padding: 12px; background: #000b; color: #fff; font: 600 13px var(--sans); border-radius: 10px; border: 2px solid var(--yellow); animation: embBorda .8s ease-in-out infinite alternate; }
+  @keyframes embBorda { from { box-shadow: 0 0 0 0 var(--yellow); } to { box-shadow: 0 0 0 5px color-mix(in srgb, var(--yellow) 55%, transparent); } }
+  #emb-log { font: 12px/1.7 var(--mono); max-height: 170px; overflow: auto; padding: 10px 14px; color: var(--cream); }
+  #emb-log.rodando div:last-child { color: var(--yellow); font-weight: 700; }
+  #emb-prog { height: 4px; margin: 0 0 8px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  #emb-prog i { display: block; height: 100%; background: var(--yellow); box-shadow: 0 0 8px var(--yellow); transition: width .5s; }
   @keyframes shimmerBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
   /* a button whose step is running pulses with a spinner; one that just finished flashes green */
   button.is-busy { cursor: progress; opacity: 1 !important; animation: btnPulse 1.4s ease-in-out infinite; }
@@ -11276,6 +11283,7 @@ async function cortes(sel) {
 // ---- Embrulhos: a finished video wrapped in static 9:16 frames (SPEC-embrulhos.md). One session per video, SSE per session. ----
 let embEs = null, embModelos = null, embFiltro = 'todos';
 const embAnalise = new Set();   // sessions whose analysis this page already started (one try, so a failure does not loop)
+let embProg = { id: '', n: 0, total: 1 };   // progress of the running step: ▶ lines seen out of the ones expected
 const embEtapa = {}, embPick = {};   // session id → stage the user is on / formats ticked in the catalogue, kept across re-renders (the analysis ending redraws the page)
 const embFile = (id, rel) => `/embrulhos/${encodeURIComponent(id)}/file/${rel.split('/').map(encodeURIComponent).join('/')}`;
 const embB64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -11314,7 +11322,7 @@ async function embrulhosView(sel) {
   const M = Object.fromEntries(embModelos.map(m => [m.id, m]));
   const sels = () => embModelos.filter(m => st.formatos[m.id]?.selecionado);
   const temErro = f => f.itens.some(i => i.nivel === 'erro');
-  const etapa = embEtapa[st.id] ?? (sels().length ? 'edicao' : 'formatos');
+  const etapa = embEtapa[st.id] ?? (sels().length ? 'edicao' : Object.keys(st.formatos).length ? 'formatos' : 'marca');   // a new video goes through Marca first
   const go = e => { embEtapa[st.id] = e; embrulhosView(sel).catch(er => app.innerHTML = `<p class="err">${esc(er.message)}</p>`); };
   const lastErr = st.log.at(-1)?.startsWith('ERRO') ? st.log.at(-1) : '';
   const P = st.perfil, embP = () => ({ perfil_nome: P.nome, perfil_arroba: P.mostrarArroba ? P.arroba : '' });
@@ -11326,12 +11334,17 @@ async function embrulhosView(sel) {
     <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${mm(st.duracao)} · ${st.largura}×${st.altura}</span></h3>
     <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">${ETAPAS.map(([k, n, ok], i) => `<button class="emb-etapa ${k === etapa ? 'primary' : ''}" data-e="${k}" ${ok ? '' : 'disabled'}>${i + 1} · ${n}</button>`).join('')}</div>
     <p id="emb-status" class="${lastErr ? 'err' : 'muted'}">${busy ? `⏳ ${BUSY[busy] || busy}...` : esc(lastErr)}</p>
-    <pre id="emb-log" class="muted" style="font-size:12px;max-height:140px;overflow:auto;${busy || lastErr ? '' : 'display:none'}">${esc(st.log.join('\n'))}</pre>
+    <div id="emb-prog" style="${busy ? '' : 'display:none'}"><i style="width:${embProg.id === st.id ? Math.min(95, 100 * (embProg.n - 0.5) / embProg.total) : 4}%"></i></div>
+    <div id="emb-log" class="box ${busy ? 'rodando' : ''}" style="${busy || lastErr ? '' : 'display:none'}">${st.log.slice(-60).map(l => `<div>${esc(l)}</div>`).join('')}</div>
     <div id="emb-etapa"></div>`;
   main.querySelectorAll('.emb-etapa').forEach(b => b.onclick = () => go(b.dataset.e));
   embEs = new EventSource(`/embrulhos/${id}/events`);
-  embEs.addEventListener('log', e => { const l = $('#emb-log'); if (!l) return; l.style.display = ''; l.textContent += (l.textContent ? '\n' : '') + JSON.parse(e.data); l.scrollTop = l.scrollHeight; });
-  embEs.addEventListener('step', e => { const d = JSON.parse(e.data); if (d.status === 'start') { const s = $('#emb-status'); if (s) { s.className = 'muted'; s.textContent = `⏳ ${BUSY[d.step] || d.step}...`; } } else if (d.step !== 'previa' && location.hash === `#/embrulhos/${st.id}`) embrulhosView(sel).catch(() => {}); });
+  const totalDe = step => step === 'embrulhos' ? 1 + (embPick[st.id]?.length ?? sels().length) : step === 'exportar' ? sels().filter(m => st.formatos[m.id].incluir).length : step === 'analisar' ? 2 : 1;
+  const barra = () => { const p = $('#emb-prog'); if (p) { p.style.display = ''; p.firstElementChild.style.width = Math.min(95, Math.max(4, 100 * (embProg.n - 0.5) / embProg.total)) + '%'; } };
+  if (busy && embProg.id !== st.id) embProg = { id: st.id, n: 0, total: totalDe(busy) };
+  const l0 = $('#emb-log'); l0.scrollTop = l0.scrollHeight;
+  embEs.addEventListener('log', e => { const l = $('#emb-log'); if (!l) return; l.style.display = ''; const d = document.createElement('div'), t = JSON.parse(e.data); d.textContent = t; l.append(d); l.scrollTop = l.scrollHeight; if (t.startsWith('▶')) { embProg.n++; barra(); } });
+  embEs.addEventListener('step', e => { const d = JSON.parse(e.data); if (d.status === 'start') { embProg = { id: st.id, n: 0, total: totalDe(d.step) }; $('#emb-log')?.classList.add('rodando'); barra(); const s = $('#emb-status'); if (s) { s.className = 'muted'; s.textContent = `⏳ ${BUSY[d.step] || d.step}...`; } } else { embProg = { id: '', n: 0, total: 1 }; $('#emb-log')?.classList.remove('rodando'); const p = $('#emb-prog'); if (p) p.style.display = 'none'; if (d.step !== 'previa' && location.hash === `#/embrulhos/${st.id}`) embrulhosView(sel).catch(() => {}); } });
   // the analysis (transcript, face track for the fit badges) starts by itself the first time a session is opened
   if (!st.analisado && !busy && !embAnalise.has(st.id)) { embAnalise.add(st.id); api('POST', `/embrulhos/${id}/analisar`).catch(() => {}); }
   const box = $('#emb-etapa'), dis = busy ? 'disabled' : '';
@@ -11396,20 +11409,20 @@ async function embrulhosView(sel) {
   }
 
   if (etapa === 'formatos') {
-    box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><span class="muted" style="margin-right:auto">Modelos de referência: as prévias com o seu vídeo vêm na próxima etapa.</span>${st.encaixe ? '<button id="emb-rec">Selecionar recomendados</button>' : ''}<button id="emb-all">Selecionar todos</button><button id="emb-none">Limpar</button></div>
+    box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><span class="muted" style="margin-right:auto">Modelos de referência: as prévias com o seu vídeo vêm na próxima etapa.</span>${st.encaixe ? '<button id="emb-rec">Selecionar recomendados</button>' : ''}<button id="emb-all">Selecionar todos</button><button id="emb-none">Limpar</button><button class="primary emb-gerar" ${dis}>Gerar prévias e editar →</button></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px">${embModelos.map(m => `<label class="emb-pick" style="cursor:pointer;display:grid;gap:6px;justify-items:center">
         ${embMini(m)}
         <span><input type="checkbox" value="${m.id}" ${(embPick[st.id] ? embPick[st.id].includes(m.id) : st.formatos[m.id]?.selecionado) ? 'checked' : ''}> <b>${esc(m.nome)}</b></span>
         ${st.encaixe?.[m.id] ? `<span style="font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);color:${st.encaixe[m.id].ok ? 'var(--green, #4caf50)' : 'var(--yellow)'}">${st.encaixe[m.id].ok ? 'Encaixa' : 'Adaptar'}</span>${st.encaixe[m.id].ok ? '' : `<span class="muted" style="font-size:12px;text-align:center">${esc(st.encaixe[m.id].motivo)}</span>`}` : ''}
         ${st.formatos[m.id] ? '<span class="muted" style="font-size:12px">já escrito: seu texto é mantido</span>' : ''}</label>`).join('')}</div>
-      <div style="display:flex;gap:12px;align-items:center;margin-top:20px"><span id="emb-count" class="muted" style="margin-right:auto"></span><button id="emb-gerar" class="primary" ${dis}>Gerar prévias e editar →</button></div>`;
+      <div style="display:flex;gap:12px;align-items:center;margin-top:20px"><span id="emb-count" class="muted" style="margin-right:auto"></span><button class="primary emb-gerar" ${dis}>Gerar prévias e editar →</button></div>`;
     const checks = [...box.querySelectorAll('.emb-pick input')], marcados = () => checks.filter(c => c.checked).map(c => c.value);
-    const conta = () => { const n = (embPick[st.id] = marcados()).length; $('#emb-count').textContent = n ? `${n} formato(s) selecionado(s)` : 'Nenhum formato selecionado'; $('#emb-gerar').disabled = !n || !!busy; };
+    const conta = () => { const n = (embPick[st.id] = marcados()).length; $('#emb-count').textContent = n ? `${n} formato(s) selecionado(s)` : 'Nenhum formato selecionado'; box.querySelectorAll('.emb-gerar').forEach(b => b.disabled = !n || !!busy); };
     checks.forEach(c => c.onchange = conta);
     $('#emb-all').onclick = () => { checks.forEach(c => c.checked = true); conta(); };
     if ($('#emb-rec')) $('#emb-rec').onclick = () => { checks.forEach(c => c.checked = st.encaixe[c.value].ok); conta(); };
     $('#emb-none').onclick = () => { checks.forEach(c => c.checked = false); conta(); };
-    $('#emb-gerar').onclick = e => act(e.target, async () => { e.target.classList.add('is-busy'); try { await api('POST', `/embrulhos/${id}/gerar`, { modelos: marcados() }); } finally { e.target.classList.remove('is-busy'); } delete embPick[st.id]; go('edicao'); });
+    box.querySelectorAll('.emb-gerar').forEach(b => b.onclick = e => act(e.target, async () => { scrollTo({ top: 0, behavior: 'smooth' }); showToast({ title: 'Seus embrulhos estão sendo gerados', message: 'A IA escreve os textos e depois cada prévia é renderizada. Acompanhe o progresso no topo da tela.', type: 'info', duration: 9000 }); e.target.classList.add('is-busy'); try { await api('POST', `/embrulhos/${id}/gerar`, { modelos: marcados() }); } finally { e.target.classList.remove('is-busy'); } delete embPick[st.id]; go('edicao'); }));
     conta();
   }
 
@@ -11430,7 +11443,7 @@ async function embrulhosView(sel) {
           <div class="emb-velha muted" style="font-size:12px;margin-top:4px"></div>
           <button class="emb-pos" style="margin-top:6px;font-size:12px;width:190px" title="Abre a prévia ampliada para arrastar cada peça da moldura e as imagens soltas">⤢ Posicionar na prévia</button></div>
         <div style="display:grid;gap:8px;align-content:start">
-          <div style="display:flex;align-items:center;gap:8px"><b style="margin-right:auto">${esc(m.nome)} <span class="muted" style="font-weight:400;font-size:12px">prévia: primeiros 15 s${f.angulo ? ` · ângulo: ${esc(f.angulo)}` : ''}</span></b><label style="font-size:13px"><input type="checkbox" class="emb-inc" ${f.incluir ? 'checked' : ''}> Incluir na entrega</label></div>
+          <div style="display:flex;align-items:center;gap:8px"><b style="margin-right:auto">${esc(m.nome)} <span class="muted" style="font-weight:400;font-size:12px">prévia: primeiros 15 s${f.angulo ? ` · ângulo: ${esc(f.angulo)}` : ''}</span></b><button class="emb-reset" style="font-size:12px;padding:4px 10px" title="Volta posições e tamanhos deste formato ao padrão do modelo (textos e imagens soltas ficam)">↺ Reset</button><button class="emb-lixo" style="font-size:14px;padding:4px 10px" title="Excluir este formato da tela (o texto fica guardado: marque de novo em Formatos para trazer de volta)" aria-label="Excluir formato"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;pointer-events:none"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg></button><label style="font-size:13px"><input type="checkbox" class="emb-inc" ${f.incluir ? 'checked' : ''}> Incluir na entrega</label></div>
           ${m.campos.map(c => `<label style="display:grid;gap:2px;font-size:13px"><span style="display:flex"><span style="margin-right:auto">${esc(embRotulo(c))}${c.opcional ? ' <span class="muted">(opcional)</span>' : ''}</span><span class="muted emb-n" data-max="${c.max}"></span></span>
             <textarea class="emb-campo" data-c="${c.id}" rows="2" style="min-height:0;font:14px/1.4 var(--sans)">${esc(f.campos[c.id] ?? '')}</textarea></label>`).join('')}
           ${m.pedeQuadro ? `<div style="font-size:13px;display:grid;gap:4px"><span>Imagem parada</span>
@@ -11445,7 +11458,7 @@ async function embrulhosView(sel) {
             <div><button class="emb-ex-add">+ Adicionar imagem</button><input type="file" class="emb-ex-f" accept="image/png,image/jpeg,image/webp" hidden> <span class="muted" style="font-size:12px">Logo, selo, print, figurinha (PNG com fundo transparente funciona). Fica por cima de tudo, onde você posicionar.</span></div></div></details>
           ${m.textoMovel ? grupo(f, 'Texto: posição e tamanho', ['texto_x', 'texto_y', 'texto_escala'], sl(f, 'texto_escala', 'Tamanho') + sl(f, 'texto_x', 'Horizontal') + sl(f, 'texto_y', 'Vertical')) : ''}
           <div class="emb-itens" style="font-size:12px"></div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="emb-ok"></button><button class="emb-previa" ${dis}>Atualizar prévia</button><button class="emb-zera muted" style="margin-left:auto">Restaurar posições</button></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="emb-ok"></button><button class="emb-previa" ${dis}>Atualizar prévia</button></div>
         </div></div>`; }).join('') || '<p class="muted">Nenhum formato neste filtro.</p>'}</div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:20px"><button id="emb-volta">← Formatos</button><span id="emb-rev" class="muted" style="margin-right:auto"></span><button id="emb-exportar" class="primary" ${dis}></button></div>`;
     box.querySelectorAll('.emb-filtro').forEach(b => b.onclick = () => { embFiltro = b.dataset.f; go('edicao'); });
@@ -11465,10 +11478,12 @@ async function embrulhosView(sel) {
       try { st = await api('PUT', `/embrulhos/${id}/formatos/${card.dataset.m}`, { ...patch, version: st.version }); pinta(card); } catch (e) { er.innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } });
     // the card's preview is redone after every edit (about 3 s). It waits its turn behind the saves, and when several edits pile up
     // on one card only the last one renders. Only this card's player is swapped: the page is not redrawn.
-    const previa = card => { const n = card._n = (card._n || 0) + 1, mid = card.dataset.m, v = card.querySelector('.emb-velha');
-      return fila = fila.then(async () => { if (n !== card._n || temErro(st.formatos[mid])) return;
+    const previa = card => { const n = card._n = (card._n || 0) + 1, mid = card.dataset.m, v = card.querySelector('.emb-velha'), md = card.querySelector('.emb-midia');
+      md.classList.add('emb-carregando');
+      return fila = fila.then(async () => { if (n !== card._n) return; md.classList.remove('emb-carregando'); if (temErro(st.formatos[mid])) return; md.classList.add('emb-carregando');
         v.textContent = '⏳ atualizando a prévia…';
         try { st = await api('POST', `/embrulhos/${id}/formatos/${mid}/previa`); card.querySelector('.emb-midia').innerHTML = midia(M[mid], st.formatos[mid]); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; }
+        if (n === card._n) md.classList.remove('emb-carregando');
         pinta(card); }); };
     // sliders show what the server has (after a drag in the enlarged preview changed the same values)
     const sync = card => { const f = st.formatos[card.dataset.m];
@@ -11481,13 +11496,16 @@ async function embrulhosView(sel) {
       const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:1000;display:grid;place-items:center';
       ov.innerHTML = `<div style="display:grid;gap:10px;justify-items:center"><div class="muted" style="font-size:13px">Passe o mouse para ver cada peça (vídeo, textos, foto, selos, faixas) e arraste; puxe a bolinha do canto para mudar o tamanho. A prévia é refeita quando você solta.</div>
         <div class="emb-palco" style="position:relative;height:min(78vh,860px);aspect-ratio:9/16;background:#000;border-radius:12px;touch-action:none;user-select:none"><img class="emb-pimg" draggable="false" alt="" style="width:100%;height:100%;display:block;border-radius:12px"></div>
-        <div style="display:flex;gap:12px;align-items:center"><span class="emb-pst muted" style="font-size:12px;min-width:160px"></span><button class="emb-pfechar primary">Concluir</button></div></div>`;
+        <span class="emb-pst muted" style="font-size:12px;min-height:16px"></span></div>
+        <button class="emb-pfechar" title="Fechar (Esc)" aria-label="Fechar" style="position:fixed;top:18px;right:22px;width:44px;height:44px;padding:0;border-radius:50%;font-size:20px">✕</button>`;
       document.body.append(ov);
       const palco = ov.querySelector('.emb-palco'), stt = ov.querySelector('.emb-pst');
       const tecla = e => { if (e.key === 'Escape') fechar(); };
       const fechar = () => { ov.remove(); removeEventListener('keydown', tecla); sync(card); };
       addEventListener('keydown', tecla); ov.querySelector('.emb-pfechar').onclick = fechar; ov.onclick = e => { if (e.target === ov) fechar(); };
-      const aplica = patch => { stt.textContent = '⏳ atualizando a prévia…'; salvar(card, patch); previa(card).then(() => { if (ov.isConnected) { stt.textContent = ''; desenha(); } }); };
+      let tentou = false;
+      const refaz = () => { stt.textContent = '⏳ atualizando a prévia…'; palco.classList.add('emb-carregando'); previa(card).then(() => { if (ov.isConnected) { palco.classList.remove('emb-carregando'); stt.textContent = ''; desenha(); } }); };
+      const aplica = patch => { salvar(card, patch); refaz(); };
       const arrasta = (d, w0, solta) => { d.onpointerdown = e => { e.preventDefault(); d.setPointerCapture(e.pointerId);
         const R = palco.getBoundingClientRect(), canto = e.target.tagName === 'I', x0 = e.clientX, y0 = e.clientY; let dx = 0, dy = 0;
         const razao = () => Math.max(0.1, 1 + 2 * (dx / R.width) / w0);
@@ -11513,7 +11531,7 @@ async function embrulhosView(sel) {
             ? { ...o, largura: +lim(o.largura * g.razao, 0.03, 1.5).toFixed(3) }
             : { ...o, x: +lim(o.x + g.dx, 0, 1).toFixed(3), y: +lim(o.y + g.dy, 0, 1).toFixed(3) }) })); };
           im.src = embFile(st.id, e.arquivo); });
-        if (!cxs.length && !(f.imagens ?? []).length) stt.textContent = 'Atualize a prévia deste cartão para poder arrastar as peças.'; };
+        if (!f.caixas && !tentou) { tentou = true; refaz(); } };   // a preview made before the pieces were measured: redo it once
       desenha();
     };
     box.querySelectorAll('.emb-card').forEach(card => {
@@ -11525,7 +11543,8 @@ async function embrulhosView(sel) {
       const q = card.querySelector('.emb-quadro');
       if (q) { q.oninput = () => { card.querySelector('.emb-qv').currentTime = +q.value; card.querySelector('.emb-qt').textContent = mm(+q.value); }; q.onchange = () => { salvar(card, { ajustes: { quadro_t: +q.value } }); previa(card); }; }
       card.querySelectorAll('.emb-aj').forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = ajFmt(r.dataset.k, +r.value); }; r.onchange = () => { salvar(card, { ajustes: { [r.dataset.k]: +r.value } }); previa(card); }; });
-      card.querySelector('.emb-zera').onclick = () => { card.querySelectorAll('.emb-aj').forEach(r => { r.value = AJ[r.dataset.k][3]; r.oninput(); }); salvar(card, { ajustes: { ...Object.fromEntries(Object.entries(AJ).map(([k, v]) => [k, v[3]])), elementos: null } }); previa(card); };
+      card.querySelector('.emb-lixo').onclick = async () => { await salvar(card, { selecionado: false }); go(sels().length ? 'edicao' : 'formatos'); };
+      card.querySelector('.emb-reset').onclick = () => { card.querySelectorAll('.emb-aj').forEach(r => { r.value = AJ[r.dataset.k][3]; r.oninput(); }); salvar(card, { ajustes: { ...Object.fromEntries(Object.entries(AJ).map(([k, v]) => [k, v[3]])), elementos: null } }); previa(card); };
       const ib = card.querySelector('.emb-img'), inp = card.querySelector('.emb-imgf');
       if (ib) { ib.onclick = () => inp.click(); inp.onchange = async () => { if (!inp.files[0]) return; try { salvar(card, { ajustes: { imagem: await upload(inp.files[0], 'media') } }); await previa(card); go('edicao'); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } }; }
       const fr = card.querySelector('.emb-frame'); if (fr) fr.onclick = async () => { salvar(card, { ajustes: { imagem: null, quadro_t: st.formatos[card.dataset.m].ajustes.quadro_t ?? 0 } }); await previa(card); go('edicao'); };

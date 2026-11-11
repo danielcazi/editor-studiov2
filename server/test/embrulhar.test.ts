@@ -90,6 +90,16 @@ test('preview is 15 s at most and the export is a 1080x1920 mp4 with audio', { s
   assert.equal(st.formatos['fofoca-duplo'].ajustes.elementos, undefined);
   const rec = probe(E.file(s.id, 'camadas/fofoca-duplo-quadro-c.jpg')).streams[0];   // the still is cut to its window before the page sees it
   assert.deepEqual([rec.width, rec.height], [468, 762]);
+  // Live: the viewer count changes during the video (12 small images between the number and 5% above it, looped by ffmpeg)
+  st = E.perfil(s.id, { version: E.get(s.id).version, arroba: 'teste' });
+  st = E.salvar(s.id, 'live', { version: st.version, campos: { espectadores: '1.284', rodape: 'Os comentários foram desabilitados.' } });
+  st = await E.previa(s.id, 'live');
+  assert.ok(existsSync(E.file(s.id, 'camadas/live/c00.png')) && existsSync(E.file(s.id, 'camadas/live/c11.png')));
+  assert.ok(Math.abs(Number(probe(E.file(s.id, 'previa/live.mp4')).format.duration) - 3) < 0.3);
+  // the card's bin takes a format off the screen and keeps its text
+  st = E.salvar(s.id, 'live', { version: st.version, selecionado: false });
+  assert.equal(st.formatos.live.selecionado, false);
+  assert.equal(st.formatos.live.campos.espectadores, '1.284');
   // a free image dropped on the frame: added at the centre, moved, rendered on top, then removed with its file
   const figura = join(tmp, 'figura.png');
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x00ff00:s=200x100', '-frames:v', '1', figura]);

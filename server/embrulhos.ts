@@ -148,7 +148,7 @@ async function navegador() {
 function soltar() { if (--emUso <= 0) { emUso = 0; ocioso = setTimeout(fecharNavegador, 60_000); } }
 export async function fecharNavegador() { clearTimeout(ocioso); const b = nav; nav = null; await (await b?.catch(() => null))?.close().catch(() => {}); }
 
-export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, { quadroImg = null as string | null, avatarImg = null as string | null, semAvatar = false, texto = null as { x?: number; y?: number; escala?: number } | null, pecas = null as Record<string, number[]> | null, destino = '' }) {
+export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, { quadroImg = null as string | null, avatarImg = null as string | null, semAvatar = false, texto = null as { x?: number; y?: number; escala?: number } | null, pecas = null as Record<string, number[]> | null, contador = null as { campo: string; valores: string[] } | null, destino = '' }) {
   mkdirSync(destino, { recursive: true });
   const base = pathToFileURL(join(EMB, m.id, m.formatos['9x16'].film)).href;
   const txt = Object.fromEntries(Object.entries(campos).filter(([k]) => !RESERVADAS.has(k)));
@@ -158,7 +158,7 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
   if (semAvatar) q.set('semavatar', '1');
   if (texto && !m.textoFixo) { q.set('tx', String(texto.x ?? 0)); q.set('ty', String(texto.y ?? 0)); q.set('ts', String(texto.escala ?? 1)); if (m.textoGrupo) q.set('tg', '1'); }
   if (pecas && Object.keys(pecas).length) q.set('el', Buffer.from(JSON.stringify(pecas)).toString('base64url'));
-  const out: { fundo?: string; frente?: string; textoNaoCabe?: string[]; caixas?: (Caixa & { k: string })[] } = {};
+  const out: { fundo?: string; frente?: string; textoNaoCabe?: string[]; caixas?: (Caixa & { k: string })[]; contador?: { padrao: string; x: number; y: number } } = {};
   const browser = await navegador().catch(e => { soltar(); throw e; });
   const page = await browser.newPage().catch((e: Error) => { soltar(); throw e; });
   try {
@@ -171,6 +171,22 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
       if (sobra.length && camada === 'fundo') out.textoNaoCabe = sobra;
       // onde cada peça ficou (já movida e escalada), em frações do quadro: a tela desenha as caixas de arrastar em cima disso
       if (camada === 'fundo') out.caixas = await page.evaluate(() => (window as any).CAIXAS ?? []);
+      // contador que muda durante o vídeo: a peça que o mostra sai da camada e vira uma imagem pequena por valor (c00.png, c01.png...)
+      if (camada === 'fundo' && contador) {
+        const sel = `[data-c="${contador.campo}"]`;
+        const cx = await page.evaluate((s: string) => { const p = document.querySelector(s)?.closest('body > *') as HTMLElement | null; if (!p) return null;
+          const b = p.getBoundingClientRect(); if (!b.width) return null;
+          [...document.body.children].forEach(x => { (x as HTMLElement).style.visibility = x === p ? '' : 'hidden'; });
+          return { x: Math.floor(b.left), y: Math.floor(b.top), width: Math.ceil(b.width) + 1, height: Math.ceil(b.height) + 1 }; }, sel);
+        if (cx) {
+          for (const [i, v] of contador.valores.entries()) {
+            await page.evaluate((s: string, t: string) => { document.querySelector(s)!.textContent = t; }, sel, v);
+            await page.screenshot({ path: join(destino, `c${String(i).padStart(2, '0')}.png`), omitBackground: true, clip: cx });
+          }
+          await page.evaluate((s: string) => { const p = document.querySelector(s)!.closest('body > *'); [...document.body.children].forEach(x => { (x as HTMLElement).style.visibility = x === p ? 'hidden' : ''; }); }, sel);
+          out.contador = { padrao: join(destino, 'c%02d.png'), x: cx.x, y: cx.y };
+        }
+      }
       const f = join(destino, `${camada}.png`);
       await page.screenshot({ path: f, omitBackground: true });
       out[camada] = f;
@@ -186,16 +202,19 @@ export async function renderCamadas(m: Modelo, campos: Record<string, unknown>, 
    `zoom` (1 a 3) aproxima o vídeo dentro do slot, e então os dois focos valem sempre.
    `previa` troca 1080×1920 em qualidade de entrega por 540×960 em codificação rápida: medido em 15 s de vídeo, 2,4 s e 1 MB contra
    28 s e 14 MB. As camadas entram como uma imagem só (o overlay repete o último quadro), não como vídeo em laço. */
-export function compor(m: Modelo, video: string, camadas: { fundo?: string; frente?: string }, saida: string, { duracao, fps = 30, focoY = 0.5, focoX = 0.5, zoom = 1, previa = false, extras = [], slot = null }: { duracao: number; fps?: number; focoY?: number; focoX?: number; zoom?: number; previa?: boolean; extras?: Extra[]; slot?: Caixa | null }) {
+export function compor(m: Modelo, video: string, camadas: { fundo?: string; frente?: string }, saida: string, { duracao, fps = 30, focoY = 0.5, focoX = 0.5, zoom = 1, previa = false, extras = [], slot = null, contador = null }: { contador?: { padrao: string; x: number; y: number } | null; duracao: number; fps?: number; focoY?: number; focoX?: number; zoom?: number; previa?: boolean; extras?: Extra[]; slot?: Caixa | null }) {
   const k = previa ? 0.5 : 1, par = (v: number) => Math.round(v * k / 2) * 2, W = QUADRO.w * k, H = QUADRO.h * k;
   const p = slot ? { x: slot.x * QUADRO.w, y: slot.y * QUADRO.h, w: slot.w * QUADRO.w, h: slot.h * QUADRO.h } : slotsPx(m).video, s = { x: par(p.x), y: par(p.y), w: par(p.w), h: par(p.h) };
   const f01 = (v: number) => Math.min(1, Math.max(0, Number(v) || 0)), fy = f01(focoY), fx = f01(focoX);
   const ins = ['-t', String(duracao), '-i', video, '-i', camadas.fundo!];
   const z = Math.min(3, Math.max(1, Number(zoom) || 1)), zw = Math.ceil(s.w * z / 2) * 2, zh = Math.ceil(s.h * z / 2) * 2;
   let fc = `[0:v]fps=${fps},scale=${zw}:${zh}:force_original_aspect_ratio=increase,crop=${s.w}:${s.h}:(iw-ow)*${fx}:(ih-oh)*${fy},setsar=1[v0];color=black:s=${W}x${H}:r=${fps}[bk];[bk][v0]overlay=${s.x}:${s.y}:shortest=1[v];[1:v]scale=${W}:${H}[f];[v][f]overlay=0:0[b]`, ult = 'b';
-  if (camadas.frente) { ins.push('-i', camadas.frente); fc += `;[2:v]scale=${W}:${H}[g];[b][g]overlay=0:0[c]`; ult = 'c'; }
+  let n = 2;
+  if (camadas.frente) { ins.push('-i', camadas.frente); fc += `;[${n++}:v]scale=${W}:${H}[g];[b][g]overlay=0:0[c]`; ult = 'c'; }
+  // o contador troca de imagem a cada 1,5 s, em laço
+  if (contador) { ins.push('-stream_loop', '-1', '-framerate', '2/3', '-i', contador.padrao); fc += `;[${n++}:v]scale=iw*${k}:ih*${k}[ct];[${ult}][ct]overlay=${contador.x * k}:${contador.y * k}[d]`; ult = 'd'; }
   // imagens soltas do usuário, por cima de tudo: centro em (x, y) e largura, em frações do quadro
-  extras.forEach((e, i) => { const n = (camadas.frente ? 3 : 2) + i; ins.push('-i', e.arquivo); fc += `;[${n}:v]scale=${Math.max(2, Math.round(W * e.largura / 2) * 2)}:-2[x${i}];[${ult}][x${i}]overlay=${W * e.x}-w/2:${H * e.y}-h/2[y${i}]`; ult = `y${i}`; });
+  extras.forEach((e, i) => { ins.push('-i', e.arquivo); fc += `;[${n++}:v]scale=${Math.max(2, Math.round(W * e.largura / 2) * 2)}:-2[x${i}];[${ult}][x${i}]overlay=${W * e.x}-w/2:${H * e.y}-h/2[y${i}]`; ult = `y${i}`; });
   const enc = previa ? ['-preset', 'veryfast', '-crf', '26', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '96k'] : ['-preset', 'veryfast', '-crf', '17', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k'];
   return new Promise<void>((ok, ko) => execFile('ffmpeg', ['-v', 'error', '-y', ...ins, '-filter_complex', fc, '-map', `[${ult}]`, '-map', '0:a?', '-t', String(duracao), '-c:v', 'libx264', ...enc, '-movflags', '+faststart', saida],
     { maxBuffer: 1 << 24 }, (e, _o, err) => e ? ko(new Error('composição: ' + String(err || e.message).slice(-300))) : ok()));

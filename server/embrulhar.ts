@@ -165,6 +165,15 @@ const conferir = (st: State, m: Modelo, f: Formato) => {
 };
 const temErro = (f: Formato) => f.itens.some(i => i.nivel === 'erro');
 
+// O campo de papel "contador" (espectadores da Live) varia durante o vídeo: 12 valores entre o indicado e 5% acima, sempre os mesmos
+// para o mesmo número (a prévia e a exportação saem iguais). Só quando o campo é um número ("1.284", "980").
+function contadorDe(m: Modelo, f: Formato) {
+  const c = m.campos.find(x => x.papel === 'contador'), txt = c && (f.campos[c.id] ?? '').trim();
+  if (!c || !txt || !/^\d[\d.]*$/.test(txt)) return null;
+  const n = Number(txt.replace(/\./g, ''));
+  return { campo: c.id, valores: Array.from({ length: 12 }, (_, i) => { const v = Math.round(n * (1 + 0.05 * (i ? Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1 : 0))); return txt.includes('.') ? v.toLocaleString('pt-BR') : String(v); }) };
+}
+
 // ---- render: a prévia e a exportação são a mesma função, a prévia só é mais curta ----
 async function render(st: State, mid: string, previa: boolean) {
   const m = modelo(mid), f = st.formatos[mid] ?? fail(`formato ${mid} não está na sessão`), D = dirOf(st.id);
@@ -175,12 +184,12 @@ async function render(st: State, mid: string, previa: boolean) {
   const quadro = bruto && recortarQuadro(m, bruto, join(D, 'camadas', `${mid}-quadro-c.jpg`), { zoom: a.quadro_zoom, x: a.quadro_x ?? 0.5, y: a.quadro_y ?? 0.5 });
   // nome e @ entram como campos `perfil_*` (um modelo os mostra com data-c="perfil_nome"); a foto, pelo parâmetro avatar
   const p = st.perfil, foto = p.mostrarLogo && p.avatar ? join(D, p.avatar) : null;
-  const camadas = await renderCamadas(m, { ...f.campos, perfil_nome: p.nome, perfil_arroba: p.mostrarArroba ? p.arroba : '' }, { quadroImg: quadro, avatarImg: foto, semAvatar: !p.mostrarLogo, texto: { x: a.texto_x, y: a.texto_y, escala: a.texto_escala }, pecas: a.elementos, destino: join(D, 'camadas', mid) });
+  const camadas = await renderCamadas(m, { ...f.campos, perfil_nome: p.nome, perfil_arroba: p.mostrarArroba ? p.arroba : '' }, { quadroImg: quadro, avatarImg: foto, semAvatar: !p.mostrarLogo, texto: { x: a.texto_x, y: a.texto_y, escala: a.texto_escala }, pecas: a.elementos, contador: contadorDe(m, f), destino: join(D, 'camadas', mid) });
   f.caixas = camadas.caixas ?? [];
   f.avisos = camadas.textoNaoCabe?.length ? [`texto não coube: ${camadas.textoNaoCabe.join(', ')}`] : [];
   const rel = previa ? join('previa', `${mid}.mp4`) : join('saida', `${m.nome} - ${st.name}.mp4`);
   mkdirSync(join(D, previa ? 'previa' : 'saida'), { recursive: true });
-  await compor(m, st.src, camadas, join(D, rel), { duracao: previa ? Math.min(PREVIA_S, st.duracao) : st.duracao, focoY: a.foco_y ?? 0.5, focoX: a.foco_x ?? 0.5, zoom: a.video_zoom, previa, slot: a.elementos?.slot ? f.caixas.find(c => c.k === 'slot') : null, extras: (f.imagens ?? []).map(e => ({ ...e, arquivo: join(D, e.arquivo) })) });
+  await compor(m, st.src, camadas, join(D, rel), { duracao: previa ? Math.min(PREVIA_S, st.duracao) : st.duracao, focoY: a.foco_y ?? 0.5, focoX: a.foco_x ?? 0.5, zoom: a.video_zoom, previa, contador: camadas.contador, slot: a.elementos?.slot ? f.caixas.find(c => c.k === 'slot') : null, extras: (f.imagens ?? []).map(e => ({ ...e, arquivo: join(D, e.arquivo) })) });
   // capa da prévia: a tela mostra esta imagem e só baixa o vídeo quando a pessoa dá play
   if (previa) await execP('ffmpeg', ['-v', 'error', '-y', '-ss', String(Math.min(1, st.duracao / 2)), '-i', join(D, rel), '-frames:v', '1', '-q:v', '4', join(D, 'previa', `${mid}.jpg`)]).catch(() => {});
   if (previa) f.previaEm = Date.now(); else { f.exportadoEm = Date.now(); f.arquivo = rel; }
@@ -270,12 +279,12 @@ export const gerar = (id: string, body: { modelos?: unknown; refazer?: unknown }
 
 // ---- edição: salva campos, ajustes e marcações de um formato (cria o formato se a IA não o gerou). Não renderiza. ----
 const MAX_IMAGENS = 6;
-export function salvar(id: string, mid: string, body: { campos?: unknown; ajustes?: any; imagemNova?: unknown; imagens?: unknown; incluir?: unknown; aprovado?: unknown; version?: unknown }) {
+export function salvar(id: string, mid: string, body: { campos?: unknown; ajustes?: any; imagemNova?: unknown; imagens?: unknown; incluir?: unknown; aprovado?: unknown; selecionado?: unknown; version?: unknown }) {
   const st = load(id), m = modelo(mid);
   if (busy.has(id)) fail('sessão ocupada: espere o render terminar');
   if (Number(body?.version) !== st.version) fail('esta sessão mudou em outra aba: recarregue');
   const f = st.formatos[mid] ??= novo(), aprovadoAntes = f.aprovado;
-  f.selecionado = true;
+  f.selecionado = body.selecionado !== false;   // false = tirado da tela (a lixeira do cartão); o texto fica guardado
   let editou = false;
   if (body.campos && typeof body.campos === 'object') {
     f.campos = Object.fromEntries(m.campos.map(c => [c.id, String((body.campos as Record<string, unknown>)[c.id] ?? f.campos[c.id] ?? '')]));
