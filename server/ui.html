@@ -11428,7 +11428,7 @@ async function embrulhosView(sel) {
         return `<div class="box emb-card" data-m="${m.id}" style="display:grid;grid-template-columns:190px minmax(0,1fr);gap:16px;margin:0">
         <div><div class="emb-midia">${midia(m, f)}</div>
           <div class="emb-velha muted" style="font-size:12px;margin-top:4px"></div>
-          <button class="emb-pos" style="margin-top:6px;font-size:12px;width:190px" title="Abre a prévia ampliada para arrastar o texto e as imagens soltas">⤢ Posicionar na prévia</button></div>
+          <button class="emb-pos" style="margin-top:6px;font-size:12px;width:190px" title="Abre a prévia ampliada para arrastar cada peça da moldura e as imagens soltas">⤢ Posicionar na prévia</button></div>
         <div style="display:grid;gap:8px;align-content:start">
           <div style="display:flex;align-items:center;gap:8px"><b style="margin-right:auto">${esc(m.nome)} <span class="muted" style="font-weight:400;font-size:12px">prévia: primeiros 15 s${f.angulo ? ` · ângulo: ${esc(f.angulo)}` : ''}</span></b><label style="font-size:13px"><input type="checkbox" class="emb-inc" ${f.incluir ? 'checked' : ''}> Incluir na entrega</label></div>
           ${m.campos.map(c => `<label style="display:grid;gap:2px;font-size:13px"><span style="display:flex"><span style="margin-right:auto">${esc(embRotulo(c))}${c.opcional ? ' <span class="muted">(opcional)</span>' : ''}</span><span class="muted emb-n" data-max="${c.max}"></span></span>
@@ -11479,7 +11479,7 @@ async function embrulhosView(sel) {
     const posicionar = card => {
       const mid = card.dataset.m, m = M[mid], lim = (v, a, b) => Math.min(b, Math.max(a, v));
       const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:1000;display:grid;place-items:center';
-      ov.innerHTML = `<div style="display:grid;gap:10px;justify-items:center"><div class="muted" style="font-size:13px">Arraste o texto e as imagens soltas; puxe a bolinha do canto para mudar o tamanho. A prévia é refeita quando você solta.</div>
+      ov.innerHTML = `<div style="display:grid;gap:10px;justify-items:center"><div class="muted" style="font-size:13px">Passe o mouse para ver cada peça (vídeo, textos, foto, selos, faixas) e arraste; puxe a bolinha do canto para mudar o tamanho. A prévia é refeita quando você solta.</div>
         <div class="emb-palco" style="position:relative;height:min(78vh,860px);aspect-ratio:9/16;background:#000;border-radius:12px;touch-action:none;user-select:none"><img class="emb-pimg" draggable="false" alt="" style="width:100%;height:100%;display:block;border-radius:12px"></div>
         <div style="display:flex;gap:12px;align-items:center"><span class="emb-pst muted" style="font-size:12px;min-width:160px"></span><button class="emb-pfechar primary">Concluir</button></div></div>`;
       document.body.append(ov);
@@ -11494,23 +11494,26 @@ async function embrulhosView(sel) {
         d.onpointermove = v => { dx = v.clientX - x0; dy = v.clientY - y0; d.style.transform = canto ? `scale(${razao()})` : `translate(${dx}px, ${dy}px)`; };
         d.onpointerup = () => { d.onpointermove = d.onpointerup = null; if (Math.abs(dx) + Math.abs(dy) > 2) solta(canto ? { razao: razao() } : { dx: dx / R.width, dy: dy / R.height }); else d.style.transform = ''; }; }; };
       const caixa = (rot, x, y, w, h) => { const d = document.createElement('div'); d.className = 'emb-cx';
-        d.style.cssText = `position:absolute;left:${x * 100}%;top:${y * 100}%;width:${w * 100}%;height:${h * 100}%;border:2px dashed var(--yellow);box-sizing:border-box;cursor:move;border-radius:4px`;
+        d.style.cssText = `position:absolute;left:${x * 100}%;top:${y * 100}%;width:${w * 100}%;height:${h * 100}%;border:2px dashed var(--yellow);box-sizing:border-box;cursor:move;border-radius:4px;opacity:.3`;
+        d.onpointerenter = () => d.style.opacity = 1; d.onpointerleave = () => d.style.opacity = .3;
         d.innerHTML = `<span style="position:absolute;left:-2px;top:-20px;font:600 11px var(--sans);background:var(--yellow);color:#000;padding:1px 6px;border-radius:3px;white-space:nowrap">${rot}</span><i style="position:absolute;right:-8px;bottom:-8px;width:16px;height:16px;background:var(--yellow);border:2px solid #000;border-radius:50%;cursor:nwse-resize"></i>`;
         palco.append(d); return d; };
       const desenha = () => { const f = st.formatos[mid], a = f.ajustes;
         ov.querySelector('.emb-pimg').src = `${embFile(st.id, `previa/${mid}.jpg`)}?${f.previaEm}`;
         palco.querySelectorAll('.emb-cx').forEach(e => e.remove());
-        const t = f.textoBox;
-        if (m.textoMovel && t) arrasta(caixa('Texto', t.x, t.y, t.w, t.h), t.w, g => aplica({ ajustes: g.razao
-          ? { texto_escala: +lim((a.texto_escala ?? 1) * g.razao, 0.5, 1.8).toFixed(2) }
-          : { texto_x: Math.round(lim((a.texto_x ?? 0) + g.dx * 1080, -540, 540)), texto_y: Math.round(lim((a.texto_y ?? 0) + g.dy * 1920, -960, 960)) } }));
+        // every piece of the frame, biggest first so the small ones stay on top; one that fills the frame is left out
+        const cxs = (f.caixas ?? []).filter(c => c.w * c.h < 0.95).sort((p, q) => q.w * q.h - p.w * p.h), NOME = { slot: 'Vídeo', quadro: 'Imagem', av: 'Foto', centro: 'Foto' };
+        cxs.forEach(c => { const [x, y, s] = a.elementos?.[c.k] ?? [0, 0, 1];
+          arrasta(caixa(NOME[c.k] ?? c.k, c.x, c.y, c.w, c.h), c.w, g => aplica({ ajustes: { elementos: { [c.k]: g.razao
+            ? [x, y, +lim(s * g.razao, 0.2, 4).toFixed(3)]
+            : [Math.round(lim(x + g.dx * 1080, -1080, 1080)), Math.round(lim(y + g.dy * 1920, -1920, 1920)), s] } } })); });
         (f.imagens ?? []).forEach((e, i) => { const im = new Image(); im.onload = () => { if (!ov.isConnected || st.formatos[mid].imagens?.[i] !== e) return;
           const h = e.largura * (im.naturalHeight / im.naturalWidth) * 9 / 16;   // the image's height as a fraction of the 9:16 frame
           arrasta(caixa(`Imagem ${i + 1}`, e.x - e.largura / 2, e.y - h / 2, e.largura, h), e.largura, g => aplica({ imagens: st.formatos[mid].imagens.map((o, k) => k !== i ? o : g.razao
             ? { ...o, largura: +lim(o.largura * g.razao, 0.03, 1.5).toFixed(3) }
             : { ...o, x: +lim(o.x + g.dx, 0, 1).toFixed(3), y: +lim(o.y + g.dy, 0, 1).toFixed(3) }) })); };
           im.src = embFile(st.id, e.arquivo); });
-        if (!(m.textoMovel && t) && !(f.imagens ?? []).length) stt.textContent = 'Nada para arrastar aqui: adicione uma imagem solta no cartão.'; };
+        if (!cxs.length && !(f.imagens ?? []).length) stt.textContent = 'Atualize a prévia deste cartão para poder arrastar as peças.'; };
       desenha();
     };
     box.querySelectorAll('.emb-card').forEach(card => {
@@ -11522,7 +11525,7 @@ async function embrulhosView(sel) {
       const q = card.querySelector('.emb-quadro');
       if (q) { q.oninput = () => { card.querySelector('.emb-qv').currentTime = +q.value; card.querySelector('.emb-qt').textContent = mm(+q.value); }; q.onchange = () => { salvar(card, { ajustes: { quadro_t: +q.value } }); previa(card); }; }
       card.querySelectorAll('.emb-aj').forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = ajFmt(r.dataset.k, +r.value); }; r.onchange = () => { salvar(card, { ajustes: { [r.dataset.k]: +r.value } }); previa(card); }; });
-      card.querySelector('.emb-zera').onclick = () => { card.querySelectorAll('.emb-aj').forEach(r => { r.value = AJ[r.dataset.k][3]; r.oninput(); }); salvar(card, { ajustes: Object.fromEntries(Object.entries(AJ).map(([k, v]) => [k, v[3]])) }); previa(card); };
+      card.querySelector('.emb-zera').onclick = () => { card.querySelectorAll('.emb-aj').forEach(r => { r.value = AJ[r.dataset.k][3]; r.oninput(); }); salvar(card, { ajustes: { ...Object.fromEntries(Object.entries(AJ).map(([k, v]) => [k, v[3]])), elementos: null } }); previa(card); };
       const ib = card.querySelector('.emb-img'), inp = card.querySelector('.emb-imgf');
       if (ib) { ib.onclick = () => inp.click(); inp.onchange = async () => { if (!inp.files[0]) return; try { salvar(card, { ajustes: { imagem: await upload(inp.files[0], 'media') } }); await previa(card); go('edicao'); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } }; }
       const fr = card.querySelector('.emb-frame'); if (fr) fr.onclick = async () => { salvar(card, { ajustes: { imagem: null, quadro_t: st.formatos[card.dataset.m].ajustes.quadro_t ?? 0 } }); await previa(card); go('edicao'); };

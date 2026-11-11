@@ -73,11 +73,21 @@ test('preview is 15 s at most and the export is a 1080x1920 mp4 with audio', { s
   assert.throws(() => E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { texto_escala: 0 } }), /texto_escala/);
   st = await E.previa(s.id, 'fofoca-duplo');
   // where the text ended up, for the drag box of the enlarged preview: it follows the offset the user set
-  const cx0 = st.formatos['fofoca-duplo'].textoBox!;
+  const cxDe = (k: string) => st.formatos['fofoca-duplo'].caixas!.find(c => c.k === k)!;
+  const cx0 = cxDe('tit');
   st = E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { texto_y: 232, texto_escala: 1 } });
   st = await E.previa(s.id, 'fofoca-duplo');
-  const cx1 = st.formatos['fofoca-duplo'].textoBox!;
-  assert.ok(Math.abs((cx1.y - cx0.y) * 1920 - 192) < 40 && cx1.w > 0.5, JSON.stringify([cx0, cx1]));   // moved by about 232 - 40 px, minus what the 1.2 scale had added
+  const cx1 = cxDe('tit'), sl0 = cxDe('slot');
+  assert.ok(Math.abs((cx1.y - cx0.y) * 1920 - 192) < 40 && cx1.w > 0.3, JSON.stringify([cx0, cx1]));   // moved by about 232 - 40 px, minus what the 1.2 scale had added
+  // every piece of the frame moves on its own: the title 100 px down at half size (around its centre), the video window 60 px left
+  assert.throws(() => E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { elementos: { tit: [0, 0, 9] } } }), /elementos\.tit/);
+  st = E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { elementos: { tit: [0, 100, 0.5], slot: [-60, 0, 1] } } });
+  st = await E.previa(s.id, 'fofoca-duplo');
+  const cx2 = cxDe('tit'), sl1 = cxDe('slot');
+  assert.ok(Math.abs(cx2.w - cx1.w / 2) < 0.01 && Math.abs((cx2.y + cx2.h / 2 - cx1.y - cx1.h / 2) * 1920 - 100) < 2, JSON.stringify([cx1, cx2]));
+  assert.ok(Math.abs((sl1.x - sl0.x) * 1080 + 60) < 1 && Math.abs(sl1.w - sl0.w) < 0.001, JSON.stringify([sl0, sl1]));
+  st = E.salvar(s.id, 'fofoca-duplo', { version: st.version, ajustes: { elementos: null } });
+  assert.equal(st.formatos['fofoca-duplo'].ajustes.elementos, undefined);
   const rec = probe(E.file(s.id, 'camadas/fofoca-duplo-quadro-c.jpg')).streams[0];   // the still is cut to its window before the page sees it
   assert.deepEqual([rec.width, rec.height], [468, 762]);
   // a free image dropped on the frame: added at the centre, moved, rendered on top, then removed with its file

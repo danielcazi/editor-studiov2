@@ -9,10 +9,10 @@ import { type Caixa, type Extra, carregarEmbrulho, compor, EMB, encaixe, recorta
 import { emit, execP, expandHome, finalName, intake, probeMedia, py, SKILL, subscribe, UserError, WS } from './pipeline.ts';
 
 // vídeo no slot: foco_x/foco_y (0 a 1) e video_zoom (1 a 3); imagem parada: quadro_t ou imagem, quadro_zoom/x/y; texto: deslocamento em px do quadro 1080×1920 e escala
-type Ajustes = { quadro_t?: number; imagem?: string | null; foco_y?: number; foco_x?: number; video_zoom?: number; quadro_zoom?: number; quadro_x?: number; quadro_y?: number; texto_x?: number; texto_y?: number; texto_escala?: number };
+type Ajustes = { quadro_t?: number; imagem?: string | null; foco_y?: number; foco_x?: number; video_zoom?: number; quadro_zoom?: number; quadro_x?: number; quadro_y?: number; texto_x?: number; texto_y?: number; texto_escala?: number; elementos?: Record<string, number[]> };   // elementos: peça da moldura → [dx px, dy px, escala]
 const LIMITES: Record<string, [number, number]> = { foco_x: [0, 1], foco_y: [0, 1], video_zoom: [1, 3], quadro_zoom: [1, 3], quadro_x: [0, 1], quadro_y: [0, 1], texto_x: [-540, 540], texto_y: [-960, 960], texto_escala: [0.5, 1.8] };
 // imagens: figuras que o usuário solta em qualquer lugar do quadro (arquivo dentro da sessão; centro x/y e largura em frações do quadro)
-export type Formato = { selecionado: boolean; incluir: boolean; aprovado: boolean; campos: Record<string, string>; ajustes: Ajustes; imagens?: Extra[]; angulo?: string; textoBox?: Caixa | null; itens: Item[]; avisos: string[];
+export type Formato = { selecionado: boolean; incluir: boolean; aprovado: boolean; campos: Record<string, string>; ajustes: Ajustes; imagens?: Extra[]; angulo?: string; caixas?: (Caixa & { k: string })[]; itens: Item[]; avisos: string[];
   editadoEm: number; previaEm: number; exportadoEm: number; arquivo?: string };
 // quem assina os anúncios: foto, nome e @ dos modelos com perfil. `avatar` é o arquivo dentro da sessão.
 export type Perfil = { nome: string; arroba: string; mostrarLogo: boolean; mostrarArroba: boolean; avatar?: string };
@@ -175,12 +175,12 @@ async function render(st: State, mid: string, previa: boolean) {
   const quadro = bruto && recortarQuadro(m, bruto, join(D, 'camadas', `${mid}-quadro-c.jpg`), { zoom: a.quadro_zoom, x: a.quadro_x ?? 0.5, y: a.quadro_y ?? 0.5 });
   // nome e @ entram como campos `perfil_*` (um modelo os mostra com data-c="perfil_nome"); a foto, pelo parâmetro avatar
   const p = st.perfil, foto = p.mostrarLogo && p.avatar ? join(D, p.avatar) : null;
-  const camadas = await renderCamadas(m, { ...f.campos, perfil_nome: p.nome, perfil_arroba: p.mostrarArroba ? p.arroba : '' }, { quadroImg: quadro, avatarImg: foto, semAvatar: !p.mostrarLogo, texto: { x: a.texto_x, y: a.texto_y, escala: a.texto_escala }, destino: join(D, 'camadas', mid) });
-  f.textoBox = camadas.textoBox ?? null;
+  const camadas = await renderCamadas(m, { ...f.campos, perfil_nome: p.nome, perfil_arroba: p.mostrarArroba ? p.arroba : '' }, { quadroImg: quadro, avatarImg: foto, semAvatar: !p.mostrarLogo, texto: { x: a.texto_x, y: a.texto_y, escala: a.texto_escala }, pecas: a.elementos, destino: join(D, 'camadas', mid) });
+  f.caixas = camadas.caixas ?? [];
   f.avisos = camadas.textoNaoCabe?.length ? [`texto não coube: ${camadas.textoNaoCabe.join(', ')}`] : [];
   const rel = previa ? join('previa', `${mid}.mp4`) : join('saida', `${m.nome} - ${st.name}.mp4`);
   mkdirSync(join(D, previa ? 'previa' : 'saida'), { recursive: true });
-  await compor(m, st.src, camadas, join(D, rel), { duracao: previa ? Math.min(PREVIA_S, st.duracao) : st.duracao, focoY: a.foco_y ?? 0.5, focoX: a.foco_x ?? 0.5, zoom: a.video_zoom, previa, extras: (f.imagens ?? []).map(e => ({ ...e, arquivo: join(D, e.arquivo) })) });
+  await compor(m, st.src, camadas, join(D, rel), { duracao: previa ? Math.min(PREVIA_S, st.duracao) : st.duracao, focoY: a.foco_y ?? 0.5, focoX: a.foco_x ?? 0.5, zoom: a.video_zoom, previa, slot: a.elementos?.slot ? f.caixas.find(c => c.k === 'slot') : null, extras: (f.imagens ?? []).map(e => ({ ...e, arquivo: join(D, e.arquivo) })) });
   // capa da prévia: a tela mostra esta imagem e só baixa o vídeo quando a pessoa dá play
   if (previa) await execP('ffmpeg', ['-v', 'error', '-y', '-ss', String(Math.min(1, st.duracao / 2)), '-i', join(D, rel), '-frames:v', '1', '-q:v', '4', join(D, 'previa', `${mid}.jpg`)]).catch(() => {});
   if (previa) f.previaEm = Date.now(); else { f.exportadoEm = Date.now(); f.arquivo = rel; }
@@ -285,6 +285,12 @@ export function salvar(id: string, mid: string, body: { campos?: unknown; ajuste
   if (a && typeof a === 'object') {
     if (a.quadro_t != null) f.ajustes.quadro_t = Number.isFinite(Number(a.quadro_t)) ? Number(a.quadro_t) : fail('quadro_t: número de segundos');
     for (const [k, [min, max]] of Object.entries(LIMITES)) if (a[k] != null) (f.ajustes as Record<string, number>)[k] = Number(a[k]) >= min && Number(a[k]) <= max ? Number(a[k]) : fail(`${k}: entre ${min} e ${max}`);
+    if (a.elementos === null) delete f.ajustes.elementos;
+    else if (a.elementos && typeof a.elementos === 'object') for (const [k, v] of Object.entries(a.elementos)) {
+      const [x, y, s] = (Array.isArray(v) ? v : []).map(Number);
+      if (!/^[\w-]{1,40}$/.test(k) || !(Math.abs(x) <= 1080 && Math.abs(y) <= 1920 && s >= 0.2 && s <= 4)) fail(`elementos.${k}: posição até 1080×1920 px e escala entre 0.2 e 4`);
+      (f.ajustes.elementos ??= {})[k] = [x, y, s];
+    }
     if (a.imagem === null) f.ajustes.imagem = null;
     else if (a.imagem != null) {   // caminho devolvido pelo /upload (ou local); guardado na sessão
       const de = expandHome(String(a.imagem)), ext = extname(de).toLowerCase();
