@@ -27,3 +27,5 @@ workspace/embrulhos/
 workspace/library/locutor/
 claude-reel-editor/skills/reel-editor/compose/estilos/banco/*
 !claude-reel-editor/skills/reel-editor/compose/estilos/banco/README.md
+# MOTION MESTRE: pasta local de leitura (./motion-mestre.sh monta; docs/motion-mestre/ é a fonte versionada)
+MOTION MESTRE/
