@@ -1,0 +1,29 @@
+{
+ "name": "Nenhuma",
+ "colors": {
+  "main": "#111111",
+  "pop": "#ffffff",
+  "light": "#f4f2ec",
+  "soft": "#8a8780",
+  "caption": "#ffffff",
+  "caption_accent": "#ffffff"
+ },
+ "max_seconds": 180,
+ "fonts": {
+  "head": { "family": "Inter", "file": "fonts/Inter-Bold.ttf", "weight": 700 },
+  "body": { "family": "Inter", "file": "fonts/Inter-Bold.ttf", "weight": 700 },
+  "giant": { "family": "Inter", "file": "fonts/Inter-Black.ttf", "weight": 900 }
+ },
+ "resolution": [2160, 3840],
+ "pacing": "tight",
+ "graphics": "busy",
+ "speed": 1,
+ "sfx": "lots",
+ "deliver_dir": "~/Movies/Reels",
+ "grade": null,
+ "require_carousel": false,
+ "title_outline": "#ffffff",
+ "title_y": 380,
+ "captions": { "mode": "word", "case": "lower", "size": 76, "y": 1250, "style": "editorial" },
+ "icons": []
+}

@@ -29,6 +29,7 @@ PANEL_CAMS = ('panel', 'panel-top', 'react')   # cenas em que #tcam (o locutor c
 PACE = CFG.get('pace') or {'every': 1.5, 'scene': [1.2, 3], 'framing': [2, 4], 'hold': 4}   # the reel's pace toggle (server PACE table); the default is dinamico
 PLANOS = CFG.get('planos') or ['cut', 'panel', 'none']   # the format's speaker shots (scene cam=); a scene outside them is an error
 CUT_WINDOWS = CFG.get('cutWindows')  # [[a, b], ...] s: só aqui existe recorte; cena com câmera M/L/XL fora delas é erro (use 'panel' ou None)
+ONER_REQ = bool(CFG.get('oner'))     # a skill é one-take: toda cena precisa de at= (modo one-take, GUIDE.md "One-take")
 
 # Relógio por palavra: toda batida cai numa palavra da fala, nunca num segundo digitado. assets/transcript.json vem do master.
 WORDS = json.load(open('assets/transcript.json')) if os.path.exists('assets/transcript.json') else []
@@ -132,7 +133,7 @@ def ladder(p, hi, bg, fg, rows, at=.05):
 S = []
 TRS = ('push', 'fade', 'slide', 'wipe', 'cut')
 TRD = .3   # duração da saída da cena anterior, sobreposta à entrada da nova (crossfade)
-def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push', move=1.05, world=None, signature=False, momento=None):
+def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push', move=1.05, world=None, signature=False, momento=None, at=None, whip=.32, spk=None):
     # cta=True marca a cena do call to action: o lint exige locutor XXL nela
     # tr: como esta cena entra (a anterior sai por baixo em TRD s): push (zoom+fade) | fade | slide (da direita) | wipe (de baixo) | cut
     # move: escala final do fundo ao longo da cena (push-in lento, sine.inOut); 1 = parado
@@ -142,7 +143,14 @@ def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push',
     # signature=True: o plano-assinatura (DIRETOR.md §3); o lint avisa quando nenhum existe
     # momento: o momento da fala que a cena serve (gancho, contexto, problema, ..., cta: ver MOMENTOS em server/banco.ts), opcional; com ele o render avisa quando
     #   o banco de movimentos (estilos/banco/) tem helper para esse momento e a cena não usou nenhum
-    S.append(dict(n=n, a=a, b=b, bg=bg, cam=cam, back=back, front=front, sfx=sfx, cta=cta, tr=tr, move=move, world=world, signature=signature, momento=momento))
+    # at=(x, y): modo one-take. A cena é um bloco nesse ponto de um mundo só (px, o quadro inteiro mede W×H); a câmera viaja até ele num whip
+    #   de `whip` s com desfoque na direção do movimento, e o locutor sai com o bloco anterior e chega com este. Cena sem at fica no bloco
+    #   da anterior (outra batida no mesmo lugar). O bloco continua no mundo depois da cena (pull-out mostra os anteriores) até outra cena
+    #   voltar ao mesmo at. world= vira a deriva em volta do bloco (x, y até ±600, scale 0,5 a 1,6 para revelar os vizinhos).
+    # spk=dict(x, y, blur): pose do locutor no bloco, em px do quadro (x/y deslocam o recorte; y < 0 ergue e esfuma a base; blur desfoca,
+    #   para o locutor de primeiro plano passando). Só no modo one-take.
+    S.append(dict(n=n, a=a, b=b, bg=bg, cam=cam, back=back, front=front, sfx=sfx, cta=cta, tr=tr, move=move, world=world, signature=signature, momento=momento,
+                  at=tuple(at) if at is not None else None, whip=whip, spk=spk))
 
 # câmera de mundo: perspectiva do palco e profundidade de cada camada (translateZ), compensada em escala para o repouso ser idêntico
 WORLD_P = 1800
@@ -200,6 +208,105 @@ def world_track():
             js.append(f'tl.to("#world",{{{props},duration:{dur:.2f},ease:"{w.get("ease", "sine.inOut")}"}},{a:.2f});')
         cur = tgt
     return js, kinds
+
+# ---- modo one-take (scene(..., at=)): um mundo só, a câmera viaja de bloco em bloco ----
+WORLD_LIM_ONER = {'x': 600, 'y': 600, 'rx': 8, 'ry': 8, 'rz': 8, 'scale': (.5, 1.6)}
+WHIP_BLUR = 36   # px de desfoque no pico do whip, na direção do movimento
+SPK_KEYS = ('x', 'y', 'blur')
+oner = lambda: any(s.get('at') is not None for s in S)
+DEPTH_K = lambda name: (WORLD_P - WORLD_Z[name]) / WORLD_P   # escala que compensa a profundidade da camada
+
+def oner_ats():
+    """o bloco (x, y) de cada cena: at da cena ou o da anterior; a primeira sem at fica em (0, 0)."""
+    out, cur = [], (0, 0)
+    for s in S:
+        if s.get('at') is not None: cur = s['at']
+        out.append(cur)
+    return out
+
+def _rot(rx, ry, rz, v):
+    """v girado como o GSAP escreve o transform (rotate(rz) rotateY(ry) rotateX(rx)): Rz·Ry·Rx·v, eixos do CSS (y para baixo)."""
+    x, y, z = v
+    a = math.radians(rx); y, z = y * math.cos(a) - z * math.sin(a), y * math.sin(a) + z * math.cos(a)
+    a = math.radians(ry); x, z = x * math.cos(a) + z * math.sin(a), -x * math.sin(a) + z * math.cos(a)
+    a = math.radians(rz); x, y = x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a)
+    return x, y, z
+
+def oner_pose(pose, at):
+    """props do #world que põem o centro do bloco `at` no centro do quadro mais a deriva (pose x, y), com a escala e as rotações da pose.
+    O #world gira em volta do centro do quadro: num bloco longe dele, tilt e orbit o tirariam do plano (o locutor crescia ou encolhia na
+    perspectiva); z devolve o bloco ao plano, então a rotação vale como se o pivô fosse o próprio bloco."""
+    s = pose['scale']; vx, vy, vz = _rot(pose['rx'], pose['ry'], pose['rz'], (at[0] * s, at[1] * s, 0))
+    x, y, z = pose['x'] - vx + 0.0, pose['y'] - vy + 0.0, -vz + 0.0   # + 0.0: sem -0.00
+    return f'x:{x:.2f},y:{y:.2f},z:{z:.2f},scale:{s:.3f},rotationX:{pose["rx"]:.3f},rotationY:{pose["ry"]:.3f},rotation:{pose["rz"]:.3f}'
+
+def oner_whips():
+    """{i: (início, duração)} dos whips: toda cena cujo bloco muda chega por um, centrado no começo dela."""
+    ats, out = oner_ats(), {}
+    for i in range(1, len(S)):
+        if ats[i] == ats[i - 1]: continue
+        wd = max(.12, min(float(S[i]['whip']), S[i - 1]['b'] - S[i - 1]['a'], S[i]['b'] - S[i]['a']))
+        out[i] = (max(S[i - 1]['a'], S[i]['a'] - wd / 2), wd)
+    return out
+
+def oner_track():
+    """tweens do #world e do desfoque dos whips no modo one-take, e os tipos de movimento usados."""
+    ats, whips = oner_ats(), oner_whips()
+    cur = dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)
+    js, kinds = [f'tl.set("#world",{{{oner_pose(cur, ats[0])}}},0);'], []
+    for i, s in enumerate(S):
+        n, a, b = s['n'], s['a'], s['b']
+        start = a
+        if i in whips:
+            t0, wd = whips[i]
+            js.append(f'tl.to("#world",{{{oner_pose(cur, ats[i])},duration:{wd:.3f},ease:"power3.inOut"}},{t0:.3f});')
+            dx, dy = ats[i][0] - ats[i - 1][0], ats[i][1] - ats[i - 1][1]; L = math.hypot(dx, dy) or 1
+            sd = f'{WHIP_BLUR * abs(dx) / L:.1f} {WHIP_BLUR * abs(dy) / L:.1f}'
+            js.append(f'tl.set("#root",{{filter:"url(#wmb)"}},{t0:.3f});'
+                      f'tl.fromTo("#wmbk",{{attr:{{stdDeviation:"0 0"}}}},{{attr:{{stdDeviation:"{sd}"}},duration:{wd / 2:.3f},ease:"power2.in"}},{t0:.3f});'
+                      f'tl.to("#wmbk",{{attr:{{stdDeviation:"0 0"}},duration:{wd / 2:.3f},ease:"power2.out"}},{t0 + wd / 2:.3f});'
+                      f'tl.set("#root",{{filter:"none"}},{t0 + wd:.3f});')
+            kinds.append('pan' if abs(dx) >= abs(dy) else 'crane')
+            start = t0 + wd
+        end = whips[i + 1][0] if i + 1 in whips else b
+        w = s['world']
+        if not w: continue
+        bad = set(w) - set(WORLD_KEYS) - {'d', 'ease', 'snap'}
+        if bad: erro(f'cena {n}: world com chaves desconhecidas {sorted(bad)} (use {", ".join(WORLD_KEYS)}, d, ease, snap)')
+        tgt = {k: w.get(k, cur[k]) for k in WORLD_KEYS}
+        for k, v in tgt.items():
+            lo, hi = (WORLD_LIM_ONER['scale'] if k == 'scale' else (-WORLD_LIM_ONER[k], WORLD_LIM_ONER[k]))
+            if not lo <= v <= hi: erro(f'cena {n}: world {k}={v} fora do limite do one-take [{lo}, {hi}]')
+        moved = [k for k in WORLD_KEYS if abs(tgt[k] - cur[k]) > 1e-6]
+        if 'scale' in moved: kinds.append('push' if tgt['scale'] > cur['scale'] else 'pull')
+        kinds.extend(WORLD_KIND[k] for k in moved if k != 'scale')
+        if w.get('snap'):
+            js.append(f'tl.set("#world",{{{oner_pose(tgt, ats[i])}}},{start:.3f});')
+        else:
+            dur = min(float(w.get('d', end - start)), end - start)
+            if dur < .05: erro(f'cena {n}: world sem tempo para se mover (o whip da próxima cena começa em {end:.2f} s)'); continue
+            js.append(f'tl.to("#world",{{{oner_pose(tgt, ats[i])},duration:{dur:.2f},ease:"{w.get("ease", "sine.inOut")}"}},{start:.3f});')
+        cur = tgt
+    return js, kinds
+
+def oner_speaker():
+    """#spk (invólucro do recorte): no bloco da cena mais a pose spk=; troca de bloco no meio do whip, no pico do desfoque."""
+    ats, whips = oner_ats(), oner_whips()
+    js, prev = [], None
+    for i, s in enumerate(S):
+        p = s.get('spk') or {}
+        bad = set(p) - set(SPK_KEYS)
+        if bad: erro(f'cena {s["n"]}: spk com chaves desconhecidas {sorted(bad)} (use x, y, blur)')
+        x, y, bl = ats[i][0] + p.get('x', 0), ats[i][1] + p.get('y', 0), p.get('blur', 0)
+        fade = '72%' if p.get('y', 0) < -40 else '100%'   # erguido: a base do recorte (a borda do vídeo) some num degradê
+        pose = f'x:{x:.1f},y:{y:.1f}'
+        if i == 0: js.append(f'tl.set("#spk",{{{pose}}},0);')
+        elif i in whips: js.append(f'tl.set("#spk",{{{pose}}},{whips[i][0] + whips[i][1] / 2:.3f});')
+        elif (x, y) != prev[:2]: js.append(f'tl.to("#spk",{{{pose},duration:.5,ease:"power2.inOut"}},{s["a"]:.3f});')
+        t = whips[i][0] + whips[i][1] / 2 if i in whips else s['a']
+        if prev is None or (bl, fade) != prev[2:]: js.append(f'tl.set("#ccam",{{filter:"{f"blur({bl}px)" if bl else "none"}","--fade":"{fade}"}},{t:.3f});')
+        prev = (x, y, bl, fade)
+    return js
 
 def lint_world(kinds):
     """Sem cotas de câmera (v8): quantos movimentos e se há plano-assinatura é decisão do diretor, não aviso do lint."""
@@ -275,6 +382,8 @@ def plano(cam): return 'cut' if isinstance(cam, tuple) else 'none' if cam is Non
 def lint_static():
     for s in S:
         n, cam = s['n'], s['cam']
+        if s.get('at') is not None and not (len(s['at']) == 2 and all(isinstance(v, (int, float)) for v in s['at'])): erro(f'cena {n}: at={s["at"]!r} precisa ser (x, y) em px')
+        if s.get('spk') and not oner(): erro(f'cena {n}: spk= só existe no modo one-take (dê at= às cenas)')
         if plano(cam) not in PLANOS: erro(f'cena {n}: plano {plano(cam)!r} fora dos planos deste formato {PLANOS} (compose.json planos)'); continue
         if s['bg'] == 'plate': erro(f'cena {n}: fundo "plate" (o vídeo do locutor replicado/desfocado) é proibido: use imagem do site, sólido ou gradiente da marca, ou ilustração')
         elif s['bg'] not in BG_NAMES: erro(f'cena {n}: fundo {s["bg"]!r} desconhecido (use {", ".join(BG_NAMES)})')
@@ -317,6 +426,9 @@ def render():
     ERROS.clear(); AVISOS.clear()
     lint_static()
     if ERROS: raise AssertionError('\n'.join(ERROS))
+    ONER = oner()
+    ATS = oner_ats() if ONER else [None] * len(S)
+    GROUND = S[0]['bg'] if ONER else None   # one-take: o fundo da 1ª cena é o chão do mundo (#root); cena com outro fundo pinta só o seu bloco
 
     STYLE = FONT + """
     #root{position:absolute;inset:0;font-family:Aspekta,Montserrat,sans-serif;font-weight:600;overflow:hidden}
@@ -376,12 +488,18 @@ def render():
         n, a, b = s['n'], s['a'], s['b']; d = round(b - a, 3)
         nxt = S[i + 1] if i + 1 < len(S) else None
         ext = round(min(TRD, (nxt['b'] - nxt['a']) / 2), 3) if nxt and nxt['tr'] != 'cut' else 0   # sobra para sair sob a próxima cena
+        tr, keep = s['tr'], None
+        if ONER:
+            if i and ATS[i] != ATS[i - 1]: tr = 'cut'   # chega pelo whip, não por transição
+            if nxt and ATS[i + 1] != ATS[i]:   # a câmera sai daqui: o bloco fica no mundo até outra cena voltar a este at
+                ext, back_at = 0, next((x['a'] for x, q in zip(S[i + 1:], ATS[i + 1:]) if q == ATS[i]), DUR)
+                keep = round(back_at - a, 3)
         for kind in ('b', 's'):
             cid = f"{kind}{n:02d}"
             _ENG_USED.clear(); _BANCO_SCENE[0] = n
             if kind == 'b':
                 h, js = s['back'](cid, d) if s['back'] else ("", "")
-                body = f'<div class="bgfill" style="{BGS[s["bg"]]}"></div>' + h
+                body = ('' if ONER and s['bg'] == GROUND else f'<div class="bgfill" style="{BGS[s["bg"]]}{";inset:0" if ONER else ""}"></div>') + h
                 if s['move'] != 1: js += f'tl.fromTo("#root",{{scale:1}},{{scale:{s["move"]},duration:{d + ext:.2f},ease:"sine.inOut"}},0);'
             else:
                 if not s['front']:
@@ -392,8 +510,11 @@ def render():
             open(f'compositions/{cid}.html', 'w').write(comp(cid, body, js, ''.join(ENGINES[e] for e in _ENG_USED)))
             all_html.append(body); all_js.append(js)
             z, track = (2, 1 + n % 2) if kind == 'b' else (4, 4 + n % 2)
-            hosts.append(f'<div id="{cid}" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" data-start="{a}" data-duration="{d + ext}" data-track-index="{track}" data-track-kind="graphics" data-width="{W}" data-height="{H}" style="z-index:{z}"></div>')
-            trans.extend(transition(cid, kind, a, b, s['tr'], ext if kind == 'b' else min(ext, .25)))
+            # one-take: o host no ponto do bloco, dividido pela escala da camada (fundo, locutor e frente alinham quando a câmera para)
+            k = DEPTH_K('mid' if kind == 'b' else 'near')
+            place = f';position:absolute;left:{ATS[i][0] / k:.1f}px;top:{ATS[i][1] / k:.1f}px;width:{W}px;height:{H}px' if ONER else ''
+            hosts.append(f'<div id="{cid}" data-composition-id="{cid}" data-composition-src="compositions/{cid}.html" data-start="{a}" data-duration="{keep if keep is not None else d + ext}" data-track-index="{track}" data-track-kind="graphics" data-width="{W}" data-height="{H}" style="z-index:{z}{place}"></div>')
+            trans.extend(transition(cid, kind, a, b, tr, ext if kind == 'b' else min(ext, .25)))
         for i, (name, off, vol) in enumerate(s['sfx']):
             fx_n += 1  # trilhas 9..14 em rodízio global: efeitos vizinhos nunca dividem a mesma trilha
             sfx_tags.append(f'<audio id="fx{n:02d}{i}" class="clip" src="assets/sfx/{SFX[name]['file']}" data-start="{a + off:.2f}" data-duration="{min(SFX[name]['duration'], DUR - a - off):.2f}" data-track-index="{9 + fx_n % 6}" data-volume="{vol}"></audio>')
@@ -419,7 +540,8 @@ def render():
     cam.extend(f'tl.set(".cut",{{scale:{1.06 if i % 2 == 0 else 1}}},{t:.3f});' for i, t in enumerate(CUTS) if 0 < t < DUR)
     cam = cam if SPEAKER else []
     pcam_js = ''
-    world_js, world_kinds = world_track()
+    if ONER_REQ and not ONER: erro('esta skill é one-take: dê at=(x, y) às cenas (GUIDE.md "One-take"); sem isso a câmera não viaja pelo mundo')
+    world_js, world_kinds = oner_track() if ONER else world_track()
     AVISOS.extend(lint_world(world_kinds))
     # ordem de pintura dentro do #world (preserve-3d) é a profundidade: deep < mid < ccam (0) < near; o z-index dos hosts fica só como documentação
     depth = lambda name: f'position:absolute;inset:0;transform:translateZ({WORLD_Z[name]}px) scale({(WORLD_P - WORLD_Z[name]) / WORLD_P:.4f})'
@@ -450,6 +572,12 @@ def render():
     pcam_html = (f'<div id="pcam" style="z-index:1;position:absolute;inset:0;opacity:0;pointer-events:none"><video id="raw" class="clip" src="assets/raw.mp4" data-start="0" data-duration="{DUR}" data-track-index="0" muted playsinline data-backup data-layout-allow-occlusion></video></div>'
                  if SPEAKER or os.path.exists('assets/raw.mp4') else '')
     ccam_html = f'<div id="ccam" style="z-index:3">{cut_clips}</div>' if SPEAKER else ''
+    if ONER and SPEAKER:   # one-take: o recorte num invólucro que anda de bloco em bloco (oner_speaker)
+        ccam_html = f'<div id="spk" style="position:absolute;inset:0">{ccam_html}</div>'
+        cam.extend(oner_speaker())
+    GROUND_CSS = {'red': RED, 'amber': AMB, 'black': '#111', 'cream': CRM}.get(GROUND, CRM) if ONER else '#000'
+    whip_svg = ('<svg width="0" height="0" style="position:absolute"><filter id="wmb" x="-5%" y="-5%" width="110%" height="110%">'
+                '<feGaussianBlur id="wmbk" stdDeviation="0 0"/></filter></svg>') if ONER else ''
     open('index.html', 'w').write(f"""<!doctype html>
     <html lang="pt-BR" data-resolution="{'landscape' if W > H else 'portrait'}">
     <head>
@@ -459,12 +587,13 @@ def render():
     <style>
     * {{ margin:0; padding:0; box-sizing:border-box; }}
     html, body {{ width:{W}px; height:{H}px; overflow:hidden; background:#000; }}
-    #root {{ position:relative; width:100%; height:100%; background:#000; perspective:{WORLD_P}px; }}
+    #root {{ position:relative; width:100%; height:100%; background:{GROUND_CSS}; perspective:{WORLD_P}px; }}
     #world {{ position:absolute; inset:0; transform-style:preserve-3d; }}
     #pcam video {{ position:absolute; left:0; top:0; width:{W}px; height:{H}px; object-fit:cover; }}
     /* recorte em largura inteira (1920x1080): rosto (x={FACE_X}) no centro da tela, base no rodapé; escala a partir desse ponto */
     #ccam {{ position:absolute; left:{W // 2 - FACE_X}px; top:{H - 1080}px; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; }}
     #ccam video {{ position:absolute; inset:0; width:1920px; height:1080px; transform-origin:{FACE_X}px 1080px; {'filter:drop-shadow(26px 34px 28px rgba(0,0,0,.26));' if SPEAKER_SHADOW else ''} }}
+    {'#ccam { -webkit-mask-image:linear-gradient(180deg,#000 var(--fade,100%),transparent calc(var(--fade,100%) + 22%)); mask-image:linear-gradient(180deg,#000 var(--fade,100%),transparent calc(var(--fade,100%) + 22%)); }' if ONER else ''}
     /* painel do Speech Screen: fora do #world, a câmera de mundo não o move */
     #tcam {{ position:absolute; left:0; top:{PANEL_Y0}px; width:{W}px; height:{PANEL_H}px; overflow:hidden; opacity:0; }}
     #tcam video {{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }}
@@ -475,6 +604,7 @@ def render():
     </head>
     <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="{DUR}" data-width="{W}" data-height="{H}">
+      {whip_svg}
       <div id="world">
       <div id="deep" style="{depth('deep')}">{pcam_html}{raw_html}{react_html}</div>
       <div id="mid" style="{depth('mid')}">{(chr(10) + '  ').join(mid_hosts)}</div>
@@ -501,7 +631,7 @@ def render():
     </html>
     """)
     print(len(S), "cenas,", len(hosts), "hosts,", len(sfx_tags), "sons")
-    json.dump([dict(n=s['n'], a=s['a'], b=s['b'], bg=s['bg'], cam=s['cam'], cta=s['cta'], world=s['world'], signature=s['signature']) for s in S], open('scenes.json', 'w'), indent=1)
+    json.dump([dict(n=s['n'], a=s['a'], b=s['b'], bg=s['bg'], cam=s['cam'], cta=s['cta'], world=s['world'], signature=s['signature'], **({'at': ATS[i], 'spk': s.get('spk')} if ONER else {})) for i, s in enumerate(S)], open('scenes.json', 'w'), indent=1)
     # caixa do corpo do locutor por cena (≈840 px em volta do rosto, escala do enquadramento): o pace.py não conta o locutor mexendo
     def _mask(s):
         if not SPEAKER or not s['cam']: return []
@@ -510,7 +640,8 @@ def render():
         # shortcut: the raw speaker's box is a guess (head and shoulders of a cover-fit take); measure it from the cut-out mask if raw scenes get long
         if s['cam'] == 'raw': return [[round(W * .1), round(H * .1), round(W * .8), round(H * .45)]]
         k = max(FR[s['cam'][0]], FR[s['cam'][2]] if s['cam'][1] == 'push' else 0)
-        return [[round(W / 2 - 420 * k), round(H - 1080 * k), round(840 * k), round(1080 * k)]]
+        ox, oy = ((s.get('spk') or {}).get('x', 0), (s.get('spk') or {}).get('y', 0)) if ONER else (0, 0)
+        return [[round(W / 2 - 420 * k + ox), round(H - 1080 * k + oy), round(840 * k), round(1080 * k)]]
     json.dump([dict(t0=s['a'], ignore=_mask(s)) for s in S], open('motion_mask.json', 'w'))
     if MISSING: aviso('T() sem palavra na fala (a batida caiu em `after`): ' + '; '.join(MISSING))
     AVISOS.extend(lint_banco())

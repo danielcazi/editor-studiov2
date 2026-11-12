@@ -21,7 +21,9 @@ export const SKILL = join(ROOT, 'claude-reel-editor/skills/reel-editor');
 const S = join(SKILL, 'scripts');
 const K_DIR = join(SKILL, 'compose');
 export const WS = resolve(process.env.WORKSPACE ?? join(ROOT, 'workspace'));
-const brandDir = (b: string) => join(WS, 'brands', b);
+// brand "Nenhuma": a neutral, read-only brand shipped with the server; colours and type then come from the skill or the site
+export const NO_BRAND = 'nenhum';
+const brandDir = (b: string) => b === NO_BRAND ? join(ROOT, 'server/marca-nenhuma') : join(WS, 'brands', b);
 const projDir = (p: string) => join(WS, 'projects', p);
 
 export { FORMATS };
@@ -970,7 +972,11 @@ export async function ensureComposeIgnored(id: string) {
 // Speech Screen: the format says where the speaker is cut out (janelas.cut) and where he sits in a panel (panel.top, fraction of H)
 // how a shot is written in scenes.py: scene(..., cam=)
 const PLANO_CAM: Record<string, string> = { cut: "cam=('M'|'L'|'XL'|'XXL', modo, final), locutor recortado", panel: "cam='panel', vídeo cru no painel de baixo", 'panel-top': "cam='panel-top', vídeo cru em cima", raw: "cam='raw' com bg='clear', vídeo cru em tela cheia com os gráficos por cima", none: 'cam=None, só animação', react: "cam='react' com bg='clear', vídeo de referência ao lado do locutor cru" };
-const fmtOf = (st: State): any => { try { return getFormat(st.formatId || 'business-reels'); } catch { return {}; } };
+const fmtOf = (st: State): any => {
+  let f: any; try { f = getFormat(st.formatId || 'business-reels'); } catch { return {}; }
+  let skill: any = null; if (st.skillId) try { skill = getSkill(st.skillId); } catch {}
+  return skill ? resolveChoices({ format: f, skill }).format : f;   // the skill's shots: the RVM cut-out and the talk panel follow them
+};
 const cutWindowsOf = (st: State, dur: number) => cutWindows(fmtOf(st).janelas?.cut, dur);
 async function overLength(id: string, P: string, brand: any): Promise<string | null> {
   const max = Number(brand.max_seconds ?? 60), dur = await duration(id, join(P, 'master.mp4'));
@@ -1127,9 +1133,12 @@ function mainReferenceGuide(st: State): string {
   const r = readJSON(f);
   if (r.isSite) {
     return `\n# Site de referência (${st.referenceUrl}) - reproduza a identidade visual, cores e utilize as imagens do site disponíveis em assets/img/\n` +
-      'PRIORIDADE (vale sobre brand.md e sobre o formato): 1) a expectativa do usuário abaixo; 2) o site, que é a campanha atual: ' +
-      'paleta (siteColors), imagens e números do site vencem as cores do brand.md e qualquer regra "só texto" do formato; 3) o formato (ritmo e estrutura); ' +
-      '4) brand.md (tom e fonte). Conecte a fala ao site: quando a fala cita um produto, trilha, número ou prova, mostre a imagem ou o dado do site ' +
+      (st.skillId ? 'PRIORIDADE: a skill escolhida decide estrutura, câmera, composição e ritmo; o site não muda isso. Dentro da skill: 1) a expectativa do usuário abaixo; ' +
+        '2) o site, que é a campanha atual: paleta (siteColors), imagens, logo e números vencem as cores do brand.md; 3) brand.md (tom e fonte). Conecte'
+      : 'PRIORIDADE (vale sobre brand.md e sobre o formato): 1) a expectativa do usuário abaixo; 2) o site, que é a campanha atual: ' +
+        'paleta (siteColors), imagens e números do site vencem as cores do brand.md e qualquer regra "só texto" do formato; 3) o formato (ritmo e estrutura); ' +
+        '4) brand.md (tom e fonte). Conecte') +
+      ' a fala ao site: quando a fala cita um produto, trilha, número ou prova, mostre a imagem ou o dado do site ' +
       'correspondente. Se a fala e o site divergem num número, use o da fala e não invente outro.\n' +
       (r.siteColors ? `- paleta do site (use estes hex): ${JSON.stringify(r.siteColors)}\n` : '') +
       (r.downloadedImages?.length ? `- arquivos em assets/img/: ${r.downloadedImages.join(', ')}\n` : '') +
@@ -1225,7 +1234,8 @@ function formatGuide(st: State): string {
     z && `Keep graphics inside the safe zones (px): top ${z.top}, bottom ${z.bottom}, left ${z.left}, right ${z.right}`,
   ].filter(Boolean);
   return `# Format brief (chosen by the user, follow it)\n${lines.join('\n')}\n` +
-    (siteRef(st) ? 'A site reference is attached below: its palette, images and facts win over the brand colours and over any "text only" rule of this format; the brand keeps fonts and tone; the format decides which shots the speaker gets and when, the rhythm toggle decides the pace.\n\n'
+    (skill ? 'The chosen skill locks the speaker shots, the look and the rhythm and wins over the format; the user note, the site and the brand give only colours, images, facts and tone.\n\n'
+      : siteRef(st) ? 'A site reference is attached below: its palette, images and facts win over the brand colours and over any "text only" rule of this format; the brand keeps fonts and tone; the format decides which shots the speaker gets and when, the rhythm toggle decides the pace.\n\n'
       : 'The brand rules above always win on colours, fonts, icons, tone and caption look; the format decides layout, structure and rhythm.\n\n') +
     styleGuide(st) + referenceGuide(st) + userImageGuide(st);
 }
@@ -2164,6 +2174,7 @@ const brandFontFile = (st: State, brand: any) => {
 
 // "Save as default": this project's override becomes the brand's.
 export const saveBrandDefault = (id: string) => locked(id, 'brand:default', async st => {
+  if (st.brand === NO_BRAND) fail('a marca "Nenhuma" é fixa: escolha outra para salvar como padrão');
   const merged = deepMerge(getBrand(st.brand), st.override);
   checkBrand(merged);
   saveBrand(st.brand, merged);
@@ -2753,8 +2764,10 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   let skill: any = null;
   if (st.skillId) try { skill = getSkill(st.skillId); } catch { skill = null; }
   if (skill) style = null;
-  const ch = resolveChoices({ format: fmt, style, skill, pace: st.pace, site: !!siteRef(st) });
+  const ch = resolveChoices({ format: fmt, style, skill, pace: st.pace, site: !!siteRef(st), noBrand: st.brand === NO_BRAND });
   const fmtR: any = ch.format, pc = effectivePace(st), look: any = skill ? skillAsStyle(skill) : style;
+  // a one-take skill (no cut, the camera travels one space): its transitions say so
+  const oner = !noSpeaker && !!skill && /one-take|oner|plano-sequ[eê]ncia|sem corte|nunca corte|n[aã]o h[aá] corte/i.test(`${skill.format?.camera?.transitions ?? ''} ${skill.look?.guide ?? ''}`);
   // join times of the cut on the master clock: kit.py snaps the cutout to an alternating zoom there, so a jump cut reads as a change of shot
   const edl = existsSync(join(P, 'edl.json')) ? readJSON(join(P, 'edl.json')) : null, speed = edl?.speed ?? (edl ? (await pacing(id)).speed : 1);
   const cuts: number[] = []; let acc = 0;
@@ -2778,6 +2791,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     // from the motion style (set by hand in style.json): giantCase 'lower' and speakerShadow true for product styles like Insula Build
     ...(look?.giantCase ? { giantCase: look.giantCase } : {}),
     ...(look?.speakerShadow ? { speakerShadow: true } : {}),
+    ...(oner ? { oner: true } : {}),   // the skill is a one-take: kit.py requires scene(..., at=) (the camera travels one world)
     layoutCheck: join(ROOT, 'server/layout_check.mjs')
   });
   writeJSON(join(C, 'hyperframes.json'), { $schema: 'https://hyperframes.heygen.com/schema/hyperframes.json', registry: 'https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry',
@@ -2809,10 +2823,16 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const bancoSection = bancoBrief(banco, recentBancoHelpers(st, banco.helpers.map(h => h.id)));
   const imgDesc = imgFiles.length ? `img/ (${imgFiles.length} imagens da referência disponíveis: ${imgFiles.join(', ')}; olhe cada uma com Read antes de usar, e mostre com <img src="assets/img/..."> em back/front)` : 'img/ (vazio)';
 
-  const fmtBlock = `## Formato${skill?.format?.planos ? ' (travado pela skill)' : ` escolhido (${fmt.name})`}\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmtR.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmtR.regras ? `\nQuando: ${fmtR.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`;
+  const fmtBlock = `## Formato${skill ? ' (travado pela skill)' : ` escolhido (${fmt.name})`}\nDecide quais planos do locutor existem e quando entram. Planos permitidos (o kit reprova outro): ${(fmtR.planos ?? ['cut', 'panel', 'none']).map((p: string) => `${p} = ${PLANO_CAM[p] ?? p}`).join('; ')}.${fmtR.regras ? `\nQuando: ${fmtR.regras}` : ''}\nAplique dentro das regras do GUIDE.md; o que ele proíbe sobre imagens não vale quando há site.`;
   const rhythmBlock = `## Ritmo (${skill ? 'medido na skill' : st.pace ?? 'dinamico'})\nAlgo novo na tela a cada ~${pc.every} s; cenas de ${pc.scene[0]} a ${pc.scene[1]} s${noSpeaker ? '' : `; enquadramento do locutor muda a cada ${pc.framing[0]} a ${pc.framing[1]} s e o kit avisa locutor parado por mais de ${pc.hold} s`}. Os mesmos números estão em compose.json (pace). Isto vale no lugar de qualquer número de ritmo dos outros guias.`;
+  // the skill rules (first in the brief): structure and look are its; the user's note, the site and the brand give identity and content
+  const skillColors = { skill: 'Cores: as da skill (paleta travada abaixo), no lugar das da marca e de RED/RED2/AMB/BLK/CRM do compose.json.',
+    site: 'Cores, imagens, logo e números vêm do site de referência (seção da marca e site abaixo), aplicados nos papéis da paleta da skill (fundo, acento, cartão, tinta).',
+    brand: 'Cores e fontes vêm da marca (seção abaixo), aplicadas nos papéis da paleta da skill (fundo, acento, cartão, tinta).' }[ch.sources.colors as 'skill' | 'site' | 'brand'];
+  const skillBlock = skill ? `## Skill (${skill.name}): é ela que manda neste reel\nUm vídeo clonado, travado inteiro. A skill decide a estrutura e o visual: planos e escalas do locutor, câmera e transições, composição dos blocos, texturas, forma da tipografia, densidade e ritmo. Isso vence o formato, o DIRETOR.md, o GUIDE.md e qualquer regra de estilo do site ou do brand.md. ${skillColors} O que a observação do usuário pedir vale sobre a skill; onde marca, site e observação não dizem nada, siga a skill à risca.${oner ? '\n**One-take:** esta skill não corta, a câmera atravessa um mundo só. Use o modo one-take do kit (GUIDE.md "One-take"): toda cena com `at=(x, y)` num bloco do mundo, a câmera viaja de bloco em bloco por whip com desfoque, o locutor anda junto (pose por bloco com `cam` e `spk=`) e os blocos anteriores ficam no mundo para os pull-outs. Sem `at=` o kit reprova.' : ''}\n${fmtBlock}\n${rhythmBlock}\n${ch.sources.colors === 'skill' && look.palette?.length ? `Paleta travada (use estes hex): ${look.palette.map((c: any) => `${c.hex} = ${c.role}`).join(', ')}\n` : ''}${styleBrief(look, skillRefs(skill.id), skillMd(skill.id))}` : '';
   writeFileSync(join(C, 'brief.md'), [`# Briefing: ${st.name}`,
     `Formato ${targetAspect} (${targetW}×${targetH}), ${Math.round(duration * 100) / 100} s, 30 fps. Centro do rosto do locutor: x≈${faceX} de ${width} (já em compose.json).`,
+    skillBlock,
     other && existsSync(join(P, 'compose', 'scenes.py')) ? `## Adaptação do Formato Original\nA composição original do formato primário já foi pré-carregada em scenes.py. Adapte enquadramentos de câmera (FR), tamanhos de fontes, margens, zonas de segurança e posições/tamanhos de texto e elementos para a resolução ${targetW}×${targetH} (${targetAspect}).` : '',
     st.referenceUrl || st.referenceNote ? `## Referência de estilo\n${st.referenceUrl ?? ''}\n${st.referenceNote ?? ''}\nOs quadros da referência (se houver) estão em ../ref/.` : '',
     noSpeaker ? `## Referência visual: site da marca\nSem locutor na tela. Leia ref_site/site.md e olhe as imagens de ref_site/ (Read). Paleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site.`
@@ -2820,7 +2840,6 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
       : `## Marca (${st.brand})\nPaleta mapeada em compose.json (RED, RED2, AMB, BLK, CRM; ajuste se o brand.md pedir outra).\n\n${brandMd}`,
     !noSpeaker && fmtR.janelas?.cut ? (() => { const w = cutWindows(fmtR.janelas.cut, duration) ?? [], top = Math.round(targetH * (fmtR.panel?.top ?? 0.42)); return `## Locutor: Speech Screen\nO recorte do locutor (cut.webm) só existe nas janelas ${w.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} (fora delas o alfa é vazio). Cena dentro de uma janela: câmera normal (M/L/XL/XXL) com texto gigante atrás; a CTA (cta=True) fica na última janela. Toda outra cena usa \`cam='panel'\`: o vídeo bruto do locutor (assets/talk.mp4) ocupa o painel de baixo (de y=${top} até o rodapé, sem recorte) e TODA a animação (3D, ilustrações, tipografia, imagens do site) fica na área de cima, acima de y=${top}; ou \`cam=None\` para tela cheia sem locutor. O kit reprova recorte fora das janelas.`; })() : '',
     !noSpeaker ? `## Liberdade e limites\nSem cotas: quantas imagens, movimentos de câmera e tipografias cada cena tem é decisão sua pelo que a fala pede; uma cena limpa com a peça certa vale mais que três genéricas. O que não se negocia: fluidez (toda entrada com ease-out e saída com ease-in, algo sempre em movimento lento, passagens desenhadas entre cenas); texto inteiro dentro da zona segura (topo ${safeZones.top}, base ${safeZones.bottom}, laterais ${safeZones.left} px); nada sobre o rosto ou o queixo do locutor; o locutor reenquadrado com o rosto em faceX (centro do quadro) em toda troca de enquadramento, e enquadramento trocando com a fala (M, L, XL, XXL). Fundo das cenas: NUNCA o vídeo do locutor desfocado ou replicado (bg='plate' é erro no kit); use cor sólida ou gradiente da marca, imagem da biblioteca ou do site.` : '',
-    skill ? `## Skill (${skill.name})\nUm vídeo clonado, travado inteiro: formato, visual e ritmo vêm dela e substituem as três escolhas do projeto. Siga à risca${ch.sources.colors === 'skill' ? '; as cores desta skill (paleta abaixo) valem no lugar da marca' : '; cores e fontes continuam da marca (ou do site de referência)'}.\n${fmtBlock}\n${rhythmBlock}\n${ch.sources.colors === 'skill' && look.palette?.length ? `Paleta travada (use estes hex no lugar dos da marca): ${look.palette.map((c: any) => `${c.hex} = ${c.role}`).join(', ')}\n` : ''}${styleBrief(look, skillRefs(skill.id), skillMd(skill.id))}` : '',
     skill ? '' : fmtBlock,
     skill ? '' : rhythmBlock,
     style ? `## Estilo escolhido (${style.name})\nSiga-o: tipografia, câmera, beats, sons e receitas vêm dele; o formato decide o layout e a marca decide cores e fontes.\n${styleBrief(style, styleRefs(style.id))}` : '',

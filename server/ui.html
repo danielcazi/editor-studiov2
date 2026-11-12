@@ -6141,7 +6141,7 @@ async function projects() {
     let videoProbes = {};
     let subtitlePath = draft?.subtitlePath || '';
     let imagePaths = draft?.imagePaths || [];
-    let selectedBrand = (draft?.brand && bl.includes(draft.brand)) ? draft.brand : (bl && bl.length) ? bl[0] : 'Insula';
+    let selectedBrand = (draft?.brand && (bl.includes(draft.brand) || draft.brand === 'nenhum')) ? draft.brand : (bl && bl.length) ? bl[0] : 'Insula';
     let selectedPre = draft?.selectedPre || '1';
     let multiMode = draft?.multiMode || 'concat';
     const recentOptions = [...overviewList].sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0)).slice(0, 15).map(p => `<option value="${esc(p.id)}">${esc(p.name || p.id)}${p.brand ? ` · ${esc(p.brand)}` : ''}</option>`).join('');
@@ -6328,6 +6328,11 @@ async function projects() {
                   <div class="np-tile-name">${esc(b)}</div>
                   <div class="np-tile-sub">${cols.map(c => `<i class="np-sw" style="background:${esc(c)}"></i>`).join('')} ${esc(d.fonts?.head?.family || '')}${chars ? ` · ${chars} personagem${chars > 1 ? 's' : ''}` : ''}</div>
                 </button>`; }).join('')}
+                <button type="button" class="np-tile ${selectedBrand === 'nenhum' ? 'active' : ''}" data-brand="nenhum" title="Sem marca: cores e fontes vêm da skill (ou do site de referência)">
+                  <div class="np-thumb" style="background:transparent;border:1px dashed var(--line, #444);color:var(--muted, #888)">∅</div>
+                  <div class="np-tile-name">Nenhuma</div>
+                  <div class="np-tile-sub">segue a skill</div>
+                </button>
                 <a href="#/brands" class="np-tile np-tile-add" title="Gerenciar Brandkits">⚙️ Gerenciar brandkits</a>
               </div>
             </div>
@@ -6572,7 +6577,7 @@ async function projects() {
         const vidCountText = videoPaths.length === 1 ? '1 vídeo selecionado' : `${videoPaths.length} vídeos (${multiMode === 'batch' ? 'em lote' : 'sequenciais'})`;
         const subText = subtitlePath ? ' · com legenda' : '';
         const styleId = $('#npSkillSelect')?.value || $('#npMotionStyleSelect')?.value, pace = $('#npSkillSelect')?.value ? '' : $('#npPaceSelect')?.value;
-        statusSub.textContent = `${vidCountText} · ${selectedBrand} · ${fmtLabel}${styleId ? ' · ' + styleId : ''}${pace && pace !== 'dinamico' ? ' · ' + pace : ''}${composerTag}${subText}${recalled ? ` · como "${recalled}"` : ''}`;
+        statusSub.textContent = `${vidCountText} · ${selectedBrand === 'nenhum' ? 'sem marca' : selectedBrand} · ${fmtLabel}${styleId ? ' · ' + styleId : ''}${pace && pace !== 'dinamico' ? ' · ' + pace : ''}${composerTag}${subText}${recalled ? ` · como "${recalled}"` : ''}`;
         btnCreate.style.opacity = '1';
       }
     };
@@ -6649,7 +6654,7 @@ async function projects() {
           renderFilesList();
           probeAllVideos();
         }
-        if (p.brand && bl.includes(p.brand)) $('#npBrandBar').querySelector(`[data-brand="${CSS.escape(p.brand)}"]`)?.click();
+        if (p.brand && (bl.includes(p.brand) || p.brand === 'nenhum')) $('#npBrandBar').querySelector(`[data-brand="${CSS.escape(p.brand)}"]`)?.click();
         if (p.formatId) $('#npFormatGrid').querySelector(`[data-format="${CSS.escape(p.formatId)}"]`)?.click();
         $('#npStyleGrid').querySelector(`[data-style="${CSS.escape(p.styleId || '')}"]`)?.click();
         $('#npPaceBar').querySelector(`[data-pace="${CSS.escape(p.pace || 'dinamico')}"]`)?.click();
@@ -8050,7 +8055,7 @@ async function brandWizard(id, body, k = 0) {
   const okText = k < 3 ? 'OK' : (hasCards ? 'OK, salvar e ir para a Revisão ➔' : 'OK, gerar o vídeo e revisar ➔');
 
   body.innerHTML = `<div class="box"><h3>Etapa 3: brand (${k + 1}/4) — ${stepTitle}</h3>
-    <p>Brand <select id="bsel">${bl.map(b => `<option ${b === st.brand ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
+    <p>Brand <select id="bsel">${bl.map(b => `<option ${b === st.brand ? 'selected' : ''}>${esc(b)}</option>`).join('')}<option value="nenhum" ${st.brand === 'nenhum' ? 'selected' : ''}>Nenhuma</option></select>
       <span class="muted">trocar descarta as mudanças deste projeto</span></p>
     <div class="row"><div style="flex:1" id="wf">${key === 'icons' || key === 'fonts' ? '' : fields(form) + (key === 'captions' ? `<div id="animbox">${animFields(effAnim(merged))}</div>` : '')}</div>
       <div style="flex:1">${key !== 'icons' ? `<div id="cp">${capPreview(merged, st.brand)}</div>` : ''}<div id="wff"></div></div></div>

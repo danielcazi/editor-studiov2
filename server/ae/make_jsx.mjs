@@ -223,7 +223,7 @@ const INPAGE = () => {
   // pose do #world no quadro atual (GSAP guarda os valores; o style inline já está em repouso)
   const pose = () => {
     const g = (k) => window.gsap ? +(+window.gsap.getProperty(world, k)).toFixed(3) : 0;
-    return { x: g('x'), y: g('y'), s: window.gsap ? +(+window.gsap.getProperty(world, 'scale')).toFixed(4) : 1, rx: g('rotationX'), ry: g('rotationY'), rz: g('rotation') };
+    return { x: g('x'), y: g('y'), z: g('z'), s: window.gsap ? +(+window.gsap.getProperty(world, 'scale')).toFixed(4) : 1, rx: g('rotationX'), ry: g('rotationY'), rz: g('rotation') };
   };
 
   // ---- Texto desenhado em canvas (ilustrações do compose): cada fillText de um canvas do documento é candidato a texto nativo ----
@@ -544,7 +544,7 @@ const mundo = await page.evaluate(() => window.__AE.mundo());
 if (mundo) {
   const keys = [];
   for (let f = 0; f < Math.round(DUR * FPS); f += STEP) { await seek(f / FPS); keys.push({ t: r3(f / FPS), ...(await page.evaluate(() => window.__AE.pose())) }); }
-  const same = (x, y) => x && y && ['x', 'y', 's', 'rx', 'ry', 'rz'].every((k) => x[k] === y[k]);
+  const same = (x, y) => x && y && ['x', 'y', 'z', 's', 'rx', 'ry', 'rz'].every((k) => x[k] === y[k]);
   mundo.keys = keys.filter((k, j) => !(same(k, keys[j - 1]) && same(k, keys[j + 1])));
   console.log(`mundo: ${mundo.depths.length} profundidade(s), ${mundo.keys.length} chave(s) de câmera`);
 }

@@ -96,11 +96,15 @@ export const PACE: Record<Pace, { every: number; scene: [number, number]; framin
 
 // Who answers each question (SPEC-v9 §1). A skill locks format, look and rhythm; without one, format + style + rhythm toggle are independent
 // (a style's paceHint is only the starting value of the toggle). Colours: site reference > the skill's locked hex > brand.
-export function resolveChoices(i: { format: any; style?: any; skill?: any; pace?: Pace; site?: boolean }) {
-  const { format, style, skill, pace, site } = i;
+export function resolveChoices(i: { format: any; style?: any; skill?: any; pace?: Pace; site?: boolean; noBrand?: boolean }) {
+  const { format, style, skill, pace, site, noBrand } = i;
+  // a skill locks the speaker shots even when it does not list them: the chosen format keeps only size and safe zones, the
+  // speaker is cut out the whole reel (no Speech Screen windows, no panel) and the skill's framing says when
   if (skill) return {
-    format: { ...format, ...skill.format }, look: skill.look ?? null, rhythm: skill.rhythm ?? null,
-    sources: { format: 'skill', look: 'skill', rhythm: 'skill', colors: site ? 'site' : skill.colorsLocked ? 'skill' : 'brand' },
+    format: { ...format, janelas: null, panel: undefined, regras: skill.format?.camera?.framing ?? '', ...(skill.format?.planos ? {} : { planos: ['cut', 'none'] }), ...skill.format },
+    look: skill.look ?? null, rhythm: skill.rhythm ?? null,
+    // colours: the site, then the chosen brand; with brand "Nenhuma" (or a skill that locks them) the skill's palette
+    sources: { format: 'skill', look: 'skill', rhythm: 'skill', colors: site ? 'site' : skill.colorsLocked || noBrand ? 'skill' : 'brand' },
   };
   const hint: Pace | undefined = style?.paceHint && style.paceHint in PACE ? style.paceHint : undefined;
   return {

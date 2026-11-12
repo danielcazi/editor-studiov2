@@ -107,7 +107,7 @@ function mundo(comp, Wd) {
   var tr = WN.property('ADBE Transform Group'); tr.property('ADBE Anchor Point').setValue([W / 2, H / 2, 0]);
   var ts = [], ps = [], ss = [], rx = [], ry = [], rz = [];
   // CSS gira com z para o espectador, o After com z para o fundo: X e Y trocam de sinal
-  for (var k = 0; k < Wd.keys.length; k++) { var K = Wd.keys[k]; ts.push(K.t); ps.push([W / 2 + K.x, H / 2 + K.y, 0]); ss.push([K.s * 100, K.s * 100, K.s * 100]); rx.push(-K.rx); ry.push(-K.ry); rz.push(K.rz); }
+  for (var k = 0; k < Wd.keys.length; k++) { var K = Wd.keys[k]; ts.push(K.t); ps.push([W / 2 + K.x, H / 2 + K.y, -(K.z || 0)]);   /* z do one-take (kit.oner_pose): no CSS z cresce para a câmera, no After se afasta */ ss.push([K.s * 100, K.s * 100, K.s * 100]); rx.push(-K.rx); ry.push(-K.ry); rz.push(K.rz); }
   setKeys(tr.property('ADBE Position'), ts, ps); setKeys(tr.property('ADBE Scale'), ts, ss);
   setKeys(tr.property('ADBE Rotate X'), ts, rx); setKeys(tr.property('ADBE Rotate Y'), ts, ry); setKeys(tr.property('ADBE Rotate Z'), ts, rz);
   DN['@world'] = WN;

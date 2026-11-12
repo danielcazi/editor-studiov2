@@ -221,6 +221,8 @@ createServer(async (req, res) => {
     if (req.method === 'GET' && cp) return file(P.poseFile(decodeURIComponent(cp[1]), decodeURIComponent(cp[2]), decodeURIComponent(cp[3])), req, res);
     const ev = path.match(/^\/projects\/([^/]+)\/events$/);
     if (req.method === 'GET' && ev) return events(decodeURIComponent(ev[1]), res);
+    // brand "Nenhuma" ships with the server: read-only
+    if (req.method !== 'GET' && path.startsWith(`/brands/${P.NO_BRAND}`)) throw new P.UserError('a marca "Nenhuma" é fixa: escolha ou crie outra para editar');
     for (const [method, re, fn] of routes) {
       const m = path.match(re);
       if (m && req.method === method) {

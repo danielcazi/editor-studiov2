@@ -125,3 +125,33 @@ assert 'tl.fromTo("#b01-ft"' in js and '},3.70);' in js, js
 assert 'footage' in kit.KIT_HELPERS
 kit.music('assets/music/lib9-music-upbeat.mp3', vol=.2)
 assert kit.MUSIC == ('assets/music/lib9-music-upbeat.mp3', .2, 1.2)
+# one-take (scene(..., at=)): o #world põe o centro do bloco no centro do quadro com escala, roll e perspectiva da pose
+I = dict(x=0, y=0, scale=1, rx=0, ry=0, rz=0)
+assert kit.oner_pose(I, (1200, 0)).startswith('x:-1200.00,y:0.00,z:0.00,scale:1.000'), kit.oner_pose(I, (1200, 0))
+assert kit.oner_pose(dict(I, scale=.5, x=40), (1000, 400)).startswith('x:-460.00,y:-200.00,z:0.00,scale:0.500')   # pull-out: a deriva soma ao centro
+assert re.match(r'x:-?0\.00,y:-100\.00', kit.oner_pose(dict(I, rz=90), (100, 0))), kit.oner_pose(dict(I, rz=90), (100, 0))
+vx, vy, vz = kit._rot(0, 8, 0, (1000, 0, 0))   # orbit num bloco longe: z devolve o bloco ao plano (o locutor não cresce na perspectiva)
+assert abs(vz) > 100 and kit.oner_pose(dict(I, ry=8), (1000, 0)).startswith(f'x:{-vx:.2f},y:0.00,z:{-vz:.2f},'), kit.oner_pose(dict(I, ry=8), (1000, 0))
+kit.S.clear(); kit.ERROS.clear(); kit.AVISOS.clear(); kit.MUSIC = None
+L = lambda p, d: (kit.giant(p, ['A'], 30, 10, kit.BLK), '')
+kit.scene(1, 0, 2, 'cream', ('L', 'hold', 'L'), back=L, at=(0, 0))
+kit.scene(2, 2, 4, 'cream', ('M', 'hold', 'M'), back=L, at=(1200, 0), spk=dict(y=-300, blur=8), world=dict(scale=.6))
+kit.scene(3, 4, 6, 'red', ('XL', 'hold', 'XL'), back=L)                    # mesmo bloco, outra batida
+kit.scene(4, 6, 10, 'cream', ('L', 'hold', 'L'), back=L, at=(0, 0))        # volta ao começo: o loop
+kit.render()
+html = open("index.html").read(); sc = json.load(open("scenes.json"))
+km = kit.DEPTH_K('mid')
+assert f'left:{1200 / km:.1f}px;top:0.0px' in html, 'host no bloco, compensado pela profundidade da camada'
+assert 'id="b01" data-composition-id="b01" data-composition-src="compositions/b01.html" data-start="0" data-duration="6"' in html, 'o bloco 1 fica no mundo até a câmera voltar a ele'
+assert 'tl.to("#world",{x:-1200.00,y:0.00,z:0.00,scale:1.000' in html and 'duration:0.320,ease:"power3.inOut"},1.840);' in html, 'whip centrado no começo da cena 2'
+assert 'tl.set("#root",{filter:"url(#wmb)"},1.840);' in html and 'stdDeviation:"36.0 0.0"' in html and 'tl.set("#root",{filter:"none"},2.160);' in html, 'desfoque horizontal só no whip'
+assert 'tl.set("#spk",{x:1200.0,y:-300.0},2.000);' in html and 'filter:"blur(8px)","--fade":"72%"' in html, 'o locutor troca de bloco no pico do whip, erguido e desfocado'
+assert 'tl.to("#world",{x:-720.00,y:0.00,z:0.00,scale:0.600' in html, 'pull-out da cena 2 em volta do bloco'
+assert 'class="bgfill"' not in open("compositions/b01.html").read() and 'inset:0' in open("compositions/b03.html").read(), 'chão no #root; cena de outro fundo pinta só o bloco'
+assert f'background:{kit.CRM}; perspective' in html and 'id="spk"' in html and 'id="wmb"' in html
+assert [s['at'] for s in sc] == [[0, 0], [1200, 0], [1200, 0], [0, 0]], sc
+kit.S.clear(); kit.ONER_REQ = True; kit.scene(1, 0, 10, 'cream', ('L', 'hold', 'L'))
+try: kit.render(); raise SystemExit('skill one-take sem at= passou')
+except AssertionError as e: assert 'one-take' in str(e), e
+kit.ONER_REQ = False; kit.S.clear(); kit.ERROS.clear()
+print("one-take: ok")

@@ -61,10 +61,19 @@ test('resolveChoices: a skill locks format, look and rhythm; without one the thr
   const format = { id: 'recorte', planos: ['cut', 'none'], regras: 'r' }, style = { id: 'diorama', paceHint: 'lento' };
   const skill = { format: { planos: ['none'] }, look: { guide: 'g' }, rhythm: { pace: 1.3 }, colorsLocked: true };
   const s = resolveChoices({ format, style, skill, pace: 'dinamico' });
-  assert.deepEqual(s.format.planos, ['none']); assert.equal(s.format.regras, 'r');   // the skill's format over the chosen one
+  assert.deepEqual(s.format.planos, ['none']); assert.equal(s.format.regras, '');   // the skill's format over the chosen one, the format's rules dropped
   assert.deepEqual(s.rhythm, { pace: 1.3 }); assert.equal(s.look.guide, 'g');
   assert.deepEqual(s.sources, { format: 'skill', look: 'skill', rhythm: 'skill', colors: 'skill' });
   assert.equal(resolveChoices({ format, skill, site: true }).sources.colors, 'site');   // the site wins over the locked hex
+  // a skill without shots still locks them: Speech Screen windows and panel gone, cut-out the whole reel, its framing as the rule
+  const speech = { id: 'business-reels', planos: ['cut', 'panel-top', 'none'], janelas: { cut: [[0, 5]] }, panel: { side: 'top', top: 0.5 }, regras: 'r', safeZones: { top: 200 } };
+  const loose = { format: { camera: { framing: 'sempre recortado' } }, look: {}, rhythm: {}, colorsLocked: false };
+  const l = resolveChoices({ format: speech, skill: loose });
+  assert.deepEqual(l.format.planos, ['cut', 'none']); assert.equal(l.format.janelas, null); assert.equal(l.format.panel, undefined);
+  assert.equal(l.format.regras, 'sempre recortado'); assert.deepEqual(l.format.safeZones, { top: 200 });
+  assert.equal(l.sources.colors, 'brand');   // a brand was chosen: its colours
+  assert.equal(resolveChoices({ format: speech, skill: loose, noBrand: true }).sources.colors, 'skill');   // brand "Nenhuma": the skill's palette
+  assert.equal(resolveChoices({ format: speech, skill: loose, noBrand: true, site: true }).sources.colors, 'site');
   const n = resolveChoices({ format });
   assert.deepEqual(n.rhythm, PACE.dinamico); assert.equal(n.look, null); assert.deepEqual(n.sources, { format: 'format', look: 'none', rhythm: 'default', colors: 'brand' });
   assert.deepEqual(resolveChoices({ format, style }).rhythm, PACE.lento);   // paceHint is only the starting value
