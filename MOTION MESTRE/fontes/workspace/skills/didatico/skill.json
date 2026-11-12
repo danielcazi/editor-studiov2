@@ -1,0 +1,289 @@
+{
+  "id": "didatico",
+  "name": "Didático Caderno de Colagem",
+  "description": "Estilo explicativo quase sem locutor: o vídeo vira uma prancha de papel cinza onde a explicação é montada em colagem — gravuras antigas coladas com fita, etiquetas amarelas digitadas, diagramas com conectores e números, títulos condensados com risco vermelho — sincronizado com uma legenda que aparece palavra por palavra.",
+  "format": {
+    "camera": {
+      "framing": "Locutor só aparece na abertura (0–6 s), em plano M de webcam no terço superior, sem punch-in nem snap; depois o vídeo é 100% papel. Cada arranjo fica em hold por ≈5–8 s com push lento contínuo no grupo gráfico; nenhum shake.",
+      "transitions": "Zero cortes secos em 60 s (1 corte a cada 60 s). Troca de ideia = elementos saem em fade/escala curta e o próximo arranjo é montado peça por peça sobre o mesmo papel fixo. Abertura: folha de papel sobe e cobre o locutor (wipe vertical). Elementos continuam entre beats quando o assunto continua (gravura que recebe novos rótulos)."
+    }
+  },
+  "look": {
+    "guide": "FUNDO: papel #E4E3DF em tela cheia com grade de pontos (Ø2px, espaçamento ≈36px em 1080, cor #B9B8B3 a 50%) e vinheta radial escura nos cantos (≈18%). O papel nunca se move nem é cortado. LOCUTOR: só nos primeiros 4–6 s, no terço superior (0–45%), com a folha embaixo de borda rasgada branca e duas fitas crepe; depois a folha sobe e cobre tudo. TIPOGRAFIA: (1) legenda sans grotesca regular ≈36px (1080), #2B2B2B, máx. 3 linhas, centralizada ou alinhada à esquerda em x≈140, em y≈62–72%; palavra por palavra com blur 6→0; destaques em grotesca Black (preto), Black itálico vermelho #D7262B para emoção, ou marca-texto amarelo pintado da esquerda para a direita — no máximo 2 destaques por frase. (2) títulos/tese e cabeçalhos de etapa em condensada Heavy CAIXA ALTA (Anton/Bebas), preta, 70–130px, entrelinha 0.95, linhas de tamanhos diferentes; negação = risco vermelho de 8px desenhado por cima. (3) etiquetas em mono de máquina de escrever 28–30px sobre amarelo #F2D21B (padding 8×16), chip preto com texto branco para resultados ('= ...'), chip branco para rótulos secundários; selos circulares amarelos ou pretos de Ø160–260px. GRÁFICOS: gravuras de domínio público P&B (anatomia, animais, objetos) — em polaroid com borda branca 12–16px, cantos 8px, sombra, rotação -4° a 3°, fita crepe 1–2 peças; ou recortadas sem moldura quando são o assunto central. Ilustrações coloridas recortadas (frutas, objetos) só como acento. Conectores: linha 3px preta em L ou diagonal, com alvo (anel+ponto) e ponto cheio nas pontas. Diagramas: etapas numeradas 'N · PALAVRA', multiplicadores grandes, objeto simples 3D estilizado. Glow vermelho radial para indicar 'atividade' numa região. DENSIDADE: um elemento entra por vez, sincronizado à palavra falada (≈1 entrada a cada 0.6–1.5 s); arranjo final de no máximo 5–6 peças ocupando y 10–60%; cada ideia fica 5–8 s. ENTRADAS: pop com back.out e leve rotação para cartões; draw para linhas e riscos; wipe/digitação para etiquetas; placeholder fantasma (opacidade .35, blur) que 'acende' quando a etapa é citada. SAÍDAS: fade 0.25–0.3s com escala 0.96, próximo arranjo nasce no mesmo papel. Durante holds, push lento do grupo gráfico até 1.1. SOM: pequenos e secos (pop, click-soft, land, key-press), um por entrada de peça.",
+    "motif": "Colagem de caderno científico: papel cinza pontilhado com vinheta, gravuras/fotos de domínio público em polaroids presas com fita crepe, etiquetas amarelas em máquina de escrever ligadas por linhas-guia finas, e legenda palavra a palavra com destaques em Black, vermelho itálico ou marca-texto amarelo — uma peça entrando por vez.",
+    "palette": [
+      {
+        "hex": "#E4E3DF",
+        "role": "background: papel cinza-claro quente"
+      },
+      {
+        "hex": "#B9B8B3",
+        "role": "vinheta escura nos cantos e grade de pontos"
+      },
+      {
+        "hex": "#DCD6C8",
+        "role": "papel da abertura (tom bege) sobre o locutor"
+      },
+      {
+        "hex": "#161616",
+        "role": "ink: títulos condensados, palavras-chave Black, linhas-guia, chip preto"
+      },
+      {
+        "hex": "#2B2B2B",
+        "role": "ink: legenda regular"
+      },
+      {
+        "hex": "#F2D21B",
+        "role": "accent: etiquetas, marca-texto, selo circular"
+      },
+      {
+        "hex": "#D7262B",
+        "role": "accent: risco de negação, palavra-chave em itálico, botão, glow"
+      },
+      {
+        "hex": "#CFC6AE",
+        "role": "fita crepe translúcida (opacidade ≈0.8)"
+      },
+      {
+        "hex": "#FFFFFF",
+        "role": "moldura das polaroids, chip branco, borda rasgada"
+      },
+      {
+        "hex": "#E0262E",
+        "role": "glow radial vermelho sobre gravuras"
+      }
+    ],
+    "camera": {
+      "world": [
+        {
+          "kind": "push",
+          "when": "hold de ilustração/cartão central (Ken Burns lento enquanto a fala explica a imagem)",
+          "amount": 1.1
+        },
+        {
+          "kind": "push",
+          "when": "cartão de citação em hold, push quase imperceptível",
+          "amount": 1.02
+        }
+      ],
+      "depth": "Camadas: papel (fixo, nunca se mexe) > vinheta > colagem (polaroids/gravuras com sombra 0 6px 14px rgba(0,0,0,.25), dando relevo de papel colado) > fitas e etiquetas por cima > legenda. Sem parallax real, só o push do grupo gráfico. Sem desfoque de profundidade; o blur existe apenas no texto entrando e em placeholders 'fantasma'. Ponto focal: terço superior/central (y 15–60%) para o gráfico, legenda em y≈65–72%.",
+      "signature": "Gravura anatômica P&B centralizada em push lento, com etiqueta amarela em máquina de escrever sendo digitada no alto, linha-guia desenhada até o ponto e um glow vermelho acendendo dentro da ilustração."
+    },
+    "motionRecipes": [
+      {
+        "name": "Polaroid colada",
+        "use": "entrada de cartão com gravura/foto + fitas",
+        "gsap": "const tl=gsap.timeline();tl.fromTo(SEL,{scale:1.08,rotation:4,opacity:0,y:-20},{scale:1,rotation:-2,opacity:1,y:0,duration:0.45,ease:'back.out(1.4)'}).fromTo(SEL+' .tape',{scaleX:0,opacity:0},{scaleX:1,opacity:0.85,duration:0.2,ease:'power2.out',stagger:0.08},'-=0.1').to(SEL,{scale:1.03,duration:6,ease:'none'});"
+      },
+      {
+        "name": "Palavra blur-in da legenda",
+        "use": "legenda palavra por palavra sincronizada à fala",
+        "gsap": "gsap.fromTo(SEL+' .word',{opacity:0,filter:'blur(6px)',y:6},{opacity:1,filter:'blur(0px)',y:0,duration:0.25,ease:'power2.out',stagger:{each:0.22}});"
+      },
+      {
+        "name": "Etiqueta datilografada com linha-guia",
+        "use": "rótulo amarelo mono apontando um ponto da gravura",
+        "gsap": "const tl=gsap.timeline();tl.fromTo(SEL+' .leader',{strokeDashoffset:300},{strokeDashoffset:0,duration:0.4,ease:'power2.inOut'}).fromTo(SEL+' .tag',{clipPath:'inset(0 100% 0 0)'},{clipPath:'inset(0 0% 0 0)',duration:0.5,ease:'steps(12)'});"
+      },
+      {
+        "name": "Risco de negação + marca-texto",
+        "use": "riscar palavra do título e pintar destaque amarelo",
+        "gsap": "gsap.fromTo(SEL+' .strike',{scaleX:0,transformOrigin:'0% 50%'},{scaleX:1,duration:0.4,ease:'power2.inOut'});gsap.fromTo(SEL+' .marker',{scaleX:0,transformOrigin:'0% 50%'},{scaleX:1,duration:0.3,ease:'power3.out',delay:0.2});"
+      },
+      {
+        "name": "Etapa fantasma que acende",
+        "use": "diagramas em etapas: próximo passo visível apagado até ser citado",
+        "gsap": "gsap.set(SEL,{opacity:0.35,filter:'blur(2px) grayscale(1)',scale:0.96});gsap.to(SEL,{opacity:1,filter:'blur(0px) grayscale(0)',scale:1,duration:0.35,ease:'power3.out'});"
+      },
+      {
+        "name": "Glow de atividade",
+        "use": "mancha vermelha que acende e pulsa numa região da ilustração",
+        "gsap": "gsap.timeline().fromTo(SEL,{opacity:0,scale:0.6},{opacity:0.65,scale:1,duration:0.6,ease:'power2.out'}).to(SEL,{opacity:0.4,duration:0.8,ease:'sine.inOut',yoyo:true,repeat:-1});"
+      }
+    ],
+    "sfxRules": [
+      {
+        "when": "polaroid/cartão colado com fita",
+        "sfx": "land",
+        "level": "subtle"
+      },
+      {
+        "when": "selo circular, ilustração recortada ou etapa que acende",
+        "sfx": "pop",
+        "level": "subtle"
+      },
+      {
+        "when": "etiqueta amarela digitada letra a letra",
+        "sfx": "typing",
+        "level": "subtle"
+      },
+      {
+        "when": "etiqueta/chip que entra em wipe ou palavra-chave em destaque",
+        "sfx": "click-soft",
+        "level": "subtle"
+      },
+      {
+        "when": "risco vermelho, linha-guia ou marca-texto sendo desenhado",
+        "sfx": "swish",
+        "level": "subtle"
+      },
+      {
+        "when": "título-tese em condensada caixa alta",
+        "sfx": "impact-bass-1",
+        "level": "subtle"
+      },
+      {
+        "when": "glow vermelho acendendo na gravura",
+        "sfx": "swell",
+        "level": "subtle"
+      },
+      {
+        "when": "folha de papel sobe e cobre o locutor",
+        "sfx": "whoosh-short",
+        "level": "normal"
+      }
+    ]
+  },
+  "rhythm": {
+    "pace": 6,
+    "beats": [
+      {
+        "from": 0,
+        "to": 6,
+        "composition": "Abertura em split vertical: locutor (webcam, plano M, fundo parede cinza-azulado) ocupa o terço superior (0–45% da altura); folha de papel pontilhado com borda superior rasgada (branco irregular, 8–12px) cobre de y≈45% até a base, presa por duas fitas crepe bege translúcidas nos cantos (≈110×35px, levemente inclinadas). Câmera do locutor é a própria webcam: leve movimento natural da pessoa, sem move de câmera.",
+        "elements": "Gravura P&B de domínio público (animal) em cartão tipo polaroid pequeno (≈190×160px em 540 de largura) com borda branca 6px, cantos arredondados 4px, sombra suave, fita crepe na base, colado logo abaixo do rasgo à esquerda (x≈75, y≈435). Grade de pontos cinza no papel.",
+        "typography": "Legenda sans grotesca regular (tipo Inter/Helvetica Now) ≈18px em 540 (≈36px em 1080), cinza-grafite #2B2B2B, alinhada à esquerda em x≈70, y≈650 (≈68% da altura). Palavra-chave em grotesca Black/Heavy expandida preta. Revela palavra por palavra: cada palavra entra com blur 6px→0 e opacidade 0→1.",
+        "motion": "Cartão da gravura entra com pop de escala 0.85→1 + leve rotação -3°→0 em ≈0.35s (back.out). Palavras surgem em sincronia com a fala, blur-in de ≈0.25s. Papel e rasgo fixos.",
+        "transitionOut": "A folha sobe e cobre o locutor por completo (wipe vertical do papel, ≈0.5s power3.inOut); a partir daí o papel é o palco inteiro.",
+        "sfx": "Batidas medidas em 0.28 (primeira palavra/entrada do papel), 0.76 (cartão colado), 2.22/2.62/2.92 (palavras-chave da legenda) e 5.00 (palavra em negrito): pop suave no cartão, click-soft nas palavras-chave."
+      },
+      {
+        "from": 6,
+        "to": 12,
+        "composition": "Papel em tela cheia (fundo cinza-papel com vinheta escura nos cantos). Título-tese grande em bloco alinhado à esquerda no terço superior (x≈68, y≈175–360). Selo circular à direita, centro em (370, 550). Legenda no centro-baixo (y≈660–690).",
+        "elements": "Selo circular preto (Ø≈130px) com borda branca 3px e sombra, contendo rótulo mono branco e um diagrama químico desenhado a traço fino branco. Risco vermelho #D7262B de 4px atravessando a última linha do título (traço à mão, levemente inclinado). Faixa de marca-texto amarela #F2D21B por trás de uma segunda frase do título.",
+        "typography": "Título em grotesca condensada Heavy CAIXA ALTA (tipo Anton/Bebas Neue Bold) preta #161616, três linhas com tamanhos decrescentes: linha 1 ≈64px, linha 2 ≈42px, linha 3 ≈54px; entrelinha apertada 0.95. Frase de resposta em condensada Heavy sobre faixa amarela, revelada por máscara de baixo para cima. Legenda em sans regular com palavra-chave em Black.",
+        "motion": "Linhas do título entram uma a uma (y +30→0, opacidade, 0.35s power3.out, stagger 0.15s). Risco vermelho é desenhado da esquerda para a direita (scaleX 0→1, 0.4s power2.inOut). Faixa amarela abre em wipe horizontal e o texto sobe por máscara (yPercent 100→0). Selo entra com pop de escala 0→1 (back.out 1.6).",
+        "transitionOut": "Os elementos saem com fade + leve escala 1→0.96 (0.3s) e o papel permanece; novo conjunto entra sobre o mesmo fundo (nunca corte seco de fundo).",
+        "sfx": "swish no risco vermelho, pop no selo, impact-bass-1 baixo no título-tese."
+      },
+      {
+        "from": 12,
+        "to": 18,
+        "composition": "Cartão de citação científica: etiqueta amarela de referência centralizada no topo (y≈120), linha de autores mono cinza abaixo (y≈150), polaroid grande centralizada (≈340×300px, x 80–420, y 190–495) com fita crepe em cima e embaixo; selo circular amarelo sobreposto no canto superior direito do cartão. Legenda centralizada em 3 linhas (y≈550–610).",
+        "elements": "Polaroid grande com gravura P&B (borda branca 8px, sombra 0 6px 14px rgba(0,0,0,.25)), selo amarelo Ø≈80px com texto mono preto em 2 linhas, etiqueta retangular amarela com texto mono preto.",
+        "typography": "Etiquetas em máquina de escrever (tipo Courier Prime/Special Elite) ≈15px preto sobre amarelo #F2D21B, padding 4×8px; subtítulo mono 11px cinza #555. Legenda centralizada, palavra-chave em grotesca Black preta, maior peso, mesmo corpo.",
+        "motion": "Polaroid desce com escala 1.08→1 e rotação 2°→0 (0.45s power3.out), fitas aparecem 0.1s depois. Durante o hold, o cartão faz push lento de escala 1→1.02 (Ken Burns). Selo entra em pop 0.2s depois do cartão. Etiqueta amarela digita o texto letra a letra.",
+        "transitionOut": "Fade-out dos elementos (0.25s) e o próximo arranjo é montado peça por peça sobre o mesmo papel.",
+        "sfx": "land no cartão colado, key-press/click-soft na etiqueta, pop no selo."
+      },
+      {
+        "from": 18,
+        "to": 26,
+        "composition": "Diagrama de associação montado em colagem: polaroid vertical alta à esquerda (x 55–240, y 110–425), ilustração recortada (fruta, sem moldura) no alto à direita (x≈280–380, y≈130–225), conector em L preto ligando ponto-alvo no centro do cartão à ilustração; etiqueta amarela abaixo da ilustração; segunda polaroid pequena girada ≈-4° à direita (x 250–410, y 345–480) com fita diagonal; chip preto de resultado logo abaixo. Legenda centralizada em 3 linhas (y≈560–620).",
+        "elements": "Fotografia P&B granulada em polaroid, ilustração botânica colorida recortada com sombra, conector 2px preto com marcador circular de alvo (anel + ponto) numa ponta e ponto cheio na outra, chip preto com texto mono branco começando com sinal de igual, fitas crepe diagonais.",
+        "typography": "Legenda sans regular grafite; palavra-chave 1 em Black preto; palavra-chave 2 em Black itálico vermelho #D7262B. Etiquetas mono em amarelo e em preto/branco.",
+        "motion": "Uma peça por vez, cada uma ≈0.6–1s após a anterior, seguindo a fala: cartão (pop+rotação), linha conectora desenhada do alvo até a ilustração (stroke-dashoffset, 0.5s power2.inOut), ilustração em pop, etiqueta em wipe, segunda polaroid cai rotacionada, chip desliza da esquerda (x -20→0).",
+        "transitionOut": "Tudo sai em fade rápido (0.25s); próximo diagrama começa em papel limpo.",
+        "sfx": "click-soft em cada peça, swish na linha conectora, pop na ilustração."
+      },
+      {
+        "from": 26,
+        "to": 34,
+        "composition": "Diagrama de etapas numeradas: cabeçalhos em CAIXA ALTA alinhados em duas colunas no topo (x≈80 e x≈295, y≈120); multiplicador grande à esquerda (x≈30, y≈220); objeto 3D/ilustrado (botão vermelho) à esquerda no meio (x 80–220, y 275–365) ligado por traço curto a uma polaroid vertical à direita (x 300–410, y 205–390). Legenda centralizada abaixo (y≈540–575).",
+        "elements": "Botão vermelho estilizado (cúpula #D7262B com base preta, sombreado simples), polaroid vertical com fotografia, ilustração da fruta entrando por trás do cartão, traço de conexão com ponto.",
+        "typography": "Cabeçalhos de etapa em grotesca condensada Heavy CAIXA ALTA ≈34px preto com número + ponto central + palavra. Multiplicador ≈44px condensado Heavy. Palavra-chave da legenda com marca-texto amarelo (fundo #F2D21B ≈70% de altura da linha, cantos irregulares).",
+        "motion": "A etapa seguinte nasce como placeholder fantasma (opacidade 0.35, blur 2px) e 'acende' quando citada: opacidade→1, blur→0, fita aparece, escala 0.96→1 em 0.35s. Cabeçalho da etapa entra com y +20→0. Marca-texto se pinta da esquerda para a direita (scaleX 0→1, 0.3s).",
+        "transitionOut": "Fade dos elementos; papel permanece.",
+        "sfx": "pop quando cada etapa acende, click no número/multiplicador, swish curto no marca-texto."
+      },
+      {
+        "from": 34,
+        "to": 44,
+        "composition": "Ilustração anatômica de domínio público (gravura P&B recortada, sem moldura) centralizada ocupando ≈65% da largura (x 100–420, y 195–585). Etiqueta amarela no alto à direita (x≈350–437, y≈110) com linha-guia vertical que desce e entra na gravura em diagonal até o ponto indicado. Legenda à esquerda/centro em y≈645.",
+        "elements": "Gravura recortada com sombra suave, linha-guia 1.5px preta com ponto final, etiqueta amarela mono.",
+        "typography": "Etiqueta mono que é DIGITADA (texto cresce letra a letra, a caixa amarela acompanha a largura). Legenda com palavra-chave em Black.",
+        "motion": "Gravura entra com fade + escala 1.05→1 (0.5s) e continua num push lento contínuo (escala 1→1.1 ao longo de ≈8s). Linha-guia é desenhada da etiqueta até o ponto (0.4s). Etiqueta digita ≈25 caracteres/s.",
+        "transitionOut": "Continua na mesma gravura no beat seguinte (sem corte): novos rótulos se somam.",
+        "sfx": "typing/key-press na etiqueta digitada, swish na linha-guia."
+      },
+      {
+        "from": 44,
+        "to": 52,
+        "composition": "Mesma gravura agora maior (push acumulado, x 65–430), segundo rótulo branco à esquerda (x 55–245, y≈150) com linha-guia descendo; mancha de brilho vermelho sobre a região citada da ilustração. Legenda centralizada em 2–3 linhas (y≈630–690).",
+        "elements": "Glow vermelho radial (#E0262E, opacidade ≈0.6, raio ≈90px, blend multiply/screen) pulsando sobre a gravura; rótulo em chip branco com texto mono preto; rótulo amarelo do beat anterior permanece.",
+        "typography": "Legenda sans regular; a última palavra ainda chega desfocada (blur-in visível).",
+        "motion": "Glow acende com opacidade 0→0.65 e escala 0.6→1 (0.6s) e depois pulsa (yoyo 0.65↔0.4, 0.8s sine.inOut). Segundo rótulo entra em wipe + linha-guia desenhada.",
+        "transitionOut": "Fade dos rótulos e da gravura (0.3s) para o próximo arranjo.",
+        "sfx": "swell sutil no glow, click-soft no rótulo."
+      },
+      {
+        "from": 52,
+        "to": 60,
+        "composition": "Fechamento no mesmo vocabulário: papel limpo, um único elemento central (gravura ou título-tese condensado) + legenda, mantendo a regra de um elemento por vez.",
+        "elements": "Repetição de polaroid/etiqueta/selo conforme a fala; nenhum elemento novo de linguagem.",
+        "typography": "Mesma hierarquia: título condensado Heavy caixa alta, etiquetas mono, legenda sans com destaque Black/vermelho/marca-texto.",
+        "motion": "Entradas em pop/blur-in; hold com push lento.",
+        "transitionOut": "Fim por fade para o papel.",
+        "sfx": "Sem batidas medidas após 34.78 s: deixar sem efeitos ou só um pop final sutil."
+      }
+    ],
+    "sfxPerMinute": 40
+  },
+  "colorsLocked": false,
+  "clonedFrom": {
+    "urls": [],
+    "measured": [
+      {
+        "clip": "008 Conteudo RD.mp4",
+        "duration": 60,
+        "cuts": 0,
+        "secondsPerCut": 60,
+        "size": "480x848",
+        "sfxHits": [
+          0.28,
+          0.76,
+          2.22,
+          2.62,
+          2.92,
+          5,
+          5.94,
+          6.64,
+          7.92,
+          8.6,
+          9.04,
+          9.36,
+          9.68,
+          10.58,
+          12.02,
+          13.08,
+          14.24,
+          14.76,
+          15.36,
+          16.54,
+          17.18,
+          17.52,
+          18.98,
+          20.58,
+          21.32,
+          22.06,
+          22.52,
+          22.78,
+          23.56,
+          25.02,
+          25.74,
+          26.12,
+          27.12,
+          27.88,
+          28.44,
+          29,
+          30.94,
+          31.28,
+          33.1,
+          34.78
+        ]
+      }
+    ],
+    "note": "Estilo didatico (Conteudo RD): quase sem locutor, fundo papel cinza com vinheta, gravuras de dominio publico coladas com fita, etiquetas amarelas, graficos e diagramas desenhados a mao, legenda com palavras em destaque, um elemento por vez."
+  }
+}

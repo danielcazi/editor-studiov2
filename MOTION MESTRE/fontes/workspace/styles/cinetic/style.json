@@ -1,0 +1,8 @@
+{
+  "id": "cinetic",
+  "name": "Técnicas cinéticas",
+  "description": "Não é um visual: é uma caixa de movimentos de filme de produto, independentes de estilo, para usar em qualquer pacote: digitação em caixa de tempo, uma frase que vira outra palavra a palavra, palavras que nascem do desfoque, um número que conta desacelerando, odômetro, gráfico que se desenha com cabeça, respiração do hold, corte por escala, revelação por subtração, casca → conteúdo → ação.",
+  "pack": "cinetic.md",
+  "engine": "cinetic",
+  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='cinetic')."
+}
