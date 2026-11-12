@@ -1,0 +1,27 @@
+{
+  "id": "split-bottom",
+  "aspectRatio": "9:16",
+  "width": 1080,
+  "height": 1920,
+  "speaker": true,
+  "refVideo": false,
+  "safeZones": {
+    "top": 200,
+    "bottom": 380,
+    "left": 70,
+    "right": 70
+  },
+  "name": "Tela dividida (locutor embaixo)",
+  "order": 5,
+  "description": "Locutor cru no painel de baixo o reel inteiro, animação em cima.",
+  "planos": [
+    "panel",
+    "none"
+  ],
+  "janelas": null,
+  "panel": {
+    "side": "bottom",
+    "top": 0.42
+  },
+  "regras": "Locutor cru no painel de baixo o reel inteiro, sem recorte; a animação ocupa a parte de cima. O gancho em cima é texto grande e pesado com um elemento ilustrado ou 3D. Cena sem locutor (none) só quando a ilustração precisa da tela toda e na CTA, com a oferta em tela cheia."
+}
