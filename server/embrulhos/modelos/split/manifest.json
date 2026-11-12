@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "id": "split",
+  "nome": "Tela dividida",
+  "origem": "criado no editor (2026-11-11)",
+  "tipo": "sobreposicao",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 0.5
+        },
+        "video2": {
+          "x": 0,
+          "y": 0.5,
+          "w": 1,
+          "h": 0.5
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    },
+    "4x5": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 0.5
+        },
+        "video2": {
+          "x": 0,
+          "y": 0.5,
+          "w": 1,
+          "h": 0.5
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0,
+          "y": 0.4407,
+          "w": 1,
+          "h": 0.0593
+        }
+      ]
+    },
+    "16x9": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 0.5,
+          "h": 1
+        },
+        "video2": {
+          "x": 0.5,
+          "y": 0,
+          "w": 0.5,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.2188,
+          "y": 0.4259,
+          "w": 0.2813,
+          "h": 0.1481
+        }
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "headline",
+      "papel": "headline",
+      "max": 36
+    }
+  ],
+  "zonasTexto": [
+    {
+      "x": 0,
+      "y": 0.4583,
+      "w": 1,
+      "h": 0.0833
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "comparacao",
+      "antes-depois",
+      "reacao"
+    ],
+    "serveA": [
+      "comparacao",
+      "reacao"
+    ],
+    "exige": [],
+    "evita": [],
+    "dica": "headline curta que liga os dois vídeos (comparação, antes e depois ou reação)."
+  }
+}

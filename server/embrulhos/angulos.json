@@ -1,5 +1,5 @@
 {
- "_leia": "Ângulos da Biblioteca de Ângulos de Copy (@renanmsap) que cabem num embrulho: texto estático e curto, saído das falas do vídeo. Fora da lista ficaram os que pedem contador/prazo/vagas, narrativa longa ou dados que a fala raramente traz. `modelos` diz em quais molduras o ângulo entra.",
+ "_leia": "Ângulos da Biblioteca de Ângulos de Copy (@renanmsap) que cabem num embrulho: texto estático e curto, saído das falas do vídeo. Fora da lista ficaram os que pedem contador/prazo/vagas, narrativa longa ou dados que a fala raramente traz. `modelos` diz em quais molduras o ângulo entra (os modelos refeitos da gravação herdaram os do irmão: tarja-pincel os da tarja, fofoca-rosa os da fofoca-headline, pov-depoimento os do meme-pov; os do tweet foram escolhidos à mão).",
  "angulos": [
   {
    "n": 2,
@@ -7,9 +7,7 @@
    "angulo": "Medo / Consequência futura",
    "explicacao": "Projeta o custo de não agir: o problema de hoje se tornando a crise de amanhã.",
    "exemplo": "\"Se a sua aposentadoria depende só do INSS, eu preciso te mostrar uma conta que vai tirar seu sono.\"",
-   "modelos": [
-    "tarja"
-   ]
+   "modelos": ["tarja", "tarja-pincel"]
   },
   {
    "n": 3,
@@ -17,9 +15,7 @@
    "angulo": "Inimigo comum",
    "explicacao": "Nomeia um vilão externo responsável pela dor do avatar. Tira a culpa da pessoa e direciona a raiva para o inimigo.",
    "exemplo": "\"O banco te liga para oferecer 'investimento'. O que ele não fala é quanto ELE ganha quando você aceita.\"",
-   "modelos": [
-    "tarja"
-   ]
+   "modelos": ["tarja", "tarja-pincel"]
   },
   {
    "n": 5,
@@ -58,9 +54,7 @@
    "angulo": "Paradoxo",
    "explicacao": "Expõe uma contradição real: quanto mais a pessoa se esforça no caminho atual, pior fica o resultado.",
    "exemplo": "\"Quanto mais conteúdo você posta, menos autoridade você constrói. Parece loucura, mas eu vou te provar.\"",
-   "modelos": [
-    "meme-pov"
-   ]
+   "modelos": ["meme-pov", "pov-depoimento"]
   },
   {
    "n": 10,
@@ -68,10 +62,7 @@
    "angulo": "Contra-intuitivo",
    "explicacao": "Afirma que a verdade é o oposto do senso comum — e sustenta a afirmação.",
    "exemplo": "\"O melhor momento para procurar um assessor não é quando sobra dinheiro. É exatamente quando parece que não sobra.\"",
-   "modelos": [
-    "pergunta",
-    "tarja"
-   ]
+   "modelos": ["pergunta", "tarja", "tarja-pincel", "tweet"]
   },
   {
    "n": 11,
@@ -79,9 +70,7 @@
    "angulo": "Contraste",
    "explicacao": "Coloca dois cenários lado a lado (antes/depois, com/sem, certo/errado) para tornar a diferença impossível de ignorar.",
    "exemplo": "\"Duas pessoas, mesmo salário, mesmos 10 anos. Uma tem R$ 40 mil na poupança. A outra, R$ 380 mil investidos. A diferença? Uma decisão.\"",
-   "modelos": [
-    "meme-pov"
-   ]
+   "modelos": ["meme-pov", "pov-depoimento"]
   },
   {
    "n": 12,
@@ -89,9 +78,7 @@
    "angulo": "Custo oculto",
    "explicacao": "Quantifica quanto o problema já está custando em dinheiro, tempo ou saúde — mesmo sem a pessoa perceber.",
    "exemplo": "\"Manter seu dinheiro parado 'sem risco' te custou R$ 12.400 nos últimos 3 anos. Eu faço essa conta com você em 2 minutos.\"",
-   "modelos": [
-    "tarja"
-   ]
+   "modelos": ["tarja", "tarja-pincel"]
   },
   {
    "n": 13,
@@ -129,10 +116,7 @@
    "angulo": "Confissão / Vulnerabilidade",
    "explicacao": "Conta a dor em primeira pessoa: 'eu também passei por isso'. Gera identificação imediata.",
    "exemplo": "\"Eu era assessor de investimentos e estava endividado. Ninguém da minha mesa sabia. Foi aí que eu entendi o que realmente separa quem enriquece de quem só ganha bem.\"",
-   "modelos": [
-    "fofoca-duplo",
-    "fofoca-headline"
-   ]
+   "modelos": ["fofoca-duplo", "fofoca-headline", "fofoca-rosa", "tweet"]
   },
   {
    "n": 19,
@@ -160,9 +144,7 @@
    "angulo": "Contraste (antes / depois)",
    "explicacao": "Mostra a transformação de forma visível e concreta: como era a vida antes e como ficou depois da solução.",
    "exemplo": "\"Antes: planilha abandonada, fatura no rotativo, briga em casa. Depois: reserva de 6 meses e a primeira viagem paga à vista. O que mudou foi o método.\"",
-   "modelos": [
-    "meme-pov"
-   ]
+   "modelos": ["meme-pov", "pov-depoimento"]
   },
   {
    "n": 25,
@@ -190,10 +172,7 @@
    "angulo": "Contra-mainstream / Segredo",
    "explicacao": "Posiciona a solução como algo que a indústria conhece mas não divulga — porque lucra com a ignorância do público.",
    "exemplo": "\"Existe um motivo para o seu gerente nunca ter te explicado o que é um fundo espelho. E esse motivo aparece na fatura dele, não na sua.\"",
-   "modelos": [
-    "fofoca-duplo",
-    "fofoca-headline"
-   ]
+   "modelos": ["fofoca-duplo", "fofoca-headline", "fofoca-rosa", "tweet"]
   },
   {
    "n": 28,
@@ -211,10 +190,7 @@
    "angulo": "Descoberta acidental",
    "explicacao": "Narra a solução como achado inesperado — 'eu descobri isso por acaso' — o que reduz a resistência de venda.",
    "exemplo": "\"Eu descobri o roteiro que triplica agendamento de reunião por acidente: um cliente respondeu um e-mail que eu mandei errado.\" / \"Dona de casa de Atlanta descobre cura surpreendente para artrite enquanto colhia pêssegos de sua árvore no quintal\"",
-   "modelos": [
-    "fofoca-duplo",
-    "fofoca-headline"
-   ]
+   "modelos": ["fofoca-duplo", "fofoca-headline", "fofoca-rosa", "tweet"]
   },
   {
    "n": 33,
@@ -292,9 +268,7 @@
    "angulo": "Especificidade",
    "explicacao": "Usa números exatos e detalhes precisos. Especificidade ativa curiosidade, confiança e autoridade — e elimina dúvidas.",
    "exemplo": "\"Não é 'aprenda a investir'. São os 4 ativos, as 2 perguntas de perfil e a 1 planilha que organizam qualquer carteira de até R$ 500 mil.\"",
-   "modelos": [
-    "tarja"
-   ]
+   "modelos": ["tarja", "tarja-pincel"]
   },
   {
    "n": 57,
@@ -352,11 +326,7 @@
    "angulo": "Curiosidade / Loop aberto",
    "explicacao": "Entrega informação incompleta que o cérebro precisa fechar. Funciona sobre qualquer categoria de ângulo.",
    "exemplo": "\"Existe uma pergunta que eu faço em toda primeira reunião. Quem responde errado — e 80% respondem — está cometendo o maior erro da vida financeira.\"",
-   "modelos": [
-    "fofoca-duplo",
-    "fofoca-headline",
-    "headline-legenda"
-   ]
+   "modelos": ["fofoca-duplo", "fofoca-headline", "headline-legenda", "fofoca-rosa"]
   },
   {
    "n": 71,
@@ -364,9 +334,7 @@
    "angulo": "Pattern interrupt",
    "explicacao": "Abertura inesperada ou absurda que quebra o padrão do feed e interrompe o scroll nos 2 primeiros segundos.",
    "exemplo": "\"[Rasgando uma planilha na câmera] É isso que eu acho do seu controle de gastos. E eu sou planejador financeiro.\"",
-   "modelos": [
-    "meme-pov"
-   ]
+   "modelos": ["meme-pov", "pov-depoimento"]
   },
   {
    "n": 72,
@@ -384,9 +352,7 @@
    "angulo": "Dog whistle / Chamada ao avatar / \"Piada interna\"",
    "explicacao": "Usa uma palavra, situação, pessoa, lugar ou código que só o público ideal reconhece — e que o faz 'levantar as orelhas'.",
    "exemplo": "\"Se você já ouviu 'me manda a lâmina desse fundo' e fingiu que entendeu, esse vídeo é para você.\"",
-   "modelos": [
-    "meme-pov"
-   ]
+   "modelos": ["meme-pov", "pov-depoimento"]
   },
   {
    "n": 74,
@@ -394,9 +360,7 @@
    "angulo": "UGC / Nativo",
    "explicacao": "O ângulo é o formato: parecer conteúdo orgânico (selfie, desabafo, bastidor), não anúncio. Reduz a defesa contra propaganda.",
    "exemplo": "\"[Selfie no carro] Gente, eu preciso contar o que aconteceu na reunião com meu assessor hoje, porque NINGUÉM me falou isso antes...\"",
-   "modelos": [
-    "meme-pov"
-   ]
+   "modelos": ["meme-pov", "pov-depoimento", "tweet"]
   },
   {
    "n": 75,
@@ -404,11 +368,7 @@
    "angulo": "Polêmica / Opinião impopular",
    "explicacao": "Declaração que divide o público e gera reação. O engajamento (a favor e contra) amplifica o alcance.",
    "exemplo": "\"Opinião impopular: casa própria é o pior 'investimento' que a classe média faz. E eu digo isso trabalhando com patrimônio há 12 anos.\"",
-   "modelos": [
-    "pergunta",
-    "fofoca-duplo",
-    "fofoca-headline"
-   ]
+   "modelos": ["pergunta", "fofoca-duplo", "fofoca-headline", "fofoca-rosa", "tweet"]
   }
  ]
 }

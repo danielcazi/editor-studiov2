@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "id": "live",
+  "nome": "Live",
+  "origem": "gravação do Lateralizador (2026-11-09), refeito no editor",
+  "tipo": "sobreposicao",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    },
+    "4x5": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.0519,
+          "y": 0.0622,
+          "w": 0.9037,
+          "h": 0.0741
+        },
+        {
+          "x": 0.0519,
+          "y": 0.8489,
+          "w": 0.8963,
+          "h": 0.0711
+        }
+      ]
+    },
+    "16x9": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.0292,
+          "y": 0.0778,
+          "w": 0.9458,
+          "h": 0.0926
+        },
+        {
+          "x": 0.0292,
+          "y": 0.8111,
+          "w": 0.9417,
+          "h": 0.0889
+        }
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "espectadores",
+      "papel": "contador",
+      "max": 8,
+      "padrao": "1.284",
+      "fixo": true
+    },
+    {
+      "id": "rodape",
+      "papel": "rodape",
+      "max": 40,
+      "padrao": "Os comentários foram desabilitados.",
+      "fixo": true
+    }
+  ],
+  "midia": [
+    {
+      "id": "avatar",
+      "tipo": "imagem",
+      "opcional": true
+    }
+  ],
+  "zonasTexto": [
+    {
+      "x": 0,
+      "y": 0.0312,
+      "w": 1,
+      "h": 0.0781
+    },
+    {
+      "x": 0,
+      "y": 0.8854,
+      "w": 1,
+      "h": 0.0677
+    }
+  ],
+  "textoFixo": true,
+  "perfil": {
+    "tom": [
+      "ao vivo",
+      "urgencia"
+    ],
+    "serveA": [
+      "abertura",
+      "prova"
+    ],
+    "exige": [
+      "perfil_arroba"
+    ],
+    "evita": []
+  }
+}

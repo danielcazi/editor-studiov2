@@ -19,6 +19,52 @@
         "fundo",
         "frente"
       ]
+    },
+    "4x5": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0.18519,
+          "w": 1,
+          "h": 0.6963
+        }
+      },
+      "camadas": [
+        "fundo",
+        "frente"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.4102,
+          "y": 0.8096,
+          "w": 0.1796,
+          "h": 0.0719
+        }
+      ]
+    },
+    "16x9": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0.22222,
+          "w": 1,
+          "h": 0.64815
+        }
+      },
+      "camadas": [
+        "fundo",
+        "frente"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.4495,
+          "y": 0.7806,
+          "w": 0.101,
+          "h": 0.0898
+        }
+      ]
     }
   },
   "campos": [
@@ -33,6 +79,14 @@
       "id": "avatar",
       "tipo": "imagem",
       "opcional": true
+    }
+  ],
+  "zonasTexto": [
+    {
+      "x": 0.4102,
+      "y": 0.6495,
+      "w": 0.1796,
+      "h": 0.101
     }
   ],
   "perfil": {

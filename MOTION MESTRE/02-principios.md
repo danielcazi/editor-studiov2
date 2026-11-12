@@ -33,7 +33,7 @@ Vale para o roteiro (§2–4 e §7) e para o compositor (§6).
 | Fluidez e acabamento | entrada .4–.7 s ease-out, saída .25–.4 s ease-in; movimento sustentado > 1 s em toda cena; `tr` alternado, `cut` ≤ 1 a cada 4 cenas; `move` 1,05 padrão; câmera de mundo com limites e `signature`; grão e vinheta automáticos; corpo nas imagens (sombra, rotação, duotone) |
 | Código | GSAP determinístico (`fromTo`, sem `random`, sem `repeat:-1`); uma timeline por composição; cenas encostadas 0→DUR |
 
-## C. brief.md · o que este reel tem (gerado em `composeScaffold`, pipeline.ts:2712)
+## C. brief.md · o que este reel tem (gerado em `composeScaffold`, pipeline.ts:2640)
 
 Não traz cotas desde a v8. O que exige, em texto: fluidez; texto inteiro na zona segura; nada sobre rosto ou queixo; locutor reenquadrado em `faceX` em toda troca, trocando com a fala. O resto é inventário: formato e planos permitidos, ritmo (`every`, `scene`, `framing`, `hold`), estilo ou skill ou lista de estilos para escolher, marca ou site, biblioteca do reel e compartilhada, momentos do roteiro, **banco de movimentos por momento com foto**, palavras-chave, transcript.
 

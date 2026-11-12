@@ -91,6 +91,13 @@
   .now-bar.running .track::after { content: ''; position: absolute; inset: 0; width: 40%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: shimmerBar 1.4s ease-in-out infinite; }
   .now-bar .txt { font: 500 12px var(--mono); color: var(--mute); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now-bar.running .txt { color: var(--cream); }
+  .emb-midia { position: relative; width: 190px; }
+  .emb-carregando::after { content: 'Prévia sendo gerada…'; position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; text-align: center; padding: 12px; background: #000b; color: #fff; font: 600 13px var(--sans); border-radius: 10px; border: 2px solid var(--yellow); animation: embBorda .8s ease-in-out infinite alternate; }
+  @keyframes embBorda { from { box-shadow: 0 0 0 0 var(--yellow); } to { box-shadow: 0 0 0 5px color-mix(in srgb, var(--yellow) 55%, transparent); } }
+  #emb-log { font: 12px/1.7 var(--mono); max-height: 170px; overflow: auto; padding: 10px 14px; color: var(--cream); }
+  #emb-log.rodando div:last-child { color: var(--yellow); font-weight: 700; }
+  #emb-prog { height: 4px; margin: 0 0 8px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  #emb-prog i { display: block; height: 100%; background: var(--yellow); box-shadow: 0 0 8px var(--yellow); transition: width .5s; }
   @keyframes shimmerBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
   /* a button whose step is running pulses with a spinner; one that just finished flashes green */
   button.is-busy { cursor: progress; opacity: 1 !important; animation: btnPulse 1.4s ease-in-out infinite; }
@@ -3129,6 +3136,7 @@
       <a href="#/skills" class="nav-tab" id="nav-skills">Skills</a>
       <a href="#/cortes" class="nav-tab" id="nav-cortes">Cortes</a>
       <a href="#/motion-think" class="nav-tab" id="nav-mt">Motion Think</a>
+      <a href="#/embrulhos" class="nav-tab" id="nav-emb">Embrulhos</a>
       <a href="#/config" class="nav-tab" id="nav-config">Configurações</a>
     </nav>
     <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
@@ -3211,8 +3219,6 @@ function setNowLine(entries) {
 }
 // terse server log lines → a sentence a user understands (the raw line stays in the log below)
 const HUMAN_LOG = [
-  [/^embrulho (.+): renderizando$/, (_, n) => `Renderizando o embrulho "${n}": o reel está sendo colocado dentro da moldura.`],
-  [/^embrulhos: corrigindo (\d+)/, (_, n) => `A IA está corrigindo ${n} problema(s) na copy dos embrulhos antes de renderizar.`],
   [/^🎬 Renderizando a composição (\S+?)\.*$/, (_, f) => `Renderizando o vídeo ${f} quadro a quadro em alta definição.`],
   [/^clipe \S*?([^/\s]+) \((\d+) quadros\)/, (_, f, n) => `After Effects: gravando a peça "${f}" como clipe com transparência (${n} quadros).`],
   [/^(size|duration|loudness|overlap|words|pace)\b/, () => 'O QA automático está conferindo tamanho, duração, volume e ritmo do vídeo.'],
@@ -3246,6 +3252,17 @@ function appendToProjectLog(projId, message, persistToServer = false) {
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+// Cola de termos de movimento ao lado dos campos de nota (Revisão e Motion Think). Seleção do glossário animation-vocabulary de Emil Kowalski (MIT), com o nome do kit quando há.
+const COLA_MOV = `<details style="margin:0 0 6px"><summary>Termos de movimento</summary><div style="font-size:12px;line-height:1.55;padding:0 0 10px;max-height:170px;overflow:auto">${[
+  ['Entrada e saída', [['fade', 'aparece ou some por opacidade'], ['slide', 'entra deslizando de fora do quadro'], ['escala', 'cresce de 0,9 a 1 enquanto aparece'], ['pop', 'entra passando do ponto e assenta'], ['revelar', 'é descoberto por máscara ou recorte (wipe)']]],
+  ['Vários elementos', [['junto', 'todos partem no mesmo instante'], ['escalonado (stagger)', 'um depois do outro, com pequeno atraso'], ['em passos', 'pula de valor em valor, sem deslizar']]],
+  ['Transição', [['corte seco', 'troca de um quadro para o outro'], ['crossfade', 'um some enquanto o outro aparece no mesmo lugar'], ['push', 'a nova cena entra com zoom'], ['morph', 'uma forma vira outra'], ['elemento compartilhado', 'a peça viaja e vira a peça da cena seguinte'], ['zoom through', 'o card cresce até encher a tela']]],
+  ['Câmera', [['push / pull', 'aproxima / afasta'], ['pan / crane', 'anda para o lado / para cima ou baixo'], ['tilt / orbit / roll', 'inclina / gira em volta / gira no eixo'], ['parallax', 'camadas em velocidades diferentes']]],
+  ['Curva', [['ease-out', 'começa rápido e freia (entradas)'], ['ease-in', 'começa devagar e acelera (saídas)'], ['ease-in-out', 'devagar, rápido, devagar (o que anda na tela)'], ['linear', 'velocidade constante'], ['mola', 'passa do ponto e volta; "mais mola" ou "sem mola"']]],
+  ['Enquanto fica na tela', [['flutuar', 'deriva leve de sobe e desce'], ['pulso', 'escala ou opacidade indo e voltando'], ['esteira', 'conteúdo correndo em loop'], ['órbita', 'uma peça circula outra'], ['tremor', 'sacode rápido para os lados']]],
+  ['Acabamento', [['linha que se desenha', 'o traço aparece como caneta'], ['contador', 'número que conta até o valor'], ['máquina de escrever', 'texto letra a letra'], ['blur', 'desfoque na entrada, na saída ou na troca'], ['antecipação', 'pequeno recuo antes do movimento'], ['esticar', 'a peça deforma na direção em que anda']]],
+].map(([g, ts]) => `<div class="muted" style="margin-top:6px;font:500 11px var(--mono);text-transform:uppercase">${g}</div>${ts.map(([t, d]) => `<div><b>${t}</b>: ${d}</div>`).join('')}`).join('')}</div></details>`;
 // create dialog: a format with no reel rendered yet shows a sketch per plano (speaker in yellow, motion in grey; panel = raw video band), cycled like the real frames
 function formatSketch(f) {
   const W = 90, H = 160, top = f.panel?.top ?? 0.5;
@@ -7230,13 +7247,6 @@ const STEP_INFO = {
     desc: 'O reel é tocado quadro a quadro num navegador invisível e cada peça vira uma camada do After: textos ficam editáveis, imagens e vídeos entram como arquivos e o resto vira clipe com transparência. Se o After estiver aberto, ele monta o .aep no fim.',
     short: 'After Effects'
   },
-  embrulhos: {
-    index: 5,
-    name: '5 Entrega',
-    title: 'Gerando os embrulhos',
-    desc: 'A IA lê o texto do vídeo, escolhe até 3 molduras, escreve a copy de cada uma e renderiza o reel dentro da janela de cada moldura.',
-    short: 'Embrulhos'
-  }
 };
 
 let es;
@@ -8194,7 +8204,7 @@ async function reviewStep(id, body, st) {
           <div class="tabs"><button data-f="open">Abertas</button><button data-f="all">Todas</button></div></div>
         <div class="rv-list" id="rv-list"></div>
         <div class="rv-compose">
-          <textarea id="rv-text" placeholder="Pause no momento e descreva a alteração... (Enter adiciona, Shift+Enter quebra a linha)"></textarea>
+          ${COLA_MOV}<textarea id="rv-text" placeholder="Pause no momento e descreva a alteração... (Enter adiciona, Shift+Enter quebra a linha)"></textarea>
           <div class="rv-compose-row">
             <span class="chip" id="rv-at" title="Tempo da anotação">00:00:00:00</span>
             <button id="rv-in" title="Início do trecho = posição atual (I)">⇤ Início</button>
@@ -9223,12 +9233,6 @@ async function deliveryStep(id, body, st) {
   const runStep = (window.getProjectRunning?.() || st.running)?.step;   // the button of a running step stays busy across re-renders
   // a clip without a license never blocks the render: it is only a reminder to swap it later
   const unlic = await api('GET', `/projects/${id}/layers`).then(l => (l.edits?.added || []).filter(a => a.rights?.status === 'unlicensed').length).catch(() => 0);
-  const hooks = await api('GET', `/projects/${id}/files/embrulhos.json`).then(r => r.embrulhos || []).catch(() => []);
-  const hookList = list => list.map(h => `<div class="box" style="margin-top:8px"><b>${h.rec ? '★ ' : ''}${esc(h.nome || h.embrulho)} · ${esc(h.angulo || '')}</b><p class="muted" style="margin:4px 0">${esc(h.porque || '')}</p>
-      ${Object.entries(h.campos || {}).map(([k, v]) => `<p style="margin:2px 0"><span class="muted">${esc(k)}:</span> ${esc(v)}</p>`).join('')}
-      <p><b>Copy:</b> ${esc(h.copy || '')}</p>
-      ${(h.erros || []).map(e => `<p class="err">✗ ${esc(e)}</p>`).join('')}${(h.avisos || []).map(a => `<p class="muted">⚠ ${esc(a)}</p>`).join('')}
-      ${h.arquivo ? `<video controls style="max-height:420px" src="/projects/${id}/files/${h.arquivo}?${Date.now()}"></video>` : ''}</div>`).join('');
   const sec = (title, desc, inner) => `<div class="box" style="margin-top:16px;padding:20px;background:var(--panel2);border:1px solid var(--line-strong);border-radius:12px">
       <h4 style="margin:0 0 6px 0;font-size:12px;color:var(--cream);letter-spacing:.08em">${title}</h4><p class="muted" style="margin:0 0 12px 0;font-size:12px">${desc}</p>${inner}</div>`;
   body.innerHTML = `<div class="box"><h3>Etapa 5: entrega</h3>
@@ -9247,7 +9251,7 @@ async function deliveryStep(id, body, st) {
         <details><summary>Relatório</summary><pre>${esc(st.qa.report)}</pre></details>
         ${((st.readyFinals && st.readyFinals.length > 0) ? st.readyFinals : (st.formats || []).filter(f => f === (st.primaryFormat || '9:16'))).map(f => `<p style="font-weight:600;margin-top:16px">${esc(f)}</p><div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap"><video controls src="/projects/${id}/files/final-${f.replace(':', '-')}.mp4?${Date.now()}"></video><button class="dl-save" data-file="final-${f.replace(':', '-')}.mp4">💾 Salvar</button></div>`).join('')}</div>` : ''}`)}
     ${sec('2 · ARQUIVO PARA AFTER EFFECTS', 'Scripts .jsx e clipes do projeto; gera o .aep quando o After Effects está disponível.', `${runStep === 'ae' ? '<button id="dl-ae" class="is-busy" disabled>Exportando… acompanhe em Progresso</button>' : '<button id="dl-ae">🎬 Exportar para After Effects</button>'}<div id="dl-ae-out" class="muted" style="margin-top:8px;font-size:12px"></div>`)}
-    ${sec('3 · EMBRULHOS (9:16)', 'A IA escolhe até 3 molduras do PDF pelo texto do vídeo, escreve a copy em tom de conversa e renderiza cada uma com o reel dentro da janela.', `${runStep === 'embrulhos' ? '<button id="dl-hooks" class="is-busy" disabled>Gerando… acompanhe em Progresso</button>' : `<button id="dl-hooks">✨ ${hooks.length ? 'Gerar de novo' : 'Gerar embrulhos'} (IA)</button>`}<div id="dl-hook-list">${hookList(hooks)}</div>`)}
+    ${sec('3 · EMBRULHOS (9:16)', 'Leva o vídeo 9:16 deste projeto para a aba Embrulhos, onde você escolhe os formatos de anúncio, edita o texto de cada um, confere a prévia e exporta.', '<button id="dl-hooks">🎁 Embrulhar este vídeo</button>')}
     ${sec('4 · STATUS & ENCERRAMENTO DO PROJETO', 'Finalize o ciclo deste vídeo marcando-o como concluído para arquivá-lo na esteira e retirar os alertas de ação pendente.', `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
@@ -9386,15 +9390,7 @@ async function deliveryStep(id, body, st) {
       showToast({ title: '✓ After Effects', message: msg, type: 'success', duration: 10000 });
     } finally { stepOk(b, '🎬 Exportar para After Effects'); }
   });
-  $('#dl-hooks').onclick = e => act(e.target, async () => {
-    const b = e.target;
-    stepStarted(b, 'Gerando… acompanhe em Progresso', 'A IA começou a gerar os embrulhos.');
-    try {
-      const r = await api('POST', `/projects/${id}/embrulhos`);
-      $('#dl-hook-list').innerHTML = hookList(r.embrulhos || []);
-      showToast({ title: '✓ Embrulhos prontos', message: `${(r.embrulhos || []).length} embrulho(s) gerado(s), logo abaixo do botão.`, type: 'success' });
-    } finally { stepOk(b, '✨ Gerar de novo (IA)'); }
-  });
+  $('#dl-hooks').onclick = e => act(e.target, async () => { const r = await api('POST', '/embrulhos', { projeto: id }); location.hash = `#/embrulhos/${r.id}`; });
 }
 
 
@@ -11284,9 +11280,347 @@ async function cortes(sel) {
   if (busy) cortesPoll = setInterval(() => cortes(sel).catch(() => {}), 3000);
 }
 
+// ---- Embrulhos: a finished video wrapped in static 9:16 frames (SPEC-embrulhos.md). One session per video, SSE per session. ----
+let embEs = null, embModelos = null, embFiltro = 'todos';
+const embAnalise = new Set();   // sessions whose analysis this page already started (one try, so a failure does not loop)
+let embProg = { id: '', n: 0, total: 1 };   // progress of the running step: ▶ lines seen out of the ones expected
+const embEtapa = {}, embPick = {}, embPropPick = {}, embAba = {};   // embPropPick: proportions ticked in Formatos; embAba: session+model → proportion tab open in its card
+const EMB_PROPS = { '9x16': [1080, 1920, '9:16'], '4x5': [1080, 1350, '4:5'], '16x9': [1920, 1080, '16:9'] };   // session id → stage the user is on / formats ticked in the catalogue, kept across re-renders (the analysis ending redraws the page)
+const embFile = (id, rel) => `/embrulhos/${encodeURIComponent(id)}/file/${rel.split('/').map(encodeURIComponent).join('/')}`;
+const embB64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const EMB_ROTULOS = { nome_pagina: 'Nome da página', titulo: 'Título', subtitulo: 'Subtítulo', rotulo: 'Rótulo', cta: 'Chamada', chamada: 'Chamada', topo: 'Frase do topo', manchete: 'Manchete', texto_do_post: 'Texto do post', contador: 'Espectadores', rodape: 'Rodapé', preco_de: 'Preço de', preco_por: 'Preço por', apoio: 'Texto de apoio' };
+const embRotulo = c => EMB_ROTULOS[c.papel] ?? EMB_ROTULOS[c.id] ?? (c.papel || c.id).replace(/_/g, ' ').replace(/^./, x => x.toUpperCase());
+// catalogue thumbnail: a cached image of the model with sample texts, over a placeholder where the video goes (14 live iframes were heavy)
+const embMini = (m, w = 150) => `<div style="width:${w}px;height:${Math.round(w * 16 / 9)}px;overflow:hidden;border-radius:10px;background:linear-gradient(#9ed4f5 0 58%,#7cb518 58%)"><img src="/embrulhos/miniatura/${m.id}" loading="lazy" alt="" style="width:100%;height:100%;display:block"></div>`;
+// the model's own page in a scaled <iframe>, with the given texts: only the Marca stage uses it, to show the profile live
+const embThumb = (m, campos, w = 150, extra = '') => `<div style="position:relative;width:${w}px;height:${Math.round(w * 16 / 9)}px;overflow:hidden;border-radius:10px;background:linear-gradient(#9ed4f5 0 58%,#7cb518 58%)"><iframe src="/embrulhos/molde/${m.id}/${m.film}?c=${embB64(campos)}${extra}&layer=fundo" loading="lazy" scrolling="no" tabindex="-1" style="width:1080px;height:1920px;border:0;transform:scale(${w / 1080});transform-origin:0 0;pointer-events:none"></iframe></div>`;
+async function embrulhosView(sel) {
+  embEs?.close(); embEs = null;
+  embModelos ??= await api('GET', '/embrulhos/modelos');
+  const list = await api('GET', '/embrulhos');
+  let st = sel ? await api('GET', `/embrulhos/${encodeURIComponent(sel)}`) : null;
+  const mm = n => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
+  app.innerHTML = `<div style="display:grid;grid-template-columns:260px 1fr;gap:24px">
+    <aside><h4>Embrulhos</h4>
+      <details ${!sel ? 'open' : ''} style="margin:10px 0 14px"><summary class="muted" style="cursor:pointer">Novo vídeo</summary>
+        <div style="display:grid;gap:6px;margin-top:8px">
+          <input id="emb-name" placeholder="Nome (opcional)">
+          <input id="emb-video" placeholder="Caminho do vídeo">
+          <button id="emb-pick">Escolher vídeo…</button>
+          <input id="emb-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" hidden>
+          <button id="emb-go" class="primary">Enviar</button>
+        </div></details>
+      ${list.map(c => `<a class="bitem ${c.id === sel ? 'on' : ''}" href="#/embrulhos/${esc(c.id)}">${esc(c.name)} <span class="muted">· ${mm(c.duracao)}${c.formatos ? ` · ${c.formatos} formato(s)` : ''}${c.exportados ? ` · ${c.exportados} ✓` : ''}</span></a>`).join('') || '<p class="muted">nenhum vídeo ainda</p>'}
+    </aside>
+    <section id="emb-main" style="min-width:0">${!sel ? '<p class="muted">Envie um vídeo pronto (9:16, 1:1 ou 16:9). Você escolhe os formatos de anúncio, a IA lê o vídeo e escreve o texto de cada um, você edita o que quiser, confere a prévia e exporta.</p>' : ''}</section></div>`;
+  const upload = (f, kind) => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=${kind}&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(JSON.parse(x.responseText).error || x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
+  $('#emb-pick').onclick = async () => { if (!NATIVE_PICKER) return $('#emb-file').click(); try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#emb-video').value = r.path; } catch { $('#emb-file').click(); } };
+  $('#emb-file').onchange = e => act($('#emb-go'), async () => { if (e.target.files[0]) { $('#emb-video').value = 'enviando…'; $('#emb-video').value = await upload(e.target.files[0], 'video').catch(er => { $('#emb-video').value = ''; throw er; }); } });
+  $('#emb-go').onclick = e => act(e.target, async () => { const r = await api('POST', '/embrulhos', { name: $('#emb-name').value, video: $('#emb-video').value || undefined }); location.hash = `#/embrulhos/${r.id}`; });
+  if (!st) return;
+
+  const id = encodeURIComponent(st.id), main = $('#emb-main'), busy = st.busy?.step;
+  const M = Object.fromEntries(embModelos.map(m => [m.id, m]));
+  const sels = () => embModelos.filter(m => st.formatos[m.id]?.selecionado);
+  const temErro = f => f.itens.some(i => i.nivel === 'erro');
+  // proportions: the ones chosen for the session that the model has a drawing for; `aba` is the one open in a card
+  const propsDe = m => st.proporcoes.filter(p => m.props.includes(p));
+  const aba = mid => { const ps = propsDe(M[mid]); return ps.includes(embAba[st.id + mid]) ? embAba[st.id + mid] : ps[0] ?? '9x16'; };
+  const suf = p => p === '9x16' ? '' : '-' + p;
+  // a format as its card sees it: texts, approval and checks are shared; adjustments, free images, boxes and renders belong to the proportion
+  const F = (mid, p = aba(mid)) => { const f = st.formatos[mid]; return p === '9x16' ? f : { ...f, ajustes: {}, imagens: [], caixas: undefined, avisos: [], previaEm: 0, exportadoEm: 0, arquivo: undefined, ...(f.por?.[p] ?? {}) }; };
+  const etapa = embEtapa[st.id] ?? (sels().length ? 'edicao' : Object.keys(st.formatos).length ? 'formatos' : 'marca');   // a new video goes through Marca first
+  const go = e => { embEtapa[st.id] = e; embrulhosView(sel).catch(er => app.innerHTML = `<p class="err">${esc(er.message)}</p>`); };
+  const lastErr = st.log.at(-1)?.startsWith('ERRO') ? st.log.at(-1) : '';
+  const P = st.perfil, embP = () => ({ perfil_nome: P.nome, perfil_arroba: P.mostrarArroba ? P.arroba : '' });
+  // what the model page needs to show this session's profile: the photo, or no photo at all
+  const embX = () => !P.mostrarLogo ? '&semavatar=1' : P.avatar ? `&avatar=${encodeURIComponent(embFile(st.id, P.avatar) + '?' + st.version)}` : '';
+  const ETAPAS = [['video', 'Vídeo', true], ['marca', 'Marca', true], ['formatos', 'Formatos', true], ['edicao', 'Edição', sels().length > 0], ['export', 'Exportação', sels().some(m => st.formatos[m.id].exportadoEm)]];
+  const BUSY = { analisar: 'Analisando o vídeo (fala e rosto) para indicar os melhores formatos', embrulhos: 'A IA está lendo o vídeo e escrevendo os formatos', previa: 'Renderizando a prévia', exportar: 'Exportando os vídeos' };
+  main.innerHTML = `
+    <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${mm(st.duracao)} · ${st.largura}×${st.altura}</span></h3>
+    <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">${ETAPAS.map(([k, n, ok], i) => `<button class="emb-etapa ${k === etapa ? 'primary' : ''}" data-e="${k}" ${ok ? '' : 'disabled'}>${i + 1} · ${n}</button>`).join('')}</div>
+    <p id="emb-status" class="${lastErr ? 'err' : 'muted'}">${busy ? `⏳ ${BUSY[busy] || busy}...` : esc(lastErr)}</p>
+    <div id="emb-prog" style="${busy ? '' : 'display:none'}"><i style="width:${embProg.id === st.id ? Math.min(95, 100 * (embProg.n - 0.5) / embProg.total) : 4}%"></i></div>
+    <div id="emb-log" class="box ${busy ? 'rodando' : ''}" style="${busy || lastErr ? '' : 'display:none'}">${st.log.slice(-60).map(l => `<div>${esc(l)}</div>`).join('')}</div>
+    <div id="emb-etapa"></div>`;
+  main.querySelectorAll('.emb-etapa').forEach(b => b.onclick = () => go(b.dataset.e));
+  embEs = new EventSource(`/embrulhos/${id}/events`);
+  const totalDe = step => step === 'embrulhos' ? 1 + (embPick[st.id]?.length ?? sels().length) * (embPropPick[st.id]?.length ?? st.proporcoes.length) : step === 'exportar' ? sels().filter(m => st.formatos[m.id].incluir).reduce((n, m) => n + propsDe(m).length, 0) : step === 'analisar' ? 2 : 1;
+  const barra = () => { const p = $('#emb-prog'); if (p) { p.style.display = ''; p.firstElementChild.style.width = Math.min(95, Math.max(4, 100 * (embProg.n - 0.5) / embProg.total)) + '%'; } };
+  if (busy && embProg.id !== st.id) embProg = { id: st.id, n: 0, total: totalDe(busy) };
+  const l0 = $('#emb-log'); l0.scrollTop = l0.scrollHeight;
+  embEs.addEventListener('log', e => { const l = $('#emb-log'); if (!l) return; l.style.display = ''; const d = document.createElement('div'), t = JSON.parse(e.data); d.textContent = t; l.append(d); l.scrollTop = l.scrollHeight; if (t.startsWith('▶')) { embProg.n++; barra(); } });
+  embEs.addEventListener('step', e => { const d = JSON.parse(e.data); if (d.status === 'start') { embProg = { id: st.id, n: 0, total: totalDe(d.step) }; $('#emb-log')?.classList.add('rodando'); barra(); const s = $('#emb-status'); if (s) { s.className = 'muted'; s.textContent = `⏳ ${BUSY[d.step] || d.step}...`; } } else { embProg = { id: '', n: 0, total: 1 }; $('#emb-log')?.classList.remove('rodando'); const p = $('#emb-prog'); if (p) p.style.display = 'none'; if (d.step !== 'previa' && location.hash === `#/embrulhos/${st.id}`) embrulhosView(sel).catch(() => {}); } });
+  // the analysis (transcript, face track for the fit badges) starts by itself the first time a session is opened
+  if (!st.analisado && !busy && !embAnalise.has(st.id)) { embAnalise.add(st.id); api('POST', `/embrulhos/${id}/analisar`).catch(() => {}); }
+  const box = $('#emb-etapa'), dis = busy ? 'disabled' : '';
+  const src = embFile(st.id, st.src.split(/[\\/]/).pop());
+
+  if (etapa === 'video') {
+    box.innerHTML = `<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+      <video src="${src}#t=0.1" controls preload="metadata" style="max-height:420px;max-width:420px;background:#000;border-radius:10px"></video>
+      <div><p class="muted">Este é o vídeo que será embrulhado. Ele entra inteiro em cada formato; nos formatos com janela, o que não cabe é cortado e você escolhe o enquadramento na edição.</p>
+        <p><button id="emb-next" class="primary">Continuar para marca →</button></p>
+        <p style="margin-top:24px"><button id="emb-del" class="muted" ${dis}>Apagar este vídeo e seus embrulhos</button></p></div></div>`;
+    $('#emb-next').onclick = () => go('marca');
+    $('#emb-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este vídeo, as prévias e os vídeos exportados?')) { await api('DELETE', `/embrulhos/${id}`); location.hash = '#/embrulhos'; } });
+  }
+
+  if (etapa === 'marca') {
+    const demo = embModelos.find(m => m.mostraNome) ?? embModelos.find(m => m.usaPerfil);   // one that shows photo, name and handle
+    const usam = embModelos.filter(m => m.usaPerfil).map(m => m.nome).join(', ');
+    box.innerHTML = `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:start">
+      <div class="box" style="display:grid;gap:12px;margin:0">
+        <b>Quem assina os anúncios</b><span class="muted" style="font-size:13px">Sua identidade nos formatos com perfil (hoje: ${esc(usam || 'nenhum')}).</span>
+        <div style="display:flex;gap:16px;align-items:center">
+          <canvas id="emb-av" width="400" height="400" style="width:110px;height:110px;border-radius:50%;background:var(--panel2);cursor:grab;touch-action:none"></canvas>
+          <div style="display:grid;gap:6px"><div style="display:flex;gap:8px"><button id="emb-av-pick">Trocar imagem</button><button id="emb-av-del" ${P.avatar ? '' : 'hidden'}>Remover</button></div>
+            <input id="emb-av-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            <label id="emb-av-zoom" class="muted" style="font-size:12px" hidden>Tamanho <input type="range" min="1" max="4" step="0.01" value="1"></label>
+            <span class="muted" style="font-size:12px">Foto de perfil ou logo (PNG ou JPG). Depois de escolher, arraste para posicionar e ajuste o tamanho.</span>
+            <button id="emb-av-ok" class="primary" hidden>Usar esta foto</button></div></div>
+        <label style="display:grid;gap:2px;font-size:13px">Nome da marca<input id="emb-p-nome" maxlength="40" value="${esc(P.nome)}"></label>
+        <label style="display:grid;gap:2px;font-size:13px">@ do Instagram<input id="emb-p-arroba" maxlength="31" value="${esc(P.arroba)}" placeholder="@suamarca"></label>
+        <div style="display:flex;gap:20px;font-size:13px"><label><input type="checkbox" id="emb-p-logo" ${P.mostrarLogo ? 'checked' : ''}> Mostrar logo</label><label><input type="checkbox" id="emb-p-ar" ${P.mostrarArroba ? 'checked' : ''}> Mostrar @</label></div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><b style="font-size:13px">Fundo atrás do vídeo</b>
+          ${P.fundo ? `<img src="${embFile(st.id, P.fundo)}?${st.version}" style="height:48px;border-radius:6px">` : '<span class="muted" style="font-size:12px">Sem imagem: o próprio vídeo, desfocado.</span>'}
+          <button id="emb-fd-pick">${P.fundo ? 'Trocar' : 'Escolher imagem'}</button><button id="emb-fd-del" ${P.fundo ? '' : 'hidden'}>Remover</button><input id="emb-fd-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+          <span class="muted" style="font-size:12px;flex-basis:100%">Aparece na janela do vídeo quando você diminui a escala dele na Edição (formatos que precisam de mais espaço).</span></div>
+        <label style="font-size:13px"><input type="checkbox" id="emb-p-padrao"> Salvar como padrão <span class="muted">(usar nos próximos vídeos)</span></label>
+        <div id="emb-p-err" class="err"></div>
+      </div>
+      <div><div class="muted" style="font-size:13px;margin-bottom:6px">Assim aparece no anúncio${demo ? ` (${esc(demo.nome)})` : ''}</div><div id="emb-p-demo"></div><div class="muted" style="font-size:12px;margin-top:6px">Exemplo ilustrativo.</div></div></div>
+      <div style="display:flex;margin-top:20px"><button id="emb-volta">← Vídeo</button><button id="emb-next" class="primary" style="margin-left:auto">Escolher formatos →</button></div>`;
+    const demoHtml = () => demo ? embThumb(demo, { ...Object.fromEntries(demo.campos.map(c => [c.id, c.id === 'nome_pagina' && P.nome ? P.nome : c.padrao || embRotulo(c)])), ...embP() }, 230, embX()) : '<p class="muted">Nenhum modelo usa o perfil ainda.</p>';
+    $('#emb-p-demo').innerHTML = demoHtml();
+    // every change is saved on its own; the demo is redrawn from the answer
+    let fila = Promise.resolve();
+    const salvar = patch => fila = fila.then(async () => { try { st = await api('PUT', `/embrulhos/${id}/perfil`, { ...patch, padrao: $('#emb-p-padrao').checked, version: st.version }); Object.assign(P, st.perfil); if (!st.perfil.avatar) delete P.avatar; $('#emb-p-err').textContent = ''; $('#emb-p-demo').innerHTML = demoHtml(); $('#emb-av-del').hidden = !P.avatar; } catch (e) { $('#emb-p-err').textContent = e.message; } });
+    $('#emb-p-nome').onchange = e => salvar({ nome: e.target.value });
+    $('#emb-p-arroba').onchange = e => salvar({ arroba: e.target.value }).then(() => { e.target.value = P.arroba; });
+    $('#emb-p-logo').onchange = e => salvar({ mostrarLogo: e.target.checked });
+    $('#emb-p-ar').onchange = e => salvar({ mostrarArroba: e.target.checked });
+    $('#emb-p-padrao').onchange = e => { if (e.target.checked) salvar({}); };
+    // photo: the picked image is drawn on a square canvas (drag to place, slider to size) and that square is what gets uploaded
+    const cv = $('#emb-av'), cx = cv.getContext('2d'), zoom = $('#emb-av-zoom input'), pos = { x: 0, y: 0 }; let img = null;
+    const desenha = () => { cx.clearRect(0, 0, 400, 400); if (!img) return; const s = Math.max(400 / img.width, 400 / img.height) * +zoom.value, w = img.width * s, h = img.height * s;
+      pos.x = Math.min(0, Math.max(400 - w, pos.x)); pos.y = Math.min(0, Math.max(400 - h, pos.y)); cx.drawImage(img, pos.x, pos.y, w, h); };
+    const carrega = (url, novo) => { const i = new Image(); i.onload = () => { img = i; zoom.value = 1; zoom.dataset.z = 1; const s = Math.max(400 / i.width, 400 / i.height); pos.x = (400 - i.width * s) / 2; pos.y = (400 - i.height * s) / 2; desenha(); $('#emb-av-zoom').hidden = $('#emb-av-ok').hidden = !novo; }; i.src = url; };
+    if (P.avatar) carrega(embFile(st.id, P.avatar) + '?' + st.version, false);
+    $('#emb-av-pick').onclick = () => $('#emb-av-file').click();
+    $('#emb-av-file').onchange = e => { if (e.target.files[0]) carrega(URL.createObjectURL(e.target.files[0]), true); };
+    zoom.oninput = () => { const c = 200, antes = +zoom.dataset.z || 1, k = +zoom.value / antes; pos.x = c - (c - pos.x) * k; pos.y = c - (c - pos.y) * k; zoom.dataset.z = zoom.value; desenha(); };
+    cv.onpointerdown = e => { if (!img || $('#emb-av-ok').hidden) return; cv.setPointerCapture(e.pointerId); const k = 400 / cv.clientWidth, o = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y };
+      cv.onpointermove = m => { pos.x = o.px + (m.clientX - o.x) * k; pos.y = o.py + (m.clientY - o.y) * k; desenha(); }; cv.onpointerup = () => { cv.onpointermove = null; }; };
+    $('#emb-av-ok').onclick = e => act(e.target, async () => { const blob = await new Promise(r => cv.toBlob(r, 'image/png')); await salvar({ avatar: await upload(new File([blob], 'avatar.png', { type: 'image/png' }), 'media') }); $('#emb-av-zoom').hidden = $('#emb-av-ok').hidden = true; });
+    $('#emb-av-del').onclick = () => salvar({ avatar: null }).then(() => { img = null; desenha(); });
+    $('#emb-fd-pick').onclick = () => $('#emb-fd-file').click();
+    $('#emb-fd-file').onchange = e => { const f = e.target.files[0]; if (f) act(e.target, async () => { await salvar({ fundo: await upload(f, 'media') }); await fila; go('marca'); }); };
+    $('#emb-fd-del').onclick = e => act(e.target, async () => { await salvar({ fundo: null }); await fila; go('marca'); });
+    $('#emb-volta').onclick = () => go('video');
+    $('#emb-next').onclick = async () => { document.activeElement?.blur?.(); await fila; go('formatos'); };
+  }
+
+  if (etapa === 'formatos') {
+    const propSel = embPropPick[st.id] ?? st.proporcoes;
+    box.innerHTML = `<div class="box" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 16px;margin-bottom:12px;font-size:13px"><b>Proporções</b>
+        ${Object.entries(EMB_PROPS).map(([p, [w, h, n]]) => `<label style="cursor:pointer"><input type="checkbox" class="emb-prop" value="${p}" ${propSel.includes(p) ? 'checked' : ''}> ${n} <span class="muted">${w}×${h}</span></label>`).join('')}
+        <span class="muted" style="font-size:12px">Cada formato sai em todas as proporções marcadas que ele tiver.</span></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><span class="muted" style="margin-right:auto">Modelos de referência: as prévias com o seu vídeo vêm na próxima etapa.</span>${st.encaixe ? '<button id="emb-rec">Selecionar recomendados</button>' : ''}<button id="emb-all">Selecionar todos</button><button id="emb-none">Limpar</button><button class="primary emb-gerar" ${dis}>Gerar prévias e editar →</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px">${embModelos.map(m => `<label class="emb-pick" style="cursor:pointer;display:grid;gap:6px;justify-items:center">
+        ${embMini(m)}
+        <span class="muted emb-pnota" style="font-size:12px;text-align:center"></span>
+        <span><input type="checkbox" value="${m.id}" ${(embPick[st.id] ? embPick[st.id].includes(m.id) : st.formatos[m.id]?.selecionado) ? 'checked' : ''}> <b>${esc(m.nome)}</b></span>
+        <span class="emb-selo" style="display:grid;gap:6px;justify-items:center"></span>
+        ${st.formatos[m.id] ? '<span class="muted" style="font-size:12px">já escrito: seu texto é mantido</span>' : ''}</label>`).join('')}</div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:20px"><span id="emb-count" class="muted" style="margin-right:auto"></span><button class="primary emb-gerar" ${dis}>Gerar prévias e editar →</button></div>`;
+    const checks = [...box.querySelectorAll('.emb-pick input')], marcados = () => checks.filter(c => c.checked).map(c => c.value);
+    const conta = () => { const n = (embPick[st.id] = marcados()).length; $('#emb-count').textContent = n ? `${n} formato(s) selecionado(s)` : 'Nenhum formato selecionado'; box.querySelectorAll('.emb-gerar').forEach(b => b.disabled = !n || !!busy); };
+    checks.forEach(c => c.onchange = conta);
+    // a model takes part only in the ticked proportions it has a drawing for; with none of them it cannot be picked
+    const pchecks = [...box.querySelectorAll('.emb-prop')], props = () => pchecks.filter(c => c.checked).map(c => c.value);
+    // fit badge over the ticked proportions the model has: the first one that asks for adaptation wins, and says which
+    const enc = mid => { const e = st.encaixe?.[mid]; if (!e) return null; const ps = props().filter(p => e.por[p]), ruim = ps.find(p => !e.por[p].ok);
+      return ruim ? { ok: false, motivo: ps.length > 1 ? `${e.por[ruim].motivo.replace(/\.$/, '')} em ${EMB_PROPS[ruim][2]}.` : e.por[ruim].motivo } : { ok: true, motivo: '' }; };
+    const ajusta = () => { if (!props().length) pchecks[0].checked = true; embPropPick[st.id] = props();
+      checks.forEach(c => { const tem = M[c.value].props, falta = props().filter(p => !tem.includes(p)); c.disabled = falta.length === props().length; if (c.disabled) c.checked = false;
+        c.closest('.emb-pick').querySelector('.emb-pnota').textContent = falta.length ? `ainda sem ${falta.map(p => EMB_PROPS[p][2]).join(' e ')}` : '';
+        const e = enc(c.value); c.closest('.emb-pick').querySelector('.emb-selo').innerHTML = !e || c.disabled ? '' : `<span style="font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);color:${e.ok ? 'var(--green, #4caf50)' : 'var(--yellow)'}">${e.ok ? 'Encaixa' : 'Adaptar'}</span>${e.ok ? '' : `<span class="muted" style="font-size:12px;text-align:center">${esc(e.motivo)}</span>`}`; });
+      conta(); };
+    pchecks.forEach(c => c.onchange = ajusta);
+    $('#emb-all').onclick = () => { checks.forEach(c => c.checked = !c.disabled); conta(); };
+    if ($('#emb-rec')) $('#emb-rec').onclick = () => { checks.forEach(c => c.checked = !c.disabled && enc(c.value).ok); conta(); };
+    $('#emb-none').onclick = () => { checks.forEach(c => c.checked = false); conta(); };
+    box.querySelectorAll('.emb-gerar').forEach(b => b.onclick = e => act(e.target, async () => { scrollTo({ top: 0, behavior: 'smooth' }); showToast({ title: 'Seus embrulhos estão sendo gerados', message: 'A IA escreve os textos e depois cada prévia é renderizada. Acompanhe o progresso no topo da tela.', type: 'info', duration: 9000 }); e.target.classList.add('is-busy'); try { await api('POST', `/embrulhos/${id}/gerar`, { modelos: marcados(), proporcoes: props() }); } finally { e.target.classList.remove('is-busy'); } delete embPick[st.id]; delete embPropPick[st.id]; go('edicao'); }));
+    ajusta();
+  }
+
+  if (etapa === 'edicao') {
+    const midia = (m, f) => f.previaEm ? `<video src="${embFile(st.id, `previa/${m.id}${suf(aba(m.id))}.mp4`)}?${f.previaEm}" poster="${embFile(st.id, `previa/${m.id}${suf(aba(m.id))}.jpg`)}?${f.previaEm}" controls preload="none" style="width:190px;aspect-ratio:${EMB_PROPS[aba(m.id)][0]}/${EMB_PROPS[aba(m.id)][1]};border-radius:10px;background:#000"></video>` : embMini(m, 190);
+    // one adjustment slider: the value is saved on release and the card's preview is redone
+    const AJ = { video_zoom: [0, 3, 0.05, 1], foco_x: [0, 1, 0.01, 0.5], foco_y: [0, 1, 0.01, 0.5], quadro_zoom: [1, 3, 0.05, 1], quadro_x: [0, 1, 0.01, 0.5], quadro_y: [0, 1, 0.01, 0.5], texto_x: [-540, 540, 1, 0], texto_y: [-960, 960, 1, 0], texto_escala: [0.5, 1.8, 0.05, 1], embrulho_s: [1, Math.max(1, Math.ceil(st.duracao)), 0.5, Math.max(1, Math.ceil(st.duracao))] };
+    const ajFmt = (k, v) => k === 'embrulho_s' ? (+v >= Math.ceil(st.duracao) - 0.5 ? 'todo' : `${v}s`) : /zoom|escala/.test(k) ? `${(+v).toFixed(2)}×` : /^texto/.test(k) ? `${v > 0 ? '+' : ''}${v}` : `${Math.round(v * 100)}%`;
+    const sl = (f, k, rot) => { const [min, max, step, pad] = AJ[k], v = f.ajustes[k] ?? pad; return `<label style="display:grid;grid-template-columns:84px 1fr 48px;gap:8px;align-items:center;font-size:12px"><span class="muted">${rot}</span><input type="range" class="emb-aj" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${v}"><span class="muted emb-ajv" style="text-align:right">${ajFmt(k, v)}</span></label>`; };
+    const grupo = (f, titulo, chaves, corpo) => `<details ${chaves.some(k => f.ajustes[k] != null && f.ajustes[k] !== AJ[k][3]) ? 'open' : ''} style="font-size:13px"><summary style="cursor:pointer">${titulo}</summary><div style="display:grid;gap:6px;margin-top:6px">${corpo}</div></details>`;
+    const ver = k => { const f = st.formatos[k]; return embFiltro === 'todos' || (embFiltro === 'revisados') === f.aprovado; };
+    const L = st.leitura;
+    box.innerHTML = `<div style="display:flex;gap:8px;margin-bottom:12px">${[['todos', 'Todos'], ['revisar', 'Para revisar'], ['revisados', 'Revisados']].map(([k, n]) => `<button class="emb-filtro ${embFiltro === k ? 'primary' : ''}" data-f="${k}">${n} (${sels().filter(m => k === 'todos' || (k === 'revisados') === st.formatos[m.id].aprovado).length})</button>`).join('')}</div>
+      ${L ? `<div class="box" style="padding:12px 16px;font-size:13px"><b>Leitura da IA:</b> <span class="muted">Oferta:</span> ${esc(L.oferta)} · <span class="muted">Público:</span> ${esc(L.publico)} · <span class="muted">Promessa:</span> ${esc(L.promessa)} · <span class="muted">CTA:</span> ${esc(L.cta)}</div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:16px">${sels().filter(m => ver(m.id)).map(m => { const f = F(m.id), ar = st.largura / st.altura, sar = (m.slot.w * 1080) / (m.slot.h * 1920);
+        return `<div class="box emb-card" data-m="${m.id}" style="display:grid;grid-template-columns:190px minmax(0,1fr);gap:16px;margin:0">
+        <div>${propsDe(m).length > 1 ? `<div style="display:flex;gap:4px;margin-bottom:6px">${propsDe(m).map(p => `<button class="emb-aba ${p === aba(m.id) ? 'primary' : ''}" data-p="${p}" style="font-size:11px;padding:3px 9px" title="Posições, tamanhos e prévia desta proporção">${EMB_PROPS[p][2]}</button>`).join('')}</div>` : ''}
+          <div class="emb-midia">${midia(m, f)}</div>
+          <div class="emb-velha muted" style="font-size:12px;margin-top:4px"></div>
+          <button class="emb-pos" style="margin-top:6px;font-size:12px;width:190px" title="Abre a prévia ampliada para arrastar cada peça da moldura e as imagens soltas">⤢ Posicionar na prévia</button></div>
+        <div style="display:grid;gap:8px;align-content:start">
+          <div style="display:flex;align-items:center;gap:8px"><b style="margin-right:auto">${esc(m.nome)} <span class="muted" style="font-weight:400;font-size:12px">prévia: primeiros 15 s${f.angulo ? ` · ângulo: ${esc(f.angulo)}` : ''}</span></b><button class="emb-reset" style="font-size:12px;padding:4px 10px" title="Volta posições e tamanhos deste formato ao padrão do modelo (textos e imagens soltas ficam)">↺ Reset</button><button class="emb-lixo" style="font-size:14px;padding:4px 10px" title="Excluir este formato da tela (o texto fica guardado: marque de novo em Formatos para trazer de volta)" aria-label="Excluir formato"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;pointer-events:none"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v7M14 10v7"/></svg></button><label style="font-size:13px"><input type="checkbox" class="emb-inc" ${f.incluir ? 'checked' : ''}> Incluir na entrega</label></div>
+          ${m.campos.map(c => `<label style="display:grid;gap:2px;font-size:13px"><span style="display:flex"><span style="margin-right:auto">${esc(embRotulo(c))}${c.opcional ? ' <span class="muted">(opcional)</span>' : ''}</span><span class="muted emb-n" data-max="${c.max}"></span></span>
+            <textarea class="emb-campo" data-c="${c.id}" rows="2" style="min-height:0;font:14px/1.4 var(--sans)">${esc(f.campos[c.id] ?? '')}</textarea></label>`).join('')}
+          ${m.pedeQuadro ? `<div style="font-size:13px;display:grid;gap:4px"><span>Imagem parada</span>
+            <div style="display:flex;gap:8px;align-items:center">${f.ajustes.imagem ? `<img src="${embFile(st.id, f.ajustes.imagem)}?${f.editadoEm}" style="height:64px;border-radius:6px"><button class="emb-frame">Usar um frame do vídeo</button>`
+              : `<video class="emb-qv" src="${src}" muted preload="none" ${f.previaEm ? `poster="${embFile(st.id, `camadas/${m.id}${suf(aba(m.id))}-quadro.jpg`)}?${f.previaEm}"` : ''} style="height:64px;aspect-ratio:${st.largura}/${st.altura};border-radius:6px;background:#000"></video><input type="range" class="emb-quadro" min="0" max="${st.duracao}" step="0.1" value="${f.ajustes.quadro_t ?? 0}" style="flex:1"><span class="muted emb-qt">${mm(f.ajustes.quadro_t ?? 0)}</span>`}
+              <button class="emb-img">${f.ajustes.imagem ? 'Trocar imagem' : 'Subir imagem'}</button><input type="file" class="emb-imgf" accept="image/png,image/jpeg,image/webp" hidden></div>
+            ${grupo(f, 'Imagem: posição e escala', ['quadro_zoom', 'quadro_x', 'quadro_y'], sl(f, 'quadro_zoom', 'Escala') + sl(f, 'quadro_x', 'Horizontal') + sl(f, 'quadro_y', 'Vertical'))}</div>` : ''}
+          ${grupo(f, 'Tempo do embrulho', ['embrulho_s'], sl(f, 'embrulho_s', 'Duração') + '<span class="muted" style="font-size:12px">Por quantos segundos o embrulho fica no vídeo, contando do início; depois o vídeo aparece limpo, em tela cheia. No máximo, vale o vídeo todo. A prévia mostra os 15 primeiros segundos.</span>')}
+          ${m.dois ? `<div style="font-size:13px;display:grid;gap:6px"><span>Segundo vídeo <span class="muted">(janela de baixo; sem ele, o principal se repete)</span></span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${f.ajustes.video2 ? `<video src="${embFile(st.id, f.ajustes.video2)}?${f.editadoEm}" muted preload="metadata" style="height:64px;border-radius:6px;background:#000"></video>` : ''}<button class="emb-v2">${f.ajustes.video2 ? 'Trocar vídeo' : 'Adicionar vídeo'}</button>${f.ajustes.video2 ? '<button class="emb-v2-del muted">Remover</button>' : ''}<button class="emb-troca" title="Troca o vídeo de cima com o de baixo">⇅ Inverter vídeos${f.ajustes.trocar ? ' (invertido)' : ''}</button><input type="file" class="emb-v2f" accept="video/*" hidden></div>
+            <span class="muted" style="font-size:12px">O som é sempre o do vídeo principal. A escala e o enquadramento abaixo valem para os dois.</span></div>` : ''}
+          ${grupo(f, 'Vídeo: posição e escala', ['video_zoom', 'foco_x', 'foco_y'], sl(f, 'video_zoom', 'Escala') + sl(f, 'foco_x', 'Horizontal') + sl(f, 'foco_y', 'Vertical') + '<span class="muted" style="font-size:12px">Escala 1 cobre a janela; abaixo de 1 o vídeo encolhe e o resto da janela é preenchido pelo fundo da etapa Marca (ou pelo próprio vídeo desfocado). Horizontal e vertical escolhem a parte do vídeo que aparece, ou onde ele fica na janela.</span>')}
+          <details ${(f.imagens ?? []).length ? 'open' : ''} style="font-size:13px"><summary style="cursor:pointer">Imagens e vídeos soltos${(f.imagens ?? []).length ? ` (${f.imagens.length})` : ''}</summary><div style="display:grid;gap:10px;margin-top:6px">
+            ${(f.imagens ?? []).map((e, i) => `<div class="emb-ex" data-i="${i}" style="display:grid;grid-template-columns:56px 1fr;gap:10px;align-items:start"><div style="display:grid;gap:4px;justify-items:center">${e.video ? `<video src="${embFile(st.id, e.arquivo)}" muted preload="metadata" style="width:56px;max-height:72px;object-fit:contain;border-radius:6px;background:var(--panel2)"></video>` : `<img src="${embFile(st.id, e.arquivo)}" style="width:56px;max-height:72px;object-fit:contain;border-radius:6px;background:var(--panel2)">`}<button class="emb-ex-del muted" style="font-size:11px;padding:2px 8px">Remover</button></div>
+              <div style="display:grid;gap:6px">${[['largura', 'Tamanho', 0.03, 1.5], ['x', 'Horizontal', 0, 1], ['y', 'Vertical', 0, 1]].map(([k, rot, min, max]) => `<label style="display:grid;grid-template-columns:84px 1fr 48px;gap:8px;align-items:center;font-size:12px"><span class="muted">${rot}</span><input type="range" class="emb-ex-r" data-k="${k}" min="${min}" max="${max}" step="0.01" value="${e[k]}"><span class="muted" style="text-align:right">${Math.round(e[k] * 100)}%</span></label>`).join('')}</div></div>`).join('')}
+            <div><button class="emb-ex-add">+ Adicionar imagem ou vídeo</button><input type="file" class="emb-ex-f" accept="image/png,image/jpeg,image/webp,video/*" hidden> <span class="muted" style="font-size:12px">Logo, selo, print, figurinha (PNG com fundo transparente funciona) ou um vídeo curto (repete em laço, sem som). Fica por cima de tudo, onde você posicionar.</span></div></div></details>
+          ${m.textoMovel ? grupo(f, 'Texto: posição e tamanho', ['texto_x', 'texto_y', 'texto_escala'], sl(f, 'texto_escala', 'Tamanho') + sl(f, 'texto_x', 'Horizontal') + sl(f, 'texto_y', 'Vertical')) : ''}
+          <div class="emb-itens" style="font-size:12px"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="emb-ok"></button><button class="emb-previa" ${dis}>Atualizar prévia</button></div>
+        </div></div>`; }).join('') || '<p class="muted">Nenhum formato neste filtro.</p>'}</div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:20px"><button id="emb-volta">← Formatos</button><span id="emb-rev" class="muted" style="margin-right:auto"></span><button id="emb-exportar" class="primary" ${dis}></button></div>`;
+    box.querySelectorAll('.emb-filtro').forEach(b => b.onclick = () => { embFiltro = b.dataset.f; go('edicao'); });
+    $('#emb-volta').onclick = () => go('formatos');
+    const rodape = () => { const s = sels(), inc = s.filter(m => st.formatos[m.id].incluir).reduce((n, m) => n + propsDe(m).length, 0); $('#emb-rev').textContent = `${s.filter(m => st.formatos[m.id].aprovado).length} de ${s.length} revisados`; $('#emb-exportar').textContent = `Exportar ${inc} vídeo(s)`; $('#emb-exportar').disabled = !inc || !!busy; };
+    // what the server answered for one card: checks, stale preview, approval
+    const pinta = card => { const f = F(card.dataset.m);
+      card.querySelector('.emb-itens').innerHTML = f.itens.map(i => `<div class="${i.nivel === 'erro' ? 'err' : 'muted'}">${i.nivel === 'erro' ? '✗' : '⚠'} ${esc(i.campo)}: ${esc(i.msg)}</div>`).join('') + f.avisos.map(a => `<div class="muted">⚠ ${esc(a)}</div>`).join('');
+      card.querySelector('.emb-pos').disabled = !f.previaEm;
+      card.querySelector('.emb-velha').textContent = !f.previaEm ? 'sem prévia ainda' : f.editadoEm > f.previaEm ? 'prévia desatualizada' : '';
+      const ok = card.querySelector('.emb-ok'); ok.textContent = f.aprovado ? '✓ Aprovado' : 'Aprovar'; ok.classList.toggle('primary', f.aprovado); ok.disabled = temErro(f);
+      card.querySelectorAll('.emb-campo').forEach(t => { const n = t.closest('label').querySelector('.emb-n'); n.textContent = `${t.value.length}/${n.dataset.max}`; n.classList.toggle('err', t.value.length > +n.dataset.max); });
+      rodape(); };
+    // saves go one after the other: each one carries the version the previous answer returned
+    let fila = Promise.resolve();
+    const salvar = (card, patch) => fila = fila.then(async () => { const er = card.querySelector('.emb-itens');
+      try { st = await api('PUT', `/embrulhos/${id}/formatos/${card.dataset.m}`, { ...patch, prop: aba(card.dataset.m), version: st.version }); pinta(card); } catch (e) { er.innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } });
+    // the card's preview is redone after every edit (about 3 s). It waits its turn behind the saves, and when several edits pile up
+    // on one card only the last one renders. Only this card's player is swapped: the page is not redrawn.
+    const previa = card => { const n = card._n = (card._n || 0) + 1, mid = card.dataset.m, v = card.querySelector('.emb-velha'), md = card.querySelector('.emb-midia');
+      md.classList.add('emb-carregando');
+      return fila = fila.then(async () => { if (n !== card._n) return; md.classList.remove('emb-carregando'); if (temErro(F(mid))) return; md.classList.add('emb-carregando');
+        v.textContent = '⏳ atualizando a prévia…';
+        try { st = await api('POST', `/embrulhos/${id}/formatos/${mid}/previa`, { prop: aba(mid) }); card.querySelector('.emb-midia').innerHTML = midia(M[mid], F(mid)); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; }
+        if (n === card._n) md.classList.remove('emb-carregando');
+        pinta(card); }); };
+    // sliders show what the server has (after a drag in the enlarged preview changed the same values)
+    const sync = card => { const f = F(card.dataset.m);
+      card.querySelectorAll('.emb-aj').forEach(r => { r.value = f.ajustes[r.dataset.k] ?? AJ[r.dataset.k][3]; r.oninput(); });
+      card.querySelectorAll('.emb-ex').forEach(d => { const e = (f.imagens ?? [])[+d.dataset.i]; if (e) d.querySelectorAll('.emb-ex-r').forEach(r => { r.value = e[r.dataset.k]; r.oninput(); }); }); };
+    // Enlarged preview: the text group and each free image get a box to drag (move) and a corner to pull (size). During the gesture only
+    // the box moves; on release the values are saved and the preview is redone (about 3 s), then the boxes are redrawn from the answer.
+    const posicionar = card => {
+      const mid = card.dataset.m, m = M[mid], [PW, PH] = EMB_PROPS[aba(mid)], lim = (v, a, b) => Math.min(b, Math.max(a, v));
+      const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:1000;display:grid;place-items:center';
+      ov.innerHTML = `<div style="display:grid;gap:10px;justify-items:center"><div class="muted" style="font-size:13px">Passe o mouse para ver cada peça (vídeo, textos, foto, selos, faixas) e arraste; puxe a bolinha do canto para mudar o tamanho. A prévia é refeita quando você solta.</div>
+        <div class="emb-palco" style="position:relative;width:min(92vw, calc(min(78vh, 860px) * ${PW} / ${PH}));aspect-ratio:${PW}/${PH};background:#000;border-radius:12px;touch-action:none;user-select:none"><img class="emb-pimg" draggable="false" alt="" style="width:100%;height:100%;display:block;border-radius:12px"></div>
+        <span class="emb-pst muted" style="font-size:12px;min-height:16px"></span></div>
+        <button class="emb-pfechar" title="Fechar (Esc)" aria-label="Fechar" style="position:fixed;top:18px;right:22px;width:44px;height:44px;padding:0;border-radius:50%;font-size:20px">✕</button>`;
+      document.body.append(ov);
+      const palco = ov.querySelector('.emb-palco'), stt = ov.querySelector('.emb-pst');
+      const tecla = e => { if (e.key === 'Escape') fechar(); };
+      const fechar = () => { ov.remove(); removeEventListener('keydown', tecla); sync(card); };
+      addEventListener('keydown', tecla); ov.querySelector('.emb-pfechar').onclick = fechar; ov.onclick = e => { if (e.target === ov) fechar(); };
+      let tentou = false;
+      const refaz = () => { stt.textContent = '⏳ atualizando a prévia…'; palco.classList.add('emb-carregando'); previa(card).then(() => { if (ov.isConnected) { palco.classList.remove('emb-carregando'); stt.textContent = ''; desenha(); } }); };
+      const aplica = patch => { salvar(card, patch); refaz(); };
+      const arrasta = (d, w0, solta) => { d.onpointerdown = e => { e.preventDefault(); d.setPointerCapture(e.pointerId);
+        const R = palco.getBoundingClientRect(), canto = e.target.tagName === 'I', x0 = e.clientX, y0 = e.clientY; let dx = 0, dy = 0;
+        const razao = () => Math.max(0.1, 1 + 2 * (dx / R.width) / w0);
+        d.onpointermove = v => { dx = v.clientX - x0; dy = v.clientY - y0; d.style.transform = canto ? `scale(${razao()})` : `translate(${dx}px, ${dy}px)`; };
+        d.onpointerup = () => { d.onpointermove = d.onpointerup = null; if (Math.abs(dx) + Math.abs(dy) > 2) solta(canto ? { razao: razao() } : { dx: dx / R.width, dy: dy / R.height }); else d.style.transform = ''; }; }; };
+      const caixa = (rot, x, y, w, h) => { const d = document.createElement('div'); d.className = 'emb-cx';
+        d.style.cssText = `position:absolute;left:${x * 100}%;top:${y * 100}%;width:${w * 100}%;height:${h * 100}%;border:2px dashed var(--yellow);box-sizing:border-box;cursor:move;border-radius:4px;opacity:.3`;
+        d.onpointerenter = () => d.style.opacity = 1; d.onpointerleave = () => d.style.opacity = .3;
+        d.innerHTML = `<span style="position:absolute;left:-2px;top:-20px;font:600 11px var(--sans);background:var(--yellow);color:#000;padding:1px 6px;border-radius:3px;white-space:nowrap">${rot}</span><i style="position:absolute;right:-8px;bottom:-8px;width:16px;height:16px;background:var(--yellow);border:2px solid #000;border-radius:50%;cursor:nwse-resize"></i>`;
+        palco.append(d); return d; };
+      const desenha = () => { const f = F(mid), a = f.ajustes;
+        ov.querySelector('.emb-pimg').src = `${embFile(st.id, `previa/${mid}${suf(aba(mid))}.jpg`)}?${f.previaEm}`;
+        palco.querySelectorAll('.emb-cx').forEach(e => e.remove());
+        // every piece of the frame, biggest first so the small ones stay on top; one that fills the frame is left out
+        const cxs = (f.caixas ?? []).filter(c => c.w * c.h < 0.95).sort((p, q) => q.w * q.h - p.w * p.h), NOME = { slot: 'Vídeo', quadro: 'Imagem', av: 'Foto', centro: 'Foto' };
+        cxs.forEach(c => { const [x, y, s] = a.elementos?.[c.k] ?? [0, 0, 1];
+          arrasta(caixa(NOME[c.k] ?? c.k, c.x, c.y, c.w, c.h), c.w, g => aplica({ ajustes: { elementos: { [c.k]: g.razao
+            ? [x, y, +lim(s * g.razao, 0.2, 4).toFixed(3)]
+            : [Math.round(lim(x + g.dx * PW, -1920, 1920)), Math.round(lim(y + g.dy * PH, -1920, 1920)), s] } } })); });
+        (f.imagens ?? []).forEach((e, i) => { const im = e.video ? document.createElement('video') : new Image(); im[e.video ? 'onloadedmetadata' : 'onload'] = () => { if (!ov.isConnected || F(mid).imagens?.[i] !== e) return;
+          const h = e.largura * ((im.naturalHeight || im.videoHeight) / (im.naturalWidth || im.videoWidth)) * PW / PH;   // the image's height as a fraction of the frame
+          arrasta(caixa(`Imagem ${i + 1}`, e.x - e.largura / 2, e.y - h / 2, e.largura, h), e.largura, g => aplica({ imagens: F(mid).imagens.map((o, k) => k !== i ? o : g.razao
+            ? { ...o, largura: +lim(o.largura * g.razao, 0.03, 1.5).toFixed(3) }
+            : { ...o, x: +lim(o.x + g.dx, 0, 1).toFixed(3), y: +lim(o.y + g.dy, 0, 1).toFixed(3) }) })); };
+          im.src = embFile(st.id, e.arquivo); });
+        if (!f.caixas && !tentou) { tentou = true; refaz(); } };   // a preview made before the pieces were measured: redo it once
+      desenha();
+    };
+    box.querySelectorAll('.emb-card').forEach(card => {
+      pinta(card);
+      card.querySelectorAll('.emb-aba').forEach(b => b.onclick = async () => { await fila; embAba[st.id + card.dataset.m] = b.dataset.p; go('edicao'); });
+      card.querySelector('.emb-pos').onclick = () => posicionar(card);
+      card.querySelectorAll('.emb-campo').forEach(t => { t.oninput = () => { const n = t.closest('label').querySelector('.emb-n'); n.textContent = `${t.value.length}/${n.dataset.max}`; n.classList.toggle('err', t.value.length > +n.dataset.max); }; t.onchange = () => { salvar(card, { campos: { [t.dataset.c]: t.value } }); previa(card); }; });
+      card.querySelector('.emb-inc').onchange = e => salvar(card, { incluir: e.target.checked });
+      card.querySelector('.emb-ok').onclick = () => salvar(card, { aprovado: !F(card.dataset.m).aprovado });
+      const q = card.querySelector('.emb-quadro');
+      if (q) { q.oninput = () => { card.querySelector('.emb-qv').currentTime = +q.value; card.querySelector('.emb-qt').textContent = mm(+q.value); }; q.onchange = () => { salvar(card, { ajustes: { quadro_t: +q.value } }); previa(card); }; }
+      card.querySelectorAll('.emb-aj').forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = ajFmt(r.dataset.k, +r.value); }; r.onchange = () => { salvar(card, { ajustes: { [r.dataset.k]: +r.value } }); previa(card); }; });
+      card.querySelector('.emb-lixo').onclick = async () => { await salvar(card, { selecionado: false }); go(sels().length ? 'edicao' : 'formatos'); };
+      card.querySelector('.emb-reset').onclick = () => { card.querySelectorAll('.emb-aj').forEach(r => { r.value = AJ[r.dataset.k][3]; r.oninput(); }); salvar(card, { ajustes: { ...Object.fromEntries(Object.entries(AJ).map(([k, v]) => [k, v[3]])), elementos: null } }); previa(card); };
+      const ib = card.querySelector('.emb-img'), inp = card.querySelector('.emb-imgf');
+      if (ib) { ib.onclick = () => inp.click(); inp.onchange = async () => { if (!inp.files[0]) return; try { salvar(card, { ajustes: { imagem: await upload(inp.files[0], 'media') } }); await previa(card); go('edicao'); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } }; }
+      const fr = card.querySelector('.emb-frame'); if (fr) fr.onclick = async () => { salvar(card, { ajustes: { imagem: null, quadro_t: F(card.dataset.m).ajustes.quadro_t ?? 0 } }); await previa(card); go('edicao'); };
+      // free images: every change sends the whole list back (positions as the sliders show them); add and remove redraw the card
+      const exLista = () => [...card.querySelectorAll('.emb-ex')].map(d => ({ arquivo: F(card.dataset.m).imagens[+d.dataset.i].arquivo, ...Object.fromEntries([...d.querySelectorAll('.emb-ex-r')].map(r => [r.dataset.k, +r.value])) }));
+      card.querySelectorAll('.emb-ex-r').forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = `${Math.round(r.value * 100)}%`; }; r.onchange = () => { salvar(card, { imagens: exLista() }); previa(card); }; });
+      card.querySelectorAll('.emb-ex-del').forEach(b => b.onclick = async () => { const i = +b.closest('.emb-ex').dataset.i; salvar(card, { imagens: exLista().filter((_, k) => k !== i) }); await previa(card); go('edicao'); });
+      const exf = card.querySelector('.emb-ex-f');
+      card.querySelector('.emb-ex-add').onclick = () => exf.click();
+      exf.onchange = async () => { if (!exf.files[0]) return; try { salvar(card, { imagemNova: await upload(exf.files[0], 'media') }); await previa(card); go('edicao'); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } };
+      const v2 = card.querySelector('.emb-v2');
+      if (v2) { const vf = card.querySelector('.emb-v2f'); v2.onclick = () => vf.click();
+        vf.onchange = async () => { if (!vf.files[0]) return; try { salvar(card, { ajustes: { video2: await upload(vf.files[0], 'media') } }); await previa(card); go('edicao'); } catch (e) { card.querySelector('.emb-itens').innerHTML = `<div class="err">✗ ${esc(e.message)}</div>`; } };
+        const vd = card.querySelector('.emb-v2-del'); if (vd) vd.onclick = async () => { salvar(card, { ajustes: { video2: null } }); await previa(card); go('edicao'); };
+        card.querySelector('.emb-troca').onclick = async () => { salvar(card, { ajustes: { trocar: !F(card.dataset.m).ajustes.trocar } }); await previa(card); go('edicao'); }; }
+      card.querySelector('.emb-previa').onclick = () => { document.activeElement?.blur?.(); previa(card); };
+    });
+    $('#emb-exportar').onclick = e => act(e.target, async () => { await fila; e.target.classList.add('is-busy'); let r; try { r = await api('POST', `/embrulhos/${id}/exportar`); } finally { e.target.classList.remove('is-busy'); }
+      if (r.falhas.length) showToast({ title: 'Alguns formatos não exportaram', message: r.falhas.join(' · '), type: 'info', duration: 12000 });
+      go('export'); });
+    rodape();
+  }
+
+  if (etapa === 'export') {
+    const pasta = st.src.replace(/[\\/][^\\/]+$/, '') + '/saida';
+    box.innerHTML = `<p class="muted">Os vídeos ficam em <code>${esc(pasta)}</code>. Depois de ajustar um formato, exporte de novo.</p>
+      ${sels().filter(m => st.formatos[m.id].incluir).flatMap(m => propsDe(m).map(p => [m, p])).map(([m, p]) => { const f = F(m.id, p), velho = f.editadoEm > f.exportadoEm;
+        return `<div class="box" style="display:flex;gap:12px;align-items:center;padding:12px 16px;margin-bottom:8px"><div style="margin-right:auto;min-width:0"><b>${esc(m.nome)}</b>${st.proporcoes.length > 1 ? ` <span class="muted">${EMB_PROPS[p][2]}</span>` : ''}<div class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis">${esc(f.arquivo ? f.arquivo.split('/').pop() : 'ainda não exportado')}</div></div>
+          <span class="${f.exportadoEm && !velho ? '' : 'muted'}">${!f.exportadoEm ? '—' : velho ? 'editado depois: exporte de novo' : '✓ Concluído'}</span>
+          ${f.arquivo ? `<a href="${embFile(st.id, f.arquivo)}" download="${esc(f.arquivo.split('/').pop())}"><button>↓ Baixar</button></a>` : ''}<button class="emb-editar">✎ Editar</button></div>`; }).join('')}
+      <div style="display:flex;gap:12px;margin-top:16px"><button id="emb-volta">← Voltar à edição</button><button id="emb-re" style="margin-left:auto" ${dis}>Exportar de novo</button></div>`;
+    box.querySelectorAll('.emb-editar').forEach(b => b.onclick = () => go('edicao'));
+    $('#emb-volta').onclick = () => go('edicao');
+    $('#emb-re').onclick = e => act(e.target, async () => { e.target.classList.add('is-busy'); try { await api('POST', `/embrulhos/${id}/exportar`); } finally { e.target.classList.remove('is-busy'); } });
+  }
+}
+
 // ---- Motion Think: Daniel teaches one movement at a time (excerpt → movements → marks → synthesis → demo → bank). SSE per session. ----
 let mtEs = null;
-const MT_MOMENTOS = ['gancho', 'prova', 'numero', 'lista', 'virada', 'cta'], MT_CATS = ['tipografia', 'infografico', '3d', 'transicao', 'camera'];
+const MT_MOMENTOS = ['gancho', 'contexto', 'problema', 'definicao', 'exemplo', 'historia', 'prova', 'numero', 'lista', 'comparacao', 'passo-a-passo', 'virada', 'resumo', 'cta'], MT_CATS = ['tipografia', 'infografico', 'grafico', 'ilustracao', 'icone', 'foto', 'foto-antiga', 'colagem', 'exemplo', 'broll', '3d', 'transicao', 'camera'];
 const MT_STATUS = { baixando: '⏳ Guardando o vídeo...', pronto: 'Escolha o trecho (início e fim, até 60 s) e corte.', cortado: 'Trecho cortado. Clique em Analisar.', analisando: '🧠 Opus separando os movimentos...', analisado: 'Aponte o que gosta em cada movimento; só "gosto" vai para a síntese.', error: '✗ Erro' };
 const MT_MOV = { novo: '', sintetizando: '⏳ sintetizando', aguardando: 'aguardando veredito', aprovado: '✓ no banco', parado: '⏸ parado (3 rodadas)' };
 const mtFile = (id, rel) => `/motion-think/${encodeURIComponent(id)}/file/${rel.split('/').map(encodeURIComponent).join('/')}`;
@@ -11310,7 +11644,7 @@ async function motionThink(sel) {
         </div></details>
       ${list.map(c => `<a class="bitem ${c.id === sel ? 'on' : ''}" href="#/motion-think/${esc(c.id)}">${esc(c.name)} <span class="muted">· ${c.in != null ? `${Math.round(c.out - c.in)} s` : c.status}${c.movimentos ? ` · ${c.movimentos} mov` : ''}${c.aprovados ? ` · ${c.aprovados} ✓` : ''}</span></a>`).join('') || '<p class="muted">nenhum trecho ainda</p>'}
     </aside>
-    <section id="mt-main">${!sel ? '<p class="muted">Mande um trecho de vídeo que você gosta. O modelo separa em movimentos e quadros; você aponta o que gosta e o que não gosta; o modelo monta o movimento como helper do kit e renderiza uma demo com o locutor de acervo; aprovado, entra no banco e o compositor passa a preferi-lo.</p>' : ''}</section></div>`;
+    <section id="mt-main" style="min-width:0">${!sel ? '<p class="muted">Mande um trecho de vídeo que você gosta. O modelo separa em movimentos e quadros; você aponta o que gosta e o que não gosta; o modelo monta o movimento como helper do kit e renderiza uma demo com o locutor de acervo; aprovado, entra no banco e o compositor passa a preferi-lo.</p>' : ''}</section></div>`;
   const upload = f => new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open('POST', `/upload?kind=video&name=${encodeURIComponent(f.name)}`); x.onload = () => x.status === 200 ? ok(JSON.parse(x.responseText).path) : ko(new Error(x.responseText)); x.onerror = () => ko(new Error('falha no envio')); x.send(f); });
   $('#mt-pick').onclick = async () => { if (!NATIVE_PICKER) return $('#mt-file').click(); try { const r = await api('POST', '/pick-file', { kind: 'video' }); if (r.path) $('#mt-video').value = r.path; } catch { $('#mt-file').click(); } };
   $('#mt-file').onchange = async e => { if (e.target.files[0]) { $('#mt-video').value = 'enviando…'; $('#mt-video').value = await upload(e.target.files[0]); } };
@@ -11318,13 +11652,16 @@ async function motionThink(sel) {
   if (banco) return mtBanco();
   if (!st) return;
   const main = $('#mt-main'), an = st.analysis, notes = st.notes, mm = n => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
-  const srcName = st.src ? st.src.split(/[\\/]/).pop() : '';
+  const srcName = st.src ? st.src.split(/[\\/]/).pop() : '', lastErr = st.log.at(-1)?.startsWith('ERRO') ? st.log.at(-1) : '';
+  const tally = () => { const ms = Object.values(st.movimentos), c = k => ms.filter(x => x.status === k).length, g = Object.values(notes.movimentos).filter(x => x.veredito === 'gosto').length;
+    return `${an.movimentos.length} movimentos · ${g} com "gosto" · ${c('aguardando')} aguardando veredito · ${c('aprovado')} no banco${c('parado') ? ` · ${c('parado')} parado` : ''}. Só "gosto" vai para a síntese; a demo aparece na coluna da direita.`; };
   main.innerHTML = `
     <h3 style="margin:0 0 4px">${esc(st.name)} <span class="muted" style="font-weight:400">${st.duration ? mm(st.duration) : ''}${st.in != null ? ` · trecho ${st.in}–${st.out} s` : ''}</span></h3>
-    <p id="mt-status" class="${st.status === 'error' ? 'err' : 'muted'}">${busyStep ? `⏳ ${busyStep} em andamento...` : MT_STATUS[st.status]} ${esc(st.error ?? '')}</p>
-    <pre id="mt-log" class="muted" style="font-size:12px;max-height:160px;overflow:auto;${busyStep || st.status === 'error' ? '' : 'display:none'}">${esc(st.log.join('\n'))}</pre>
-    ${st.duration ? `<div style="display:grid;grid-template-columns:minmax(200px,320px) 1fr;gap:16px;align-items:start">
-      <video id="mt-src" src="${mtFile(st.id, srcName)}" controls style="width:100%;background:#000;border-radius:10px"></video>
+    <p id="mt-status" class="${st.status === 'error' || lastErr ? 'err' : 'muted'}">${busyStep ? `⏳ ${busyStep} em andamento...` : lastErr ? esc(lastErr) : an && st.status === 'analisado' ? tally() : MT_STATUS[st.status]} ${esc(st.error ?? '')}</p>
+    <pre id="mt-log" class="muted" style="font-size:12px;max-height:160px;overflow:auto;${busyStep || st.status === 'error' || lastErr ? '' : 'display:none'}">${esc(st.log.join('\n'))}</pre>
+    ${st.duration ? `<details ${an ? '' : 'open'}><summary class="muted" style="cursor:pointer;margin-bottom:10px">Vídeo e corte${st.in != null ? ` · trecho ${st.in}–${st.out} s` : ''} · ${an ? 'cortar ou analisar de novo apaga os apontamentos' : 'escolha o trecho'}</summary>
+    <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:start">
+      <video id="mt-src" src="${mtFile(st.id, srcName)}" ${st.thumbs ? `poster="${mtFile(st.id, 'thumbs/001.jpg')}"` : ''} preload="metadata" controls style="height:240px;max-width:360px;background:#000;border-radius:10px"></video>
       <div>
         <div id="mt-strip" style="position:relative;height:72px;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--panel);user-select:none">
           <div style="display:flex;height:100%">${Array.from({ length: st.thumbs ?? 0 }, (_, k) => `<img src="${mtFile(st.id, `thumbs/${String(k + 1).padStart(3, '0')}.jpg`)}" style="height:100%;flex:1 1 0;min-width:0;object-fit:cover" draggable="false">`).join('')}</div>
@@ -11340,8 +11677,8 @@ async function motionThink(sel) {
           <button id="mt-cut" ${busyStep ? 'disabled' : ''}>Cortar trecho</button>
           <button id="mt-analyze" class="primary" ${busyStep || !st.in && st.in !== 0 || st.status === 'pronto' ? 'disabled' : ''}>${an ? 'Analisar de novo' : 'Analisar'}</button>
         </div>
-        ${st.in != null ? `<video id="mt-trecho" src="${mtFile(st.id, 'trecho.mp4')}" controls muted loop style="width:180px;margin-top:10px;background:#000;border-radius:8px"></video>` : ''}
-      </div></div>` : ''}
+        ${st.in != null ? `<video id="mt-trecho" src="${mtFile(st.id, 'trecho.mp4')}#t=0.1" preload="metadata" controls muted loop style="height:160px;margin-top:10px;background:#000;border-radius:8px"></video>` : ''}
+      </div></div></details>` : ''}
     <div id="mt-movs" style="display:grid;gap:16px;margin-top:20px"></div>
     <p style="margin-top:24px"><button id="mt-del" class="muted">Apagar este trecho</button></p>`;
   $('#mt-del').onclick = e => act(e.target, async () => { if (confirm('Apagar este trecho, seus quadros e rodadas?')) { await api('DELETE', `/motion-think/${encodeURIComponent(st.id)}`); location.hash = '#/motion-think'; } });
@@ -11383,42 +11720,49 @@ async function motionThink(sel) {
   movs.innerHTML = an.movimentos.map(mv => {
     const n = noteOf(mv.m), ms = st.movimentos[mv.m] ?? { status: 'novo', rodadas: 0 }, rounds = st.rounds.filter(r => r.m === mv.m);
     const frames = mv.frames.filter((_, k) => k % 2 === 0).slice(0, 24);
-    return `<article class="mt-card" data-m="${mv.m}" style="border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;grid-template-columns:minmax(260px,46%) 1fr;gap:16px">
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline"><b>${mv.m}. ${esc(mv.nome)}</b><span class="muted">${mv.a}–${mv.b} s · ${esc(mv.elemento)} · ${esc(mv.camera)} ${MT_MOV[ms.status] ? `· ${MT_MOV[ms.status]}` : ''}</span></div>
+    const badge = { sintetizando: ['⏳ sintetizando', 'var(--yellow)'], aguardando: ['aguardando seu veredito', 'var(--yellow)'], aprovado: ['✓ no banco', 'var(--green)'], parado: ['⏸ parado (3 rodadas)', 'var(--mute)'] }[ms.status];
+    const lab = t => `<div class="muted" style="font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">${t}</div>`;
+    const round = (r, latest) => `<div class="mt-round" data-r="${r.r}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>Rodada ${r.r}/3 · ${esc(r.helper ?? '')}()</b><span class="muted" style="font-size:12px">${r.veredito ? (r.veredito.ok ? '✓ aprovada' : '✗ reprovada') : 'aguardando veredito'}</span></div>
+          ${r.demo ? `<video src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/demo.mp4`)}" ${r.sheet ? `poster="${mtFile(st.id, `rounds/${mv.m}/${r.r}/demo.jpg`)}"` : ''} controls loop muted playsinline ${latest ? 'autoplay' : ''} style="display:block;height:420px;max-width:100%;margin:8px auto 0;background:#000;border-radius:8px"></video>` : '<p class="muted">a síntese não deixou demo.mp4</p>'}
+          <details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:12px">folhas de contato · original × demo</summary>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div>${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : ''}</div><div>${r.sheet ? `<img src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : '<span class="muted">sem folha</span>'}</div></div></details>
+          ${r.proposta ? `<details><summary class="muted" style="cursor:pointer;font-size:12px">proposta.md · o que o modelo fixou e deixou livre</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(r.proposta)}</pre></details>` : ''}
+          ${r.summary ? `<details><summary class="muted" style="cursor:pointer;font-size:12px">resumo do modelo</summary><p class="muted" style="font-size:12px">${esc(r.summary.slice(0, 600))}</p></details>` : ''}
+          ${r.veredito ? `<p style="font-size:13px;margin:8px 0 0">${esc(r.veredito.texto)}</p>${r.veredito.ok && ms.status !== 'aprovado' ? `<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button type="button" class="mt-approve primary" data-r="${r.r}">Entrar no banco</button><label class="muted">foto <select class="mt-frame"><option value="sheet.jpg">folha de contato</option><option value="demo.jpg">quadro do meio</option></select></label></div>` : ''}`
+            : `<textarea class="mt-vtext" placeholder="Ficou bom? O que falta? (a reprovação vai para a próxima rodada)" style="min-height:56px;margin-top:8px;width:100%"></textarea><div style="display:flex;gap:8px;margin-top:6px"><button type="button" class="mt-ok primary" data-r="${r.r}">Aprovar</button><button type="button" class="mt-no" data-r="${r.r}">Reprovar</button></div>`}
+        </div>`;
+    const older = rounds.slice(0, -1).reverse(), latest = rounds.at(-1);
+    return `<article class="mt-card" data-m="${mv.m}" style="border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:minmax(240px,30%) minmax(0,1fr) minmax(280px,34%);gap:18px">
+      <div style="grid-column:1/-1;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:10px">
+        <b style="font-size:16px">${mv.m}. ${esc(mv.nome)}</b><span class="muted">${mv.a}–${mv.b} s · ${esc(mv.elemento)} · ${esc(mv.camera)}</span>
+        ${badge ? `<span style="margin-left:auto;font:600 12px var(--mono);color:${badge[1]};border:1px solid ${badge[1]};border-radius:999px;padding:2px 10px">${badge[0]}</span>` : ''}
+      </div>
+      <div style="min-width:0">${lab('Original')}
+        <video class="mt-prev" src="${mtFile(st.id, 'trecho.mp4')}#t=${mv.a},${mv.b}" data-a="${mv.a}" data-b="${mv.b}" muted playsinline style="display:block;width:100%;max-height:300px;background:#000;border-radius:8px"></video>
         <div class="mt-sheet" style="position:relative;margin-top:8px;cursor:default">${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;display:block;border-radius:8px" draggable="false">` : ''}<div class="mt-pins" style="position:absolute;inset:0;pointer-events:none"></div></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-          <video class="mt-prev" src="${mtFile(st.id, 'trecho.mp4')}#t=${mv.a},${mv.b}" data-a="${mv.a}" data-b="${mv.b}" muted playsinline style="width:120px;background:#000;border-radius:6px"></video>
-          <button type="button" class="mt-pin">📍 Marcar ponto</button>
-          <span class="muted" style="font-size:12px">clique no botão e depois na folha de contato; o tempo é o da prévia</span>
-        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><button type="button" class="mt-pin">📍 Marcar ponto</button><span class="muted" style="font-size:12px">depois clique na folha de contato; o tempo é o da prévia</span></div>
         <div class="mt-frames" style="display:flex;gap:3px;overflow:auto;margin-top:8px">${frames.map(f => `<img src="${mtFile(st.id, `frames/${mv.m}/${f}`)}" style="height:54px;border-radius:3px" loading="lazy">`).join('')}</div>
         <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">O que o modelo viu</summary>
-          <p style="font-size:13px"><b>O que:</b> ${esc(mv.oque)}<br><b>Entrada:</b> ${esc(mv.entrada)}<br><b>Vida:</b> ${esc(mv.vida)}<br><b>Saída:</b> ${esc(mv.saida)}<br><b>Tipo:</b> ${esc(Object.entries(mv.tipo).map(([k, v]) => `${k} = ${v}`).join('; '))}<br><b>Paleta:</b> ${mv.paleta.map(c => `<span style="display:inline-block;width:12px;height:12px;background:${esc(c)};border-radius:3px;vertical-align:middle"></span> ${esc(c)}`).join(' ')}<br><b>Medidas:</b> ${esc(JSON.stringify(mv.medidas))}</p></details>
+          <p style="font-size:13px"><b>O que:</b> ${esc(mv.oque)}<br><b>Entrada:</b> ${esc(mv.entrada)}<br><b>Vida:</b> ${esc(mv.vida)}<br><b>Saída:</b> ${esc(mv.saida)}<br><b>Tipo:</b> ${esc(Object.entries(mv.tipo).map(([k, v]) => `${k} = ${v}`).join('; '))}<br><b>Paleta:</b> ${mv.paleta.map(c => `<span style="display:inline-block;width:12px;height:12px;background:${esc(c)};border-radius:3px;vertical-align:middle"></span> ${esc(c)}`).join(' ')}<br><b>Medidas:</b> <span style="overflow-wrap:anywhere">${esc(JSON.stringify(mv.medidas))}</span></p></details>
       </div>
-      <div style="display:grid;gap:8px;align-content:start">
+      <div style="display:grid;gap:8px;align-content:start;min-width:0">${lab('Sua leitura')}
         <div style="display:flex;gap:6px">${[['gosto', '👍 gosto'], ['neutro', '😐 neutro'], ['nao-gosto', '👎 não gosto']].map(([v, l]) => `<button type="button" class="mt-ver ${n.veredito === v ? 'primary' : ''}" data-v="${v}" style="flex:1">${l}</button>`).join('')}</div>
         <div style="display:flex;gap:8px"><label class="muted" style="flex:1">momento <select class="mt-mom" style="width:100%">${MT_MOMENTOS.map(x => `<option ${n.momento === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
           <label class="muted" style="flex:1">categoria <select class="mt-cat" style="width:100%">${MT_CATS.map(x => `<option ${n.categoria === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
         <input class="mt-tags" placeholder="tags livres, separadas por vírgula" value="${esc(n.tags.join(', '))}">
-        <textarea class="mt-texto" placeholder="O que te pega neste movimento (o que aprender: movimento, ritmo, proporção)" style="min-height:70px">${esc(n.texto)}</textarea>
+        ${COLA_MOV}<textarea class="mt-texto" placeholder="O que te pega neste movimento (o que aprender: movimento, ritmo, proporção)" style="min-height:70px">${esc(n.texto)}</textarea>
         <input class="mt-nao" placeholder="Não levar: a fonte, a cor, o mascote..." value="${esc(n.naoLevar)}">
         <ul class="mt-pinlist muted" style="margin:0;padding-left:18px;font-size:13px"></ul>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button type="button" class="mt-save">Salvar apontamentos</button>
           <button type="button" class="mt-synth primary" ${n.veredito !== 'gosto' || busyStep || ['sintetizando', 'aguardando', 'aprovado', 'parado'].includes(ms.status) ? 'disabled' : ''}>Sintetizar (rodada ${Math.min(3, rounds.length + 1)}/3)</button>
-          ${ms.status === 'parado' ? '<span class="muted">parado: mude as notas e marque "gosto" de novo para retomar</span>' : ''}
+          ${ms.status === 'parado' ? '<span class="muted">parado: mude as notas e marque "gosto" de novo para retomar</span>' : ms.status === 'aguardando' ? '<span class="muted">dê o veredito da demo ao lado antes da próxima rodada</span>' : ''}
         </div>
-        ${rounds.map(r => `<div class="mt-round" data-r="${r.r}" style="border-top:1px dashed var(--line);padding-top:10px">
-          <div style="display:flex;justify-content:space-between"><b>Rodada ${r.r}/3 · ${esc(r.helper ?? '')}()</b><span class="muted">${r.veredito ? (r.veredito.ok ? '✓ aprovada' : '✗ reprovada') : 'aguardando veredito'}</span></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px"><div><div class="muted" style="font-size:11px">original</div>${mv.sheet ? `<img src="${mtFile(st.id, `frames/${mv.m}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : ''}</div>
-            <div><div class="muted" style="font-size:11px">demo</div>${r.sheet ? `<img src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/sheet.jpg`)}" style="width:100%;border-radius:6px">` : '<span class="muted">sem folha</span>'}</div></div>
-          ${r.demo ? `<video src="${mtFile(st.id, `rounds/${mv.m}/${r.r}/demo.mp4`)}" controls style="width:200px;margin-top:6px;background:#000;border-radius:6px"></video>` : ''}
-          ${r.proposta ? `<details><summary class="muted" style="cursor:pointer">proposta.md</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(r.proposta)}</pre></details>` : ''}
-          ${r.summary ? `<p class="muted" style="font-size:12px">${esc(r.summary.slice(0, 600))}</p>` : ''}
-          ${r.veredito ? `<p style="font-size:13px">${esc(r.veredito.texto)}</p>${r.veredito.ok && ms.status !== 'aprovado' ? `<div style="display:flex;gap:8px;align-items:center"><button type="button" class="mt-approve primary" data-r="${r.r}">Entrar no banco</button><label class="muted">foto <select class="mt-frame"><option value="sheet.jpg">folha de contato</option><option value="demo.jpg">quadro do meio</option></select></label></div>` : ''}`
-            : `<textarea class="mt-vtext" placeholder="O que falta ou o que ficou bom" style="min-height:50px;margin-top:6px"></textarea><div style="display:flex;gap:8px"><button type="button" class="mt-ok primary" data-r="${r.r}">Aprovar</button><button type="button" class="mt-no" data-r="${r.r}">Reprovar</button></div>`}
-        </div>`).join('')}
+      </div>
+      <div style="min-width:0">${lab('Demo (o movimento refeito no kit)')}
+        ${latest ? round(latest, true) : `<p class="muted" style="font-size:13px">${ms.status === 'sintetizando' ? '⏳ O Opus está escrevendo o helper e renderizando a demo (2 a 7 min). Esta coluna recarrega sozinha.' : 'Marque "gosto" e clique em Sintetizar: o Opus refaz o movimento como helper do kit e a demo em vídeo aparece aqui para você aprovar ou reprovar.'}</p>`}
+        ${older.map(r => `<details style="margin-top:12px;border-top:1px dashed var(--line);padding-top:8px"><summary class="muted" style="cursor:pointer">Rodada ${r.r} · ${r.veredito ? (r.veredito.ok ? '✓ aprovada' : '✗ reprovada') : 'sem veredito'}</summary>${round(r, false)}</details>`).join('')}
       </div></article>`;
   }).join('');
   for (const card of movs.querySelectorAll('.mt-card')) {
@@ -11492,11 +11836,13 @@ function route() {
   const cfg = h.match(/^\/config\/?(.*)$/);
   const ct = h.match(/^\/cortes\/?(.*)$/);
   const mt = h.match(/^\/motion-think\/?(.*)$/);
+  const emb = h.match(/^\/embrulhos\/?(.*)$/);
+  $("#nav-emb")?.classList.toggle("active", !!emb);
   $("#nav-cortes")?.classList.toggle("active", !!ct);
   $("#nav-mt")?.classList.toggle("active", !!mt);
 
   // Atualiza destaque na top navbar
-  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !skl && !cfg && !m && !ct && !mt);
+  $("#nav-projects")?.classList.toggle("active", !b && !f && !sty && !skl && !cfg && !m && !ct && !mt && !emb);
   $("#nav-brands")?.classList.toggle("active", !!b);
   $("#nav-formats")?.classList.toggle("active", !!f);
   $("#nav-styles")?.classList.toggle("active", !!sty);
@@ -11528,6 +11874,8 @@ function route() {
       cortes(ct[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (mt) {
       motionThink(mt[1] ? decodeURIComponent(mt[1]) : undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
+    } else if (emb) {
+      embrulhosView(emb[1] ? decodeURIComponent(emb[1]) : undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else if (cfg) {
       configSettings(cfg[1] || undefined).catch(e => app.innerHTML = `<p class="err">${esc(e.message)}</p>`);
     } else {

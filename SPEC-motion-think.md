@@ -14,7 +14,7 @@ Motion Think é a aba onde o Daniel ensina o editor um movimento por vez: manda 
 |---|---|
 | Unidade de trabalho | O **trecho** enviado, recortado por um seletor de minutagem (início e fim) na própria aba. Dentro dele, a análise separa **movimentos** (1 a 10 s, uma coisa acontecendo). O movimento é o que vira helper. |
 | Fonte | Upload ou URL (yt-dlp, como a Cortes), depois o seletor de in/out. |
-| Tags | Momento da fala: `gancho`, `prova`, `numero`, `lista`, `virada`, `cta`. Categoria: `tipografia`, `infografico`, `3d`, `transicao`, `camera`. Um movimento tem 1 momento e 1 categoria (pode ganhar mais tags livres). |
+| Tags | Momento da fala: `gancho`, `contexto`, `problema`, `definicao`, `exemplo`, `historia`, `prova`, `numero`, `lista`, `comparacao`, `passo-a-passo`, `virada`, `resumo`, `cta`. Categoria: `tipografia`, `infografico`, `grafico`, `ilustracao`, `icone`, `foto`, `foto-antiga`, `colagem`, `exemplo`, `broll`, `3d`, `transicao`, `camera`. Um movimento tem 1 momento e 1 categoria (pode ganhar mais tags livres). |
 | Demo | **Com locutor**. O Daniel manda também exemplos com locutor; até lá a demo usa um locutor de acervo (`workspace/library/locutor/`: `cut.webm`, `talk.mp4`, `voice.m4a`, `faceX`), copiado de um projeto aprovado. |
 | O que o aprovado vira | **Helper** em `compose/estilos/banco/`. Estilos (agrupar helpers num pacote) ficam para depois. |
 | Obrigatório? | Não. O banco é **opcional, mas preferido**: o brief lista o banco com foto por momento, o GUIDE manda usar o helper do banco quando existe um para o momento, e o `render()` avisa quando a cena tem momento coberto pelo banco e usou outra coisa. |

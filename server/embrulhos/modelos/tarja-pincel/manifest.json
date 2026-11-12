@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "id": "tarja-pincel",
+  "nome": "Tarja pincel",
+  "origem": "gravação do Lateralizador (2026-11-09), refeito no editor",
+  "tipo": "sobreposicao",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    },
+    "4x5": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.037,
+          "y": 0.4148,
+          "w": 0.9259,
+          "h": 0.1704
+        }
+      ]
+    },
+    "16x9": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": [
+        {
+          "x": 0.2396,
+          "y": 0.3935,
+          "w": 0.5208,
+          "h": 0.213
+        }
+      ]
+    }
+  },
+  "campos": [
+    {
+      "id": "headline",
+      "papel": "headline",
+      "max": 36
+    }
+  ],
+  "zonasTexto": [
+    {
+      "x": 0.037,
+      "y": 0.4635,
+      "w": 0.9259,
+      "h": 0.1094
+    }
+  ],
+  "textoGrupo": true,
+  "perfil": {
+    "tom": [
+      "impacto",
+      "manchete"
+    ],
+    "serveA": [
+      "revelacao",
+      "dado"
+    ],
+    "exige": [],
+    "evita": []
+  }
+}

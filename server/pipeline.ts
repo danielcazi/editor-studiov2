@@ -12,7 +12,6 @@ import { CAPTION_PRESETS, validateCaptionStyle, validateFont, validateFormat, va
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
 import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
 import { synthesize, synthesizeLong } from './voice.ts';
-import { carregarEmbrulho, compor, conferirCampos, extrairQuadro, listarEmbrulhos, precosDoSrt, renderCamadas, sugerirQuadros } from './embrulhos.ts';
 import { download as brollDownload, extOf, type Kind, pick as brollPick, rightsOf, search as brollSearch } from './broll.ts';
 import { afterEffectsCmd, NPM, NPX, PYTHON, WIN } from './host.ts';
 import { bancoBrief, copyBancoTo, readBanco } from './banco.ts';
@@ -1846,7 +1845,6 @@ export const listProjectsOverview = (): ProjectOverview[] => {
     final: 'Renderizando Final',
     cutout: 'Processando Cutout',
     ae: 'Exportando After Effects',
-    embrulhos: 'Gerando Embrulhos',
   };
 
   return ids.map(id => {
@@ -1947,7 +1945,7 @@ export const listProjectsOverview = (): ProjectOverview[] => {
 };
 // Files the UI may read; anything else stays private.
 export const finalName = (format: string) => `final-${format.replace(':', '-')}.mp4`;
-const PROJECT_FILES = ['script.json', 'embrulhos.json', 'preview.mp4', 'final.mp4', ...FORMATS.map(finalName), ...listarEmbrulhos().map(m => `embrulho-${m}.mp4`)];
+const PROJECT_FILES = ['script.json', 'preview.mp4', 'final.mp4', ...FORMATS.map(finalName)];
 export function projectFile(id: string, f: string) {
   load(id);
   if (!PROJECT_FILES.includes(f) || !existsSync(join(projDir(id), f))) fail(`no ${f} yet`);
@@ -2204,27 +2202,27 @@ async function fetchAssets(id: string, st: State, moments: any[]) {
   const P = projDir(id), manifestFile = join(P, 'assets', 'manifest.json'), broll = !!st.broll;
   if (!moments.length) return;
   const max = Math.min(broll ? 16 : 12, Math.max(2, moments.length));
-  const plan = await ask<{ wants: { moment: number; query: string; kind: 'image' | 'icon' | 'model' | 'video' | 'clip' }[]; music?: string }>('broll', 'assets:queries', {
-    system: `You pick the ready-made visual pieces a short talking-head reel needs, one search query per piece. Sources: photos and public-domain engravings (Openverse, Pexels, Pixabay, Commons), SVG icons (Iconify), low-poly 3D objects as .glb (Poly Pizza)` +
+  const plan = await ask<{ wants: { moment: number; query: string; kind: 'image' | 'icon' | 'model' | 'art' | 'video' | 'clip' }[]; music?: string }>('broll', 'assets:queries', {
+    system: `You pick the ready-made visual pieces a short talking-head reel needs, one search query per piece. Sources: photos and public-domain engravings (Openverse, Pexels, Pixabay, Commons), SVG icons (Iconify), low-poly 3D objects as .glb (Poly Pizza), museum open-access collections (Cleveland Museum of Art, the Met: paintings, engravings, old photographs, historical objects, all CC0)` +
       (broll ? `, stock footage (Pexels, Pixabay) and YouTube clips (yt-dlp, 15 s section). ` : `. `) +
       `At most ${max} pieces across the reel, only where a real picture, an icon, an object${broll ? ', a clip' : ''} shows what the words say better than typography would: an object the speaker names, a place, a situation, a device, a tool, a symbol${broll ? ', a person, a brand, a product, an event' : ''}. Skip moments about numbers, the speaker himself or pure typography. ` +
       (broll
-        ? `"query": English words naming something concrete; for a named person, brand, product or event write the full name plus context so the first hit is the thing on camera (e.g. "Tim Cook keynote stage", "Steve Wozniak interview"). "kind": image for a photo or engraving (also of a named person: Wikimedia has them), icon for a simple symbol, model for a 3D object that could float next to the speaker, video for generic stock footage of a situation in motion, clip for a YouTube clip of a named person, brand, product or event. "moment": index in the list. ` +
+        ? `"query": English words naming something concrete; for a named person, brand, product or event write the full name plus context so the first hit is the thing on camera (e.g. "Tim Cook keynote stage", "Steve Wozniak interview"). "kind": image for a photo or engraving (also of a named person: Wikimedia has them), icon for a simple symbol, model for a 3D object that could float next to the speaker, art for a painting, an engraving, an old photograph or a historical object from a museum (only when the words call for history, the past or a classical reference; query: the subject in 1 to 3 words), video for generic stock footage of a situation in motion, clip for a YouTube clip of a named person, brand, product or event. "moment": index in the list. ` +
           `"music": one or two English words (mood or genre, e.g. "upbeat corporate", "cinematic piano"; the search needs every word to match) for a music bed, or "" when the reel is better without music.`
-        : `"query": 1 to 4 English words naming something concrete (never an abstract idea, a brand or a famous person); "kind": image for a photo or engraving, icon for a simple symbol, model for a 3D object that could float next to the speaker; "moment": index in the list.`),
+        : `"query": 1 to 4 English words naming something concrete (never an abstract idea, a brand or a famous person); "kind": image for a photo or engraving, icon for a simple symbol, model for a 3D object that could float next to the speaker, art for a painting, an engraving, an old photograph or a historical object from a museum (only when the words call for history, the past or a classical reference); "moment": index in the list.`),
     content: JSON.stringify(moments.map((m, i) => ({ moment: i, t_start: m.t_start, t_end: m.t_end, texto: m.texto, visual_action: m.visual_action }))),
-    schema: obj({ wants: { type: 'array', items: obj({ moment: num, query: str, kind: { type: 'string', enum: broll ? ['image', 'icon', 'model', 'video', 'clip'] : ['image', 'icon', 'model'] } }) }, ...(broll ? { music: str } : {}) }),
+    schema: obj({ wants: { type: 'array', items: obj({ moment: num, query: str, kind: { type: 'string', enum: broll ? ['image', 'icon', 'model', 'art', 'video', 'clip'] : ['image', 'icon', 'model', 'art'] } }) }, ...(broll ? { music: str } : {}) }),
   }, logCost(st));
   for (const d of Object.values(DIR_OF)) mkdirSync(join(P, 'assets', d), { recursive: true });
   const old: AssetEntry[] = existsSync(manifestFile) ? readJSON(manifestFile) : [];
   for (const e of old) rmSync(join(P, 'assets', e.file), { force: true });   // a new script replaces the library of the old one
   const entries: AssetEntry[] = [];
   let n = 0;
-  const wants = plan.wants.slice(0, max).map(w => ({ ...w, kind: broll || ['image', 'icon', 'model'].includes(w.kind) ? w.kind : 'image' }));
+  const wants = plan.wants.slice(0, max).map(w => ({ ...w, kind: broll || ['image', 'icon', 'model', 'art'].includes(w.kind) ? w.kind : 'image' }));
   if (broll && plan.music) wants.push({ moment: -1, query: plan.music, kind: 'music' as any });
   for (const w of wants) {
     const kind: Kind = w.kind === 'model' ? 'model' : w.kind === 'video' || w.kind === 'clip' ? 'video' : (w.kind as string) === 'music' ? 'audio' : 'image';
-    const providers = w.kind === 'icon' ? ['iconify'] : w.kind === 'model' ? ['polypizza'] : w.kind === 'clip' ? ['youtube'] : w.kind === 'video' ? ['pexels', 'pixabay', 'commons']
+    const providers = w.kind === 'icon' ? ['iconify'] : w.kind === 'art' ? ['cleveland', 'met'] : w.kind === 'model' ? ['polypizza'] : w.kind === 'clip' ? ['youtube'] : w.kind === 'video' ? ['pexels', 'pixabay', 'commons']
       : kind === 'audio' ? ['openverse'] : ['openverse', 'pexels', 'pixabay', 'commons'];
     const { results, errors } = await brollSearch(w.query, { kind, providers, limit: 6 });
     const best = broll ? brollPick(kind === 'audio' ? results.filter(c => (c.duration ?? 60) >= 20) : results, 3)
@@ -2482,76 +2480,6 @@ export const exportAfterEffects = (id: string) => locked(id, "ae", async st => {
   await commit(id, "export: After Effects (.jsx e projeto)");
   emit(id, "ae:done", { outputDir: aeDir, aep: aepPath, aepGenerated });
   return { ok: true, outputDir: aeDir, aep: aepPath, aepGenerated };
-});
-
-// Embrulhos: the 9 static 9:16 frames from the editor's PDF (server/embrulhos/modelos). Sonnet picks up to 3 eligible models for this
-// talk, fills their fields in conversational copy, and each pick is rendered as embrulho-<modelo>.mp4 with the reel inside the slot.
-// shortcut: the angle library is a fixed file; `body.angulos` replaces it for one call, no per-brand list yet
-const ANGULOS: { n: number; cat: string; angulo: string; explicacao: string; exemplo: string; modelos: string[] }[] = readJSON(join(ROOT, 'server/embrulhos/angulos.json')).angulos;
-const angulosDe = (modelo: string) => ANGULOS.filter(a => a.modelos.includes(modelo)).map(a => a.angulo);
-export const generateHooks = (id: string, body: { angulos?: string[] } = {}) => locked(id, 'embrulhos', async st => {
-  const P = projDir(id);
-  const video = [finalName('9:16'), 'master.mp4'].map(f => join(P, f)).find(existsSync) ?? fail('Sem vídeo: conclua a ingestão (master.mp4) ou o render 9:16.');
-  const words: Word[] = existsSync(join(P, 'transcript.json')) ? readJSON(join(P, 'transcript.json')) : [];
-  // the srt is the only source of prices; without one the Whisper transcript stands in for it
-  const srt = existsSync(join(P, 'source.srt')) ? readFileSync(join(P, 'source.srt'), 'utf8').replace(/^\uFEFF/, '') : words.map(w => w.text).join(' ');
-  const falas = srt.split(/\r?\n/).filter(l => l.trim() && !/^\d+$/.test(l.trim()) && !/-->/.test(l)).join(' ');
-  if (!falas.trim()) fail('Sem transcrição nem legenda: conclua a ingestão.');
-  const dur = await duration(id, video), precos = precosDoSrt(srt), quadros = sugerirQuadros(video, 3);
-  const modelos = listarEmbrulhos().map(mid => {
-    const m = carregarEmbrulho(mid), faltas: string[] = [];
-    if (m.perfil.exige.includes('preco_no_srt') && !precos.length) faltas.push('o .srt não tem preço (R$)');
-    if (m.perfil.exige.includes('quadro_marcante') && !quadros.length) faltas.push('nenhuma cena candidata para o print');
-    return { id: m.id, nome: m.nome, tipo: m.tipo, perfil: m.perfil, campos: m.campos, angulos: angulosDe(m.id), elegivel: !faltas.length, ...(faltas.length ? { motivo: faltas.join('; ') } : {}) };
-  });
-  const system = `Você escolhe "embrulhos" (molduras estáticas 9:16 com texto) para um vídeo curto e escreve o texto de cada campo.
-Regras:
-- Só modelos com elegivel:true. Até 3 sugestões, modelos diferentes, exatamente uma com rec:true.
-- "angulo" é o nome de um dos "angulos" do modelo escolhido (biblioteca abaixo: explicação e exemplo de cada um); ângulos diferentes entre as sugestões. O texto dos campos segue a lógica do ângulo, adaptado ao que o vídeo diz.
-- Texto estático, sem animação. Copy de conversação: tom de fala, coloquial, como alguém contando para um amigo. Nada de CAIXA ALTA.
-- Tudo tem de ser compatível com o assunto do vídeo e sair do que ele diz: nenhum número, preço ou promessa que não esteja nas falas.
-- Preencha todos os campos do modelo dentro de "max" caracteres. Campo com "fixo":true mantém o valor "padrao". Nunca repita os textos-exemplo do PDF.
-- Oferta: preco_por (e preco_de, se houver) têm de ser um dos precosDoSrt, escritos igual.
-- Fofoca (duplo): nome_pagina é o nome de uma página de fofoca fictícia inventada por você; titulo é a manchete; quadro_t é o instante (s) da cena marcante, de preferência um dos quadrosSugeridos.
-- "copy" é a legenda/linha de conversa que acompanha o embrulho no post (1 a 2 frases). "porque" explica a escolha em uma frase.`;
-  const campoSchema = { type: 'object', additionalProperties: { type: 'string' } };
-  const schema = obj({ sugestoes: { type: 'array', items: obj({ embrulho: str, rec: { type: 'boolean' }, angulo: str, porque: str, copy: str, quadro_t: num, campos: campoSchema }) } });
-  const contexto = { duracao: dur, falas, precosDoSrt: precos, quadrosSugeridos: quadros, modelos, biblioteca: body.angulos?.length ? body.angulos : ANGULOS.map(a => ({ angulo: a.angulo, explicacao: a.explicacao, exemplo: a.exemplo })) };
-  type Sug = { embrulho: string; rec: boolean; angulo: string; porque: string; copy: string; quadro_t: number; campos: Record<string, string> };
-  const checar = (s: Sug) => {
-    const m = carregarEmbrulho(s.embrulho), itens = conferirCampos(m, { ...s.campos, ...(m.perfil.exige.includes('quadro_marcante') ? { quadro_t: s.quadro_t } : {}) }, { srt, duracao: dur, textoFonte: falas });
-    if (!body.angulos?.length && !angulosDe(m.id).includes(s.angulo)) itens.push({ nivel: 'aviso', campo: 'angulo', msg: `"${s.angulo}" não está entre os ângulos de ${m.nome}` });
-    return { m, itens };
-  };
-  let res = await ask<{ sugestoes: Sug[] }>('embrulhos', 'embrulhos:sugerir', { system, content: JSON.stringify(contexto), schema }, logCost(st));
-  let checks = res.sugestoes.map(s => { try { return checar(s); } catch (e) { return { m: null, itens: [{ nivel: 'erro' as const, campo: 'embrulho', msg: (e as Error).message }] }; } });
-  const erros = () => checks.flatMap((c, i) => c.itens.filter(x => x.nivel === 'erro').map(x => `#${i + 1} ${res.sugestoes[i].embrulho} · ${x.campo}: ${x.msg}`));
-  if (erros().length) {   // one correction round, then whatever still fails is dropped
-    emit(id, 'log', 'embrulhos: corrigindo ' + erros().length + ' erro(s)');
-    res = await ask<{ sugestoes: Sug[] }>('embrulhos', 'embrulhos:corrigir', { system, content: JSON.stringify({ ...contexto, suaResposta: res, erros: erros() }) + '\nCorrija os erros e devolva as sugestões completas.', schema }, logCost(st));
-    checks = res.sugestoes.map(s => { try { return checar(s); } catch (e) { return { m: null, itens: [{ nivel: 'erro' as const, campo: 'embrulho', msg: (e as Error).message }] }; } });
-  }
-  const dir = join(P, 'embrulhos'); mkdirSync(dir, { recursive: true });
-  const gi = join(P, '.gitignore');
-  if (!existsSync(gi) || !/^embrulhos\/$/m.test(readFileSync(gi, 'utf8'))) appendFileSync(gi, 'embrulhos/\n');
-  const out: unknown[] = [];
-  for (const [i, s] of res.sugestoes.entries()) {
-    const { m, itens } = checks[i], falhas = itens.filter(x => x.nivel === 'erro').map(x => `${x.campo}: ${x.msg}`);
-    const avisos = itens.filter(x => x.nivel === 'aviso').map(x => `${x.campo}: ${x.msg}`);
-    if (!m || falhas.length) { out.push({ ...s, erros: falhas }); continue; }
-    emit(id, 'log', `embrulho ${m.nome}: renderizando`);
-    const quadro = m.perfil.exige.includes('quadro_marcante') ? extrairQuadro(video, s.quadro_t, join(dir, `${m.id}-quadro.jpg`)) : null;
-    const camadas = await renderCamadas(m, s.campos, { quadroImg: quadro, destino: join(dir, m.id) });
-    if (camadas.textoNaoCabe?.length) avisos.push(`texto não coube: ${camadas.textoNaoCabe.join(', ')}`);
-    const arquivo = `embrulho-${m.id}.mp4`;
-    compor(m, video, camadas, join(P, arquivo), { duracao: dur });
-    out.push({ ...s, nome: m.nome, arquivo, avisos });
-  }
-  if (!out.some((o: any) => o.arquivo)) fail('Nenhum embrulho passou na conferência: ' + erros().join(' | '));
-  writeJSON(join(P, 'embrulhos.json'), { generatedAt: Date.now(), embrulhos: out });
-  await commit(id, `embrulhos: ${out.filter((o: any) => o.arquivo).length} moldura(s) renderizada(s)`);
-  emit(id, 'embrulhos:done', { embrulhos: out });
-  return { ok: true, embrulhos: out };
 });
 
 // ---- Cut-out (Apple Vision Segmentation) ----------------------------------------------------------------------------
@@ -2956,7 +2884,7 @@ async function composeRun(id: string, st: State, note?: string, mode?: string, a
       : 'Review rule: score the contact sheet 1-10 on hook (first 2 s), legibility at phone size, motion quality, variety, brand fidelity; fix the 3 worst; at most 2 review rounds, then stop and list what is still below 8 in your final paragraph. ') +
     'Every timed object must be hidden at the start of each seek so none lingers as a ghost. ' +
     'Never touch assets/ except to add files. Finish with one short paragraph: what you built and any known issue.';
-  const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nCada anotação vale só para a cena (ou cenas) que cobre o tempo marcado nela: edite essas cenas em scenes.py e deixe as outras, o treatment e os tempos das demais cenas exatamente como estão; nada de refazer o reel. Uma anotação [vídeo todo] é um ajuste global (grão, cor, fonte): faça no scenes.py, sem refazer cenas; o grão desliga com \`CFG['grain'] = 0\` antes de \`render()\` (compose.json é reescrito a cada rodada, não mexa nele). Depois edite scenes.py e rode \`${PYTHON} -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
+  const prompt = note ? `Ajuste pedido sobre a composição atual (scenes.py já existe): ${note}\nPalavra vaga numa anotação ("mais dinâmico", "premium", "apagado"): traduza pela tabela "Palavra vaga vira decisão" do GUIDE.md e diga no resumo qual valor mudou.\nCada anotação vale só para a cena (ou cenas) que cobre o tempo marcado nela: edite essas cenas em scenes.py e deixe as outras, o treatment e os tempos das demais cenas exatamente como estão; nada de refazer o reel. Uma anotação [vídeo todo] é um ajuste global (grão, cor, fonte): faça no scenes.py, sem refazer cenas; o grão desliga com \`CFG['grain'] = 0\` antes de \`render()\` (compose.json é reescrito a cada rodada, não mexa nele). Depois edite scenes.py e rode \`${PYTHON} -B scenes.py\` de novo (o player e os snapshots leem o index.html que ele gera, não o scenes.py). Depois valide e olhe os snapshots. Não renderize vídeo.`
     : motion ? 'Componha o reel completo agora. Termine com out.mp4 renderizado (npx --yes hyperframes@0.8.217 render -o out.mp4 --fps 30 --quality delivery).'
     : other ? `Adapte a composição original (já pré-carregada em scenes.py a partir do formato primário) para o novo formato ${targetAspect} (${targetW}x${targetH}). Ajuste layouts, zonas de segurança, enquadramentos de câmera (FR) e posições/tamanhos de texto para esta proporção. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.`
     : 'Componha o reel completo agora. Termine com scenes.py rodado (index.html gerado), check sem erros e snapshots revisados. Não renderize vídeo.';

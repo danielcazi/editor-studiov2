@@ -13,7 +13,7 @@ vídeo + legenda opcional
   │
   ├─ [H] aprova o roteiro (Roteiro)  → POST /motion
   │
-  ├─ composeScaffold (pipeline.ts:2712)
+  ├─ composeScaffold (pipeline.ts:2640)
   │     copia kit.py, GUIDE.md, DIRETOR.md, engines/, motions/, sfx/, biblioteca, locutor, fontes da marca
   │     copia o banco → estilos/banco/   (banco.ts copyBancoTo)
   │     resolveChoices (lib.ts:99): formato · estilo · ritmo, ou skill travando os três
@@ -38,7 +38,7 @@ vídeo + legenda opcional
   │
   ├─ [H] Revisão: <hyperframes-player> ao vivo · notas pinadas (review.json) · POST /review/apply → compose só nas cenas anotadas · Aprovar
   │
-  ├─ final (pipeline.ts:2397)       render out.mp4 por formato
+  ├─ final (pipeline.ts:2395)       render out.mp4 por formato
   │     [P] qa.py → pace.py (mudança no vídeo, parados, na palavra) · duração da marca · palavras perdidas
   │
   └─ Entrega: final-<formato>.mp4 · After Effects (ae/) · embrulhos

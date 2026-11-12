@@ -23,6 +23,7 @@ workspace/trash/
 .arquivos-instalados
 # Motion Think: trechos de terceiros (locais) e o banco do estúdio (dado, não código; só o README vai no repo)
 workspace/motion-think/
+workspace/embrulhos/
 workspace/library/locutor/
 claude-reel-editor/skills/reel-editor/compose/estilos/banco/*
 !claude-reel-editor/skills/reel-editor/compose/estilos/banco/README.md

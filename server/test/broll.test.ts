@@ -99,3 +99,22 @@ test('Openverse audio: the music category, duration converted from ms', async ()
   assert.ok(seen[0].url.includes('category=music') && !seen[0].url.includes('license_type'));
   assert.equal(results.length, 1); assert.equal(results[0].kind, 'audio'); assert.equal(results[0].duration, 95); assert.equal(B.extOf(results[0]), '.mp3');
 });
+
+test('museum sources answer without a key, as CC0, and the Met drops objects that are not public domain', async () => {
+  const seen = stub({
+    'clevelandart.org/api/artworks': { data: [{ id: 7, title: 'Portrait', url: 'https://clevelandart.org/art/1', creators: [{ description: 'Frans Hals (Dutch)' }],
+      images: { web: { url: 'https://openaccess-cdn.clevelandart.org/1/1_web.jpg', width: '664', height: '893' }, print: { url: 'https://openaccess-cdn.clevelandart.org/1/1_print.jpg', width: '2529', height: '3400' } } }, { id: 8, title: 'No image' }] },
+    'v1.1/search': { total: 2, objectIDs: [11, 12] },
+    'objects/11': { objectID: 11, isPublicDomain: true, primaryImage: 'https://images.metmuseum.org/a/original/x.jpg', primaryImageSmall: 'https://images.metmuseum.org/a/web-large/x.jpg', title: 'Self-Portrait', artistDisplayName: 'Vincent van Gogh', objectURL: 'https://www.metmuseum.org/art/collection/search/11' },
+    'objects/12': { objectID: 12, isPublicDomain: false, primaryImage: 'https://images.metmuseum.org/a/original/y.jpg', title: 'Not open' },
+  });
+  const { results, errors } = await B.search('portrait', { kind: 'image', providers: ['cleveland', 'met'], limit: 4 });
+  assert.deepEqual(errors, {});
+  assert.deepEqual(results.map(r => `${r.provider}:${r.id}:${r.license}`).sort(), ['cleveland:7:CC0', 'met:11:CC0']);
+  const c = results.find(r => r.provider === 'cleveland')!;
+  assert.equal(c.downloadUrl, 'https://openaccess-cdn.clevelandart.org/1/1_print.jpg');
+  assert.equal(c.width, 2529);
+  assert.equal(results.find(r => r.provider === 'met')!.downloadUrl, 'https://images.metmuseum.org/a/original/x.jpg');   // the small one is ~460 px wide
+  assert.equal(B.rightsOf(c).status, 'licensed');
+  assert.match(seen.find(s => s.url.includes('v1.1/search'))!.url, /isPublicDomain=true/);
+});

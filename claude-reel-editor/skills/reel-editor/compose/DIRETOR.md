@@ -50,6 +50,8 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
    Mais duas linhas por cena, sem as quais a cena não está planejada:
    - **Na batida:** cada palavra tônica da fala → o que entra ou muda nela (um evento por palavra tônica, a cada 0,4–0,8 s), escrito como `T('palavra')` (kit.py: o tempo vem da fala, nunca de um segundo digitado). O pouso, o corte e o carimbo caem **na** palavra, nunca antes.
    - **Vivo:** a vida ociosa de cada elemento enquanto fica em cena (deriva, tique, piscar, digitar, balanço): nada parado por mais de 1 s; o `pace.py` mede isso no vídeo e reprova.
+   E, nas cenas em que dois ou mais elementos se movem na mesma batida:
+   - **Coreografia:** o papel de cada um (protagonista, apoio, decoração), a relação entre eles (junto, escalonado, em sequência) e o que fica parado de propósito, com o motivo (GUIDE.md "Coreografia"). Um protagonista por batida.
 5. **Mapa de som:** por cena, o SFX e onde ficam os dois silêncios.
 6. **O que vai diferir do clichê do estilo** (abertura, plano-assinatura, caminho de câmera, final).
 O scenes.py segue o treatment; se mudar de ideia ao compor, atualize o treatment antes.
@@ -59,5 +61,6 @@ Cada momento diz, além do destaque: o **movimento de câmera** do plano (`câme
 
 ## 8. Antes de entregar
 - Folhas de contato de todas as cenas, e um passe olhando só o movimento: a câmera tem quatro gramáticas? Há um plano-assinatura? Há uma respiração?
+- Um passe de coreografia: nas entradas em grupo, tire 3 ou 4 quadros dentro da mesma entrada. Lê-se como uma onda ou como uma fila? Há mais de um protagonista? O que você imaginou a 1× e o que os quadros mostram são coisas diferentes.
 - Uma rodada de correção: tudo que a checagem e a sua revisão acharam, de uma vez. O que sobrar, diga em uma linha ao entregar.
 - Não é a demo de novo: abertura, plano-assinatura, caminho de câmera e final diferentes do último reel desta marca.

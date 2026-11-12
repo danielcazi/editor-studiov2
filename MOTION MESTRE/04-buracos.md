@@ -30,7 +30,7 @@ As 2 rodadas de revisão por folha de contato são feitas pelo compositor sobre 
 
 ## 6. Rotação do banco
 
-Com 30 helpers aprovados o compositor pode repetir os mesmos 5. O brief já lista os usados nos últimos 3 reels da marca e pede variação (`recentBancoHelpers`, pipeline.ts:2917); é pedido, não lint.
+Com 30 helpers aprovados o compositor pode repetir os mesmos 5. O brief já lista os usados nos últimos 3 reels da marca e pede variação (`recentBancoHelpers`, pipeline.ts:2845); é pedido, não lint.
 
 ## 7. Limite conhecido do recorte
 

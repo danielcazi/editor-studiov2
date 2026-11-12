@@ -14,7 +14,7 @@ export const MODEL_BY_STEP = {
   cortes: 'claude-sonnet-5-5',    // Cortes: maps a long talk and picks its 10 strongest 1-2 min passages (prose judgement, no motion code)
   cortesSrt: 'claude-haiku-5-5',  // Cortes export: fixes transcription slips in the srt of a chosen clip (text only, timing untouched)
   broll: 'claude-sonnet-5-5',     // b-roll fill: picks the beats and writes the stock search queries; no motion code, so not Opus
-  embrulhos: 'claude-sonnet-5-5', // embrulhos: picks up to 3 of the 9 PDF frames for the talk and writes their static copy (text only)
+  embrulhos: 'claude-sonnet-5-5', // embrulhos tab: reads the video's offer and writes the static copy of the frames the user chose (text only)
   mtAnalyze: 'claude-opus-5-5',   // Motion Think: reads the frames of a reference excerpt and splits it into movements (what moves, how, measured)
   mtSynthesize: 'claude-opus-5-5', // Motion Think: turns one approved movement into a kit helper and renders its demo (agent run, max 30 turns)
 } as const;

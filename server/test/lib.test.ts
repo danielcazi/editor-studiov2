@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cutWindows, deepMerge, lookOnly, PACE, paceFromSkill, pickFormats, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill } from '../lib.ts';
+import { cutWindows, deepMerge, lookOnly, PACE, paceFromSkill, pickFormats, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill, textContrast } from '../lib.ts';
 
 test('formats render in a fixed order and reject unknown ones', () => {
   assert.deepEqual(pickFormats(['4:5', '1:1', '9:16']), ['9:16', '1:1', '4:5']);
@@ -89,4 +89,13 @@ test('paceFromSkill: the skill\'s seconds per cut pick the nearest toggle limits
   assert.deepEqual(paceFromSkill({ rhythm: { pace: 2.4 } }), { ...PACE.normal, every: 2.4 });
   assert.equal(paceFromSkill({ rhythm: { pace: 18 } })!.every, PACE.lento.every);
   assert.equal(paceFromSkill({ rhythm: {} }), null);
+});
+
+test('textContrast: white on black is 21:1, grey on near-grey is flagged, hidden text is null', () => {
+  // a 40x20 picture filled with `bg`; `ink` paints the middle columns (the "text")
+  const shot = (bg: number[], ink?: number[]) => { const b = new Uint8Array(40 * 20 * 3); for (let i = 0; i < 800; i++) b.set(ink && i % 40 >= 14 && i % 40 < 26 ? ink : bg, i * 3); return b; };
+  const box = { x: 0, y: 0, w: 40, h: 20 };
+  assert.equal(Math.round(textContrast(shot([0, 0, 0], [255, 255, 255]), shot([0, 0, 0]), 40, box)!), 21);
+  assert.ok(textContrast(shot([120, 120, 120], [150, 150, 150]), shot([120, 120, 120]), 40, box)! < 1.6);
+  assert.equal(textContrast(shot([240, 240, 240]), shot([240, 240, 240]), 40, box), null);   // masked or covered: nothing changes when the text goes transparent
 });

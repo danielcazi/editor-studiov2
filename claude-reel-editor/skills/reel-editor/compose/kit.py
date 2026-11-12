@@ -140,7 +140,7 @@ def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push',
     #   e opcionais d (s, padrão = a cena), ease (padrão sine.inOut), snap=True (pula para a pose no início em vez de ir da pose anterior).
     #   A pose fica para a cena seguinte: um oner é uma cena longa ou cenas vizinhas sem snap. Limites em WORLD_LIM.
     # signature=True: o plano-assinatura (DIRETOR.md §3); o lint avisa quando nenhum existe
-    # momento: o momento da fala que a cena serve (gancho, prova, numero, lista, virada, cta), opcional; com ele o render avisa quando
+    # momento: o momento da fala que a cena serve (gancho, contexto, problema, ..., cta: ver MOMENTOS em server/banco.ts), opcional; com ele o render avisa quando
     #   o banco de movimentos (estilos/banco/) tem helper para esse momento e a cena não usou nenhum
     S.append(dict(n=n, a=a, b=b, bg=bg, cam=cam, back=back, front=front, sfx=sfx, cta=cta, tr=tr, move=move, world=world, signature=signature, momento=momento))
 

@@ -9,8 +9,8 @@ export class UserError extends Error {}   // same name as pipeline's: server.ts 
 export const COMPOSE_DIR = resolve(import.meta.dirname, '..', 'claude-reel-editor/skills/reel-editor/compose');
 export const BANCO_DIR = process.env.BANCO_DIR ?? join(COMPOSE_DIR, 'estilos', 'banco');   // env: the tests point it at a temp folder
 
-export const MOMENTOS = ['gancho', 'prova', 'numero', 'lista', 'virada', 'cta'] as const;
-export const CATEGORIAS = ['tipografia', 'infografico', '3d', 'transicao', 'camera'] as const;
+export const MOMENTOS = ['gancho', 'contexto', 'problema', 'definicao', 'exemplo', 'historia', 'prova', 'numero', 'lista', 'comparacao', 'passo-a-passo', 'virada', 'resumo', 'cta'] as const;
+export const CATEGORIAS = ['tipografia', 'infografico', 'grafico', 'ilustracao', 'icone', 'foto', 'foto-antiga', 'colagem', 'exemplo', 'broll', '3d', 'transicao', 'camera'] as const;
 export type Momento = typeof MOMENTOS[number];
 export type Categoria = typeof CATEGORIAS[number];
 
@@ -43,6 +43,7 @@ function defParams(src: string): { name: string; params: string[] } | null {
   const params: string[] = [];
   for (; k < src.length; k++) {
     const c = src[k];
+    if (c === "'" || c === '"') { const e = src.indexOf(c, k + 1); if (e < 0) break; cur += src.slice(k, e + 1); k = e; continue; }
     if (c === '(' || c === '[' || c === '{') depth++;
     else if (c === ')' || c === ']' || c === '}') { if (depth === 0) break; depth--; }
     if (c === ',' && depth === 0) { params.push(cur.trim()); cur = ''; } else cur += c;

@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "id": "pov-depoimento",
+  "nome": "POV + Depoimento",
+  "origem": "gravação do Lateralizador (2026-11-09), refeito no editor",
+  "tipo": "janela",
+  "formatos": {
+    "9x16": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.0741,
+          "y": 0.2292,
+          "w": 0.8518,
+          "h": 0.5625
+        }
+      },
+      "camadas": [
+        "fundo"
+      ]
+    },
+    "4x5": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.07407,
+          "y": 0.19259,
+          "w": 0.85185,
+          "h": 0.68148
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": []
+    },
+    "16x9": {
+      "film": "9x16/index.html",
+      "slots": {
+        "video": {
+          "x": 0.04167,
+          "y": 0.07407,
+          "w": 0.47917,
+          "h": 0.85185
+        }
+      },
+      "camadas": [
+        "fundo"
+      ],
+      "zonasTexto": []
+    }
+  },
+  "campos": [
+    {
+      "id": "topo",
+      "papel": "topo",
+      "max": 80
+    },
+    {
+      "id": "cta",
+      "papel": "cta",
+      "max": 40,
+      "padrao": "CLIQUE NO BOTÃO PARA TESTAR",
+      "fixo": true
+    }
+  ],
+  "perfil": {
+    "tom": [
+      "pov",
+      "depoimento",
+      "resultado"
+    ],
+    "serveA": [
+      "prova",
+      "resultado"
+    ],
+    "exige": [],
+    "evita": [],
+    "dica": "topo começa com 'POV:' e descreve a situação de quem já teve o resultado que o vídeo mostra."
+  }
+}

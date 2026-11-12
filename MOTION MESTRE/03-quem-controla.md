@@ -35,7 +35,7 @@ Se o Chrome não roda, vira aviso e o render segue.
 
 `npx hyperframes check` (erros de execução, mídia, timeline) e `snapshot` (folhas de contato). O GUIDE lista o que reprovar a olho: braço cortado reto, palavra na borda, texto coberto > 50%, dois textos encostados, palavra repetida, CTA embaixo, dois fundos escuros seguidos. O compositor pontua 1–10 (gancho, legibilidade, movimento, variedade, marca) e corrige as 3 piores, no máximo 2 rodadas. É autoavaliação do mesmo modelo que compôs.
 
-## 4. QA do render final · `scripts/qa.py` → `scripts/pace.py` (em `final()`, pipeline.ts:2397)
+## 4. QA do render final · `scripts/qa.py` → `scripts/pace.py` (em `final()`, pipeline.ts:2395)
 
 Mede no **vídeo renderizado** (10 fps, 108×192 cinza): intervalo médio entre eventos visuais, quadros em movimento, trechos parados ≥ `hold` s (com as palavras faladas ali), e quantos eventos caem numa palavra. Usa `motion_mask.json` do kit para não contar o locutor se mexendo. Reprova (exit 3) abaixo da barra. Também: duração máxima da marca e palavras perdidas na transcrição.
 

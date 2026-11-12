@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Embrulho · Tela dividida</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=block" rel="stylesheet">
+<link rel="stylesheet" href="../../_shared/embrulho.css">
+<style>
+.tarja{left:0;top:880px;width:1080px;height:160px;background:linear-gradient(90deg,#a8000e,#f0283a);color:#fff;font-weight:800;text-align:center;align-items:center;text-transform:uppercase;padding:0 50px;line-height:1.05;box-shadow:-1080px 0 #a8000e,1080px 0 #f0283a}   /* a faixa segue para os dois lados quando a pessoa a move */
+/* 4:5 (1080×1350) e 16:9 (1920×1080) */
+html.p-4x5 .tarja{top:595px}
+html.p-16x9 .tarja{left:420px;top:460px}
+</style>
+</head>
+<body>
+<div class="t tarja" data-c="headline" data-fit="76,34"></div>
+<script src="../../_shared/embrulho.js"></script>
+</body>
+</html>

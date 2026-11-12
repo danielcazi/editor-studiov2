@@ -10,6 +10,7 @@ import * as V from './voice.ts';
 import * as C from './cortes.ts';
 import * as MT from './motionthink.ts';
 import * as BK from './banco.ts';
+import * as E from './embrulhar.ts';
 
 process.chdir(import.meta.dirname);
 
@@ -18,6 +19,18 @@ const MAX_BODY = 25_000_000;
 const LOCAL_HOST = /^(127\.0\.0\.1|localhost)(:\d+)?$/, LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
 
 const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
+  // aba Embrulhos (SPEC-embrulhos.md); /embrulhos/modelos vem antes de /embrulhos/:id
+  ['GET', /^\/embrulhos\/modelos$/, () => E.modelos()],
+  ['GET', /^\/embrulhos$/, () => E.list()],
+  ['POST', /^\/embrulhos$/, (_, b) => E.create(b)],
+  ['GET', /^\/embrulhos\/([^/]+)$/, m => E.get(m[1])],
+  ['DELETE', /^\/embrulhos\/([^/]+)$/, m => E.remove(m[1])],
+  ['POST', /^\/embrulhos\/([^/]+)\/analisar$/, m => E.analisar(m[1])],
+  ['POST', /^\/embrulhos\/([^/]+)\/gerar$/, (m, b) => E.gerar(m[1], b)],
+  ['PUT', /^\/embrulhos\/([^/]+)\/perfil$/, (m, b) => E.perfil(m[1], b)],
+  ['PUT', /^\/embrulhos\/([^/]+)\/formatos\/([^/]+)$/, (m, b) => E.salvar(m[1], m[2], b)],
+  ['POST', /^\/embrulhos\/([^/]+)\/formatos\/([^/]+)\/previa$/, (m, b) => E.previa(m[1], m[2], b?.prop)],
+  ['POST', /^\/embrulhos\/([^/]+)\/exportar$/, m => E.exportar(m[1])],
   ['GET', /^\/motion-think$/, () => MT.list()],
   ['POST', /^\/motion-think$/, (_, b) => MT.create(b)],
   ['GET', /^\/motion-think\/([^/]+)$/, m => MT.get(m[1])],
@@ -66,7 +79,6 @@ const routes: [string, RegExp, (m: string[], body: any) => unknown][] = [
   ['PUT', /^\/formats\/([^/]+)$/, (m, b) => P.updateFormat(m[1], b.format)],
   ['DELETE', /^\/formats\/([^/]+)$/, m => P.deleteFormat(m[1])],
   ['POST', /^\/projects\/([^/]+)\/ae$/, m => P.exportAfterEffects(m[1])],
-  ['POST', /^\/projects\/([^/]+)\/embrulhos$/, (m, b) => P.generateHooks(m[1], b)],
   ['GET', /^\/brands$/, () => P.listBrands()],
   ['POST', /^\/brands$/, (_, b) => P.createBrand(b.id, b.brand, b.md)],
   ['POST', /^\/brands\/clone$/, (_, b) => P.cloneBrandWithOpus(b)],
@@ -123,10 +135,11 @@ function events(id: string, res: ServerResponse) {
   res.on('close', off);
 }
 
-function mtEvents(id: string, res: ServerResponse) {
+// Motion Think and Embrulhos sessions: same stream, each module with its own channel and lock
+function sessEvents(M: Pick<typeof MT, 'events' | 'getBusy'>, id: string, res: ServerResponse) {
+  const off = M.events(id, (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));   // throws (400) before the headers if the session does not exist
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
-  const off = MT.events(id, (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-  const cur = MT.getBusy(id);
+  const cur = M.getBusy(id);
   if (cur) res.write(`event: step\ndata: ${JSON.stringify({ ...cur, status: 'start' })}\n\n`);
   res.on('close', off);
 }
@@ -183,7 +196,15 @@ createServer(async (req, res) => {
     const bf = path.match(/^\/banco\/file\/(.+)$/);
     if (req.method === 'GET' && bf) return file(BK.bancoFile(decodeURIComponent(bf[1])), req, res);
     const me = path.match(/^\/motion-think\/([^/]+)\/events$/);
-    if (req.method === 'GET' && me) return mtEvents(decodeURIComponent(me[1]), res);
+    if (req.method === 'GET' && me) return sessEvents(MT, decodeURIComponent(me[1]), res);
+    const ee = path.match(/^\/embrulhos\/([^/]+)\/events$/);
+    if (req.method === 'GET' && ee) return sessEvents(E, decodeURIComponent(ee[1]), res);
+    const mi = path.match(/^\/embrulhos\/miniatura\/([^/]+)$/);
+    if (req.method === 'GET' && mi) return file(await E.miniatura(decodeURIComponent(mi[1])), req, res);
+    const em = path.match(/^\/embrulhos\/molde\/(.+)$/);
+    if (req.method === 'GET' && em) return file(E.moldeFile(decodeURIComponent(em[1])), req, res);
+    const ef = path.match(/^\/embrulhos\/([^/]+)\/file\/(.+)$/);
+    if (req.method === 'GET' && ef) return file(E.file(decodeURIComponent(ef[1]), decodeURIComponent(ef[2])), req, res);
     const lv = path.match(/^\/projects\/([^/]+)\/live\/(.+)$/);
     if (req.method === 'GET' && lv) return file(P.liveFile(decodeURIComponent(lv[1]), decodeURIComponent(lv[2])), req, res);
     const hf = path.match(/^\/hf\/([^/]+)$/);

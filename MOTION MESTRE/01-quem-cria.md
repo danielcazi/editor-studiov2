@@ -2,7 +2,7 @@
 
 Quatro camadas, em sequência. Três são chamadas de modelo (Opus), uma é código (o kit). Cada camada decide uma parte do motion e entrega um artefato à seguinte.
 
-## 1. Roteiro · Opus · `script()` (server/pipeline.ts:2048)
+## 1. Roteiro · Opus · `script()` (server/pipeline.ts:2046)
 
 **Recebe:** a transcrição limpa, `brand.md`, o guia do formato (`formatGuide`), o DIRETOR.md inteiro, o ritmo (`PACE`).
 **Entrega:** `script.json` com `moments[]`. Cada momento tem `t_start`, `t_end`, `texto`, `visual_action` e `accentWords`.
@@ -14,7 +14,7 @@ Quatro camadas, em sequência. Três são chamadas de modelo (Opus), uma é cód
 
 É a primeira decisão de motion, tomada antes de qualquer código, em prosa. No fim do roteiro `fetchAssets()` baixa as peças da biblioteca (imagens, ícones, .glb) que o compositor vai usar.
 
-## 2. Diretor · Opus · `compose:treatment` (server/pipeline.ts:2972)
+## 2. Diretor · Opus · `compose:treatment` (server/pipeline.ts:2900)
 
 **Recebe:** `brief.md`, DIRETOR.md, GUIDE.md, `assets/transcript.json`, até 10 imagens da biblioteca e dos quadros de referência.
 **Entrega:** `treatment.md` (até ~120 linhas), nunca código. Uma chamada, effort `medium` (`composeTreatment` em models.ts).
@@ -26,10 +26,10 @@ Quatro camadas, em sequência. Três são chamadas de modelo (Opus), uma é cód
 - mapa de som (SFX por cena e os dois silêncios);
 - o que vai diferir do clichê do estilo.
 
-## 3. Compositor · Opus · `compose` (server/pipeline.ts:2935, até `COMPOSE_MAX_TURNS` = 70 turnos)
+## 3. Compositor · Opus · `compose` (server/pipeline.ts:2863, até `COMPOSE_MAX_TURNS` = 70 turnos)
 
 **Recebe:** tudo acima mais o `kit.py`, os motores, a biblioteca copiada em `assets/`, o banco em `estilos/banco/`, o system prompt de `composeRun`.
-**Entrega:** `scenes.py` (que gera `index.html` + `compositions/*.html`), snapshots revisados, e um parágrafo final. Não renderiza: `final()` (pipeline.ts:2397) renderiza.
+**Entrega:** `scenes.py` (que gera `index.html` + `compositions/*.html`), snapshots revisados, e um parágrafo final. Não renderiza: `final()` (pipeline.ts:2395) renderiza.
 **Decisões de motion que toma:** todas as restantes, cena a cena:
 - qual helper do kit (ou GSAP à mão) faz cada movimento;
 - tempos reais dos tweens, eases, durações;
