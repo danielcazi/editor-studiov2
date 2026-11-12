@@ -1,8 +1,0 @@
-{
-  "id": "sketchnote",
-  "name": "Explicação desenhada à mão",
-  "description": "Um caderno explicando: o parágrafo aparece datilografado, o marca-texto passa sobre as palavras que importam, e ao lado um desenho de linha (sol, nuvem, onda, gota, seta) se desenha traço a traço, como num player de vídeo-aula.",
-  "pack": "sketchnote.md",
-  "engine": "sketch",
-  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='sketch')."
-}

@@ -1,8 +1,0 @@
-{
-  "id": "briefing-board",
-  "name": "Quadro de briefing",
-  "description": "Uma parede de quadro branco de verdade, filmada: luz de janela no esmalte, fantasmas de marcador apagado, moldura e calha.",
-  "pack": "briefing-board.md",
-  "engine": "briefing",
-  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='briefing')."
-}

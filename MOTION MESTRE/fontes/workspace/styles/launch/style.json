@@ -1,8 +1,0 @@
-{
-  "id": "launch",
-  "name": "Filme de lançamento",
-  "description": "O produto apresentado como num keynote: página clara com névoa azul e brilho no chão, ou marinho profundo; cards brancos com sombra macia; vidro fosco; manchete grande com uma palavra em cor; o site de verdade dentro de uma moldura de navegador ou de celular; leque de fotos; pílulas de checklist com ✓; um cursor que clica; e, no fim, um cartão preto com a marca brilhando.",
-  "pack": "launch.md",
-  "engine": "launch",
-  "guide": "Pacote de ilustração: leia ESTILO.md inteiro antes do treatment e desenhe as ilustrações como ele descreve (motor engine='launch')."
-}
