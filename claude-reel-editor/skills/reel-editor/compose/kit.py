@@ -134,7 +134,7 @@ S = []
 TRS = ('push', 'fade', 'slide', 'wipe', 'cut')
 TRD = .3   # duração da saída da cena anterior, sobreposta à entrada da nova (crossfade)
 def scene(n, a, b, bg, cam, back=None, front=None, sfx=(), cta=False, tr='push', move=1.05, world=None, signature=False, momento=None, at=None, whip=.32, spk=None):
-    # cta=True marca a cena do call to action: o lint exige locutor XXL nela
+    # cta=True marca a cena do call to action: o lint exige locutor XXL nela (só em formato com o plano 'cut')
     # tr: como esta cena entra (a anterior sai por baixo em TRD s): push (zoom+fade) | fade | slide (da direita) | wipe (de baixo) | cut
     # move: escala final do fundo ao longo da cena (push-in lento, sine.inOut); 1 = parado
     # world: câmera de mundo (as 4 camadas juntas, com parallax): pose-alvo no fim da cena, dict com x, y (px), scale, rx, ry, rz (graus),
@@ -394,7 +394,7 @@ def lint_static():
             if cam == 'react' and not REF_VIDEO: erro(f'cena {n}: câmera "react" exige o vídeo de referência (assets/ref.mp4; compose.json refVideo)')
             if cam in ('raw', 'react') and s['bg'] != 'clear': erro(f'cena {n}: câmera "{cam}" mostra o vídeo cru por baixo: use bg="clear" (um fundo sólido o esconderia)')
             if cam not in ('raw', 'react') and s['bg'] == 'clear': erro(f'cena {n}: bg "clear" só com câmera "raw" ou "react"')
-            if s['cta']: erro(f'cena {n}: CTA exige locutor XXL (recortado), não "{cam}"')
+            if s['cta'] and 'cut' in PLANOS: erro(f'cena {n}: CTA exige locutor XXL (recortado), não "{cam}"')   # formato sem recorte: a CTA vai em qualquer plano
             if s['tr'] not in TRS: erro(f'cena {n}: transição {s["tr"]!r} inválida (use {", ".join(TRS)})')
             continue
         if isinstance(cam, str):
@@ -409,7 +409,7 @@ def lint_static():
             if CUT_WINDOWS is not None and not any(w[0] - .01 <= s['a'] and s['b'] <= w[1] + .01 for w in CUT_WINDOWS):
                 erro(f'cena {n}: recorte fora das janelas {CUT_WINDOWS} (s); use cam="panel" ou None, ou encaixe a cena numa janela')
             if mode == 'hold' and s['b'] - s['a'] > PACE['hold']: aviso(f'cena {n}: {s["b"] - s["a"]:.1f} s com locutor parado; divida em duas com enquadramentos diferentes')
-        if s['cta'] and not (cam and cam[0] == 'XXL'): erro(f'cena {n}: CTA exige locutor XXL')
+        if s['cta'] and 'cut' in PLANOS and not (cam and cam[0] == 'XXL'): erro(f'cena {n}: CTA exige locutor XXL')
         if s['tr'] not in TRS: erro(f'cena {n}: transição {s["tr"]!r} inválida (use {", ".join(TRS)})')
     for x, y in zip(S, S[1:]):
         if isinstance(x['cam'], tuple) and isinstance(y['cam'], tuple) and x['cam'][0] == y['cam'][0]:
@@ -651,7 +651,9 @@ def render():
     # medição no Chrome (layout_check.mjs): caixas de texto, zonas seguras, rosto e cobertura pela cabeça
     check = CFG.get('layoutCheck')
     if check and os.path.exists(check):
-        r = subprocess.run(['node', check, '.'], capture_output=True, text=True)
+        # limite de 5 min: a checagem leva segundos; uma vez ela ficou presa sem sair, e sem limite o compositor esperava para sempre
+        try: r = subprocess.run(['node', check, '.'], capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired: r = subprocess.CompletedProcess([], 2, '', 'passou de 5 min sem terminar')
         print(r.stdout, end='')
         if r.returncode == 2: print('aviso: checagem de layout não rodou:', r.stderr.strip()[-300:])
         elif r.returncode: raise AssertionError('checagem de layout reprovou (ver acima); corrija as cenas e rode de novo')
@@ -1183,6 +1185,44 @@ def canvas(p, draw, d, x=0, y=0, w=None, h=None, at=0.0, k='cv', engine=None, ov
     html = f'<canvas id="{i}" width="{w + 2 * over}" height="{h + 2 * over}" {AO} style="position:absolute;left:{x - over}px;top:{y - over}px;width:{w + 2 * over}px;height:{h + 2 * over}px;opacity:0"></canvas>'
     js = (_CANVAS.replace('@ID@', i).replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}').replace('@W@', str(w)).replace('@H@', str(h)).replace('@DRAW@', draw)
           .replace('@OVER@', str(over)).replace('@BG@', json.dumps(bg) if bg else 'null'))
+    return html, js
+
+# shader(): fundo vivo em WebGL (fx/, do taste-skill de Leonxlnx, MIT). O relógio de todos é o tempo absoluto da linha do tempo × FX_VEL,
+# o mesmo valor em toda cena, para dois fundos em cenas que se cruzam na transição não brigarem pelo relógio (ele é global no fx.js).
+# O fx.js faz o canvas entrar com um fade de 0,5 s em tempo real: a regra .fx-canvas abaixo o desliga, senão o começo da cena depende da máquina.
+# grid-pulse ficou de fora: guarda rastros de um quadro para o outro, não é função pura do tempo.
+FX_VEL = 6   # os efeitos foram afinados para site (quase parados); a 6× a deriva se lê num plano de 2 a 3 s
+_FX_N = [0]
+_SHADER = r"""(function(){const el=document.getElementById('@ID@'),AT=@AT@,D=@D@;let M=null;
+window.__hf=window.__hf||{};window.__hf.buildReady=window.__hf.buildReady||{};
+window.__hfFx=window.__hfFx||import(new URL('fx/fx.js',document.baseURI).href).then(m=>{m.config.adaptive=false;m.config.maxDpr=1;m.config.clock=0;
+const s=document.createElement('style');s.textContent='.fx-canvas{transition:none!important;opacity:1!important}';document.head.append(s);return m});
+const R=()=>{if(M)M.setClock(tl.time()*@VEL@)};
+window.__hf.buildReady['@ID@']=window.__hfFx.then(async m=>{await m.default.mount(el,'@KIND@',{palette:@PAL@,seed:@SEED@,params:@PARAMS@});M=m;R()});
+if(AT>0)tl.set(el,{opacity:0},0);else el.style.opacity=1;tl.set(el,{opacity:1},AT);tl.set(el,{opacity:0},AT+D);tl.to({},{duration:D,onUpdate:R},AT);})();"""
+
+def shader(p, kind, d, bg=None, ink=None, accent=None, at=0.0, seed=1, calm=None, params=None, over=0, k='sh'):
+    """Fundo vivo em shader, nas cores que você passar (padrão: BLK, CRM e AMB da marca). Vai em `back`, com o texto por cima.
+    kind (pasta fx/): quietos, aguentam texto e cards por cima: grain-gradient, gradient-mesh, silk-folds, fluted-glass, contour-lines, dot-terrain,
+    ruled-grounds, halftone-screen, bayer-dither, line-engraving (parado), painterly-landscape. Com assunto próprio (focais), levam uma
+    peça pequena ou uma palavra: god-rays, caustics, aurora-curtains, film-light-leak, spotlight-cone, prism-dispersion, orb-sphere, soft-light-bars, ascii-shade.
+    calm=(x, y) de 0 a 1 do quadro: onde o texto fica; o efeito se acalma ali. seed fixa a composição. params: os do effect.js (ex.: dict(speed=.1)).
+    over=80: sobra em volta para pan/orbit do world=. No máximo 3 por reel: todos redesenham a cada quadro."""
+    meta = os.path.join('fx', kind, 'meta.json')
+    assert os.path.exists(meta), f'shader {kind!r} não existe: ver fx/ ({", ".join(sorted(x for x in os.listdir("fx") if os.path.isdir(os.path.join("fx", x)))) if os.path.isdir("fx") else "pasta fx/ ausente"})'
+    bg, ink, accent = bg or BLK, ink or CRM, accent or AMB
+    hx = bg.lstrip('#'); hx = ''.join(c * 2 for c in hx) if len(hx) == 3 else hx
+    r, g, b = (int(hx[j:j + 2], 16) for j in (0, 2, 4))
+    if (.2126 * r + .7152 * g + .0722 * b) / 255 > .6 and 'light' not in json.load(open(meta, encoding='utf8')).get('palettes', ['light']):
+        aviso(f'shader {kind!r} foi feito para fundo escuro ou colorido e recebeu bg={bg}: troque o fundo ou o efeito')
+    _FX_N[0] += 1
+    if _FX_N[0] == 4: aviso('mais de 3 shader() no reel: cada um redesenha a cada quadro e o render fica lento')
+    pr = dict(params or {})
+    if calm: pr.update(calmX=calm[0], calmY=calm[1])
+    i = f'{p}-{k}'
+    html = f'<div id="{i}" style="position:absolute;left:{-over}px;top:{-over}px;width:{W + 2 * over}px;height:{H + 2 * over}px;opacity:0"></div>'
+    js = (_SHADER.replace('@ID@', i).replace('@AT@', f'{at:.2f}').replace('@D@', f'{d:.2f}').replace('@VEL@', str(FX_VEL)).replace('@KIND@', kind)
+          .replace('@PAL@', json.dumps(dict(bg=bg, ink=ink, accent=accent))).replace('@SEED@', str(int(seed))).replace('@PARAMS@', json.dumps(pr)))
     return html, js
 
 # scene3d(): cena three.js inteira (luz, sombra, névoa, câmera) com o objeto que o agente constrói; pose = função de t

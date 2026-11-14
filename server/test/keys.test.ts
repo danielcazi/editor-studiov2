@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -40,4 +40,12 @@ test('removing a key removes it from the file', () => {
 
 test('testing a provider without a key says so and makes no request', async () => {
   assert.deepEqual(await K.testKey('pexels'), { ok: false, message: 'sem chave salva' });
+});
+
+test('a docs URL pasted as the key keeps only the key, on save and on read of an old file', () => {
+  K.setKey('pixabay', 'https://pixabay.com/api/?key=12345-abc&q=flowers');
+  assert.equal(K.getKey('pixabay'), '12345-abc');
+  const all = JSON.parse(readFileSync(KEYS, 'utf8'));
+  writeFileSync(KEYS, JSON.stringify({ ...all, pixabay: 'https://pixabay.com/api/?key=999-zz&q=x' }));
+  assert.equal(K.getKey('pixabay'), '999-zz');
 });

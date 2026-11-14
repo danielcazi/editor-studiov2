@@ -49,7 +49,9 @@ test('choices: setChoices validates each selector, and a style that became a ski
   const p = await createProject({ name: 'test-choices', video: clip, preEdited: true, brand: 'padrao' });
   createStyle('look-a', { name: 'A' });
   createSkill('clone-a', { name: 'Clone A', rhythm: { pace: 2.4 } });
-  assert.deepEqual(setChoices(p.id, { styleId: 'look-a', skillId: 'clone-a', pace: 'lento' }), { ok: true, formatId: getProject(p.id).formatId, styleId: 'look-a', skillId: 'clone-a', pace: 'lento' });
+  assert.deepEqual(setChoices(p.id, { styleId: 'look-a', skillId: 'clone-a', pace: 'lento' }), { ok: true, formatId: getProject(p.id).formatId, styleId: 'look-a', skillId: 'clone-a', pace: 'lento', recorte: true });
+  assert.equal(setChoices(p.id, { recorte: false }).recorte, false); assert.equal(getProject(p.id).recorte, false);   // the cut-out toggle is stored
+  assert.equal(setChoices(p.id, { recorte: true }).recorte, true);
   assert.equal(effectivePace(getProject(p.id)).every, 2.4);   // the skill's measured pace wins over the toggle
   assert.equal(setChoices(p.id, { skillId: null }).skillId, null);
   assert.equal(effectivePace(getProject(p.id)).every, 3.5);   // without it the toggle (lento) applies

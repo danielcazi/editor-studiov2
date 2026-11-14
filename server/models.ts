@@ -20,7 +20,7 @@ export const MODEL_BY_STEP = {
 } as const;
 export type ModelStep = keyof typeof MODEL_BY_STEP;
 
-const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'medium', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', composeTreatment: 'medium', cloneFormat: 'high', broll: 'low', cortes: 'medium', cortesSrt: 'low', embrulhos: 'medium', mtAnalyze: 'high', mtSynthesize: 'high' };
+const EFFORT: Record<ModelStep, 'low' | 'medium' | 'high'> = { triage: 'low', script: 'high', brandChat: 'low', motion: 'high', cloneBrand: 'high', reference: 'high', compose: 'high', composeTreatment: 'medium', cloneFormat: 'high', broll: 'low', cortes: 'medium', cortesSrt: 'low', embrulhos: 'medium', mtAnalyze: 'high', mtSynthesize: 'high' };
 
 export type Cost = { at: string; stage: string; step: ModelStep; model: string; in: number; out: number; cacheRead: number; cacheWrite: number; turns?: number; ms?: number };   // turns/ms from the CLI result: wall time per call, to see where the pipeline's time goes
 
@@ -103,6 +103,8 @@ export async function agent(stage: string, opts: { system: string; prompt: strin
   const u = r.usage;
   logCost({ at: new Date().toISOString(), stage, step, model, in: u.input_tokens, out: u.output_tokens,
     cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, turns: r.num_turns, ms: r.duration_ms });
+  // em 13/11 uma composição fechou com 143 turnos sob teto de 70 e nada no log explica: se repetir, fica registrado com os argumentos
+  if (opts.maxTurns && (r.num_turns ?? 0) > opts.maxTurns + 1) console.warn(`[${stage}] ${r.num_turns} turnos com --max-turns ${opts.maxTurns} (subtype ${r.subtype}) em ${opts.cwd}`);
   if (r.subtype === 'error_max_turns') return `${MAX_TURNS_HIT} (${opts.maxTurns} turnos): ${r.result ?? (r as any).errors?.join('; ') ?? ''}`;
   if (r.is_error) throw new Error(`${model} failed in ${stage}: ${r.result}`);
   return r.result;

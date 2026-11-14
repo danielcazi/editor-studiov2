@@ -26,7 +26,7 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.equal(r.camadas.videos, 1, 'o vídeo cru do painel (#tcam) entra como a própria mídia');
   assert.ok(r.camadas.textos_na_composicao >= 2, 'a composição tem texto');
   assert.equal(r.camadas.textos_canvas, 1, 'a frase do canvas vira texto nativo');
-  assert.equal(r.camadas.textos, 3, 'DOM (2) + canvas');
+  assert.equal(r.camadas.textos, 5, 'DOM (título, subtítulo, frase na janela, contador) + canvas');
   assert.ok(r.camadas.camera_mundo > 2, 'pose do #world em keyframes');
   assert.ok(r.nativas.some((n: string) => n.includes('Texto em DOM')) && r.nativas.some((n: string) => n.includes('Texto em canvas')), r.nativas.join('\n'));
   const jsx = readFileSync(join(out, 'build_comp.jsx'), 'utf8');
@@ -45,7 +45,21 @@ test('make_jsx exporta texto de DOM, texto de canvas e câmera de mundo', { skip
   assert.equal(r.camadas.clipes_prores, 2, 'só o canvas e o selo inclinado viram clipe: a palavra com blur() e o traço que se desenha são nativos');
   assert.match(jsx, /"bl":[1-9]/, 'blur medido por quadro nos keyframes da peça');
   assert.equal(r.camadas.degrades, 3, 'sombra (wipe), vinheta (vig) e fundo com luz (ramp) nativos');
-  assert.equal(r.camadas.imagens, 1, 'a <img> entra como o próprio arquivo');
+  assert.equal(r.camadas.imagens, 2, 'as <img> entram como o próprio arquivo, com ou sem filter');
+  // filter numa folha não manda mais a peça para clipe: cor → Channel Mixer na imagem e cor assada na forma, drop-shadow → Drop Shadow
+  assert.match(jsx, /"cm":\[\[0\.24449,0\.82248,0\.08303,-0\.075\]/, 'grayscale(1) contrast(1.15) como matriz 3×4');
+  assert.match(jsx, /"shs":\[\{"c":\[0,0,0\],"a":0\.4,"dx":0,"dy":8,"blur":20\}\]/, 'drop-shadow do filter: raio 10 é o desvio, o Drop Shadow leva o dobro');
+  assert.match(jsx, /"fill":\{"c":\[158,101,48\],"a":1\}[^}]*"poly":\[\[0,0\.2\],\[1,0\],\[1,0\.8\],\[0,1\]\]/, 'brightness(.62) na cor e clip-path: polygon() como path');
+  // texto animado nativo: a frase que sobe pela janela leva a caixa (máscara) e o deslocamento por quadro; o contador, as trocas de conteúdo
+  assert.match(jsx, /"text":"sobe aqui"[^}]*"win":\{"x":200,"y":530,/, 'janela da frase como máscara');
+  assert.match(jsx, /"w":\[0,[1-9]/, 'deslocamento do texto dentro da janela nos keyframes');
+  assert.match(jsx, /"stx":\[\[0,"0"\],.*\[1\.5,"250"\]\]/, 'contador como keyframes de Source Text');
+  // contorno de adesivo num grupo: peça nativa com os efeitos do grupo (pré-composição no After), não clipe
+  assert.match(jsx, /"gfx":\{"shs":\[\{"c":\[255,255,255\],"a":1,"dx":3,"dy":0,"blur":0\}/, 'drop-shadow do grupo');
+  // o grão do kit (#grain, overlay sobre tudo) não é medido quadro a quadro nem vira clipe: sólido + Noise no After
+  assert.equal(r.camadas.grao, true);
+  assert.match(jsx, /"grain":\{"op":0\.13,"blend":"overlay"\}/);
+  assert.ok(!r.clipes.some((c: string) => /grain/.test(c)), 'grão não vira clipe');
   // o ícone <svg> sai como arquivo .svg com a cor do CSS resolvida (currentColor) e o traço, e vira camada de forma no After
   assert.equal(r.camadas.vetores, 2, 'o <svg> do ícone e o do traço que se desenha são nativos, não clipe');
   // traço que se desenha (pathLength=1, dasharray 1 1.2, offset 1,1 → 0 de 0,2 s a 1,2 s): Trim Paths no 2º filho, Fim de 0 a 100

@@ -21,6 +21,15 @@ rich_src = "from kit import *\n" + "".join(f"{h}(p)\n" for h in ("giant", "pill"
 rich = kit.lint_variety(rich_src, '<div class="giant">A</div>',
                         'tl.fromTo("#a",{opacity:0},{opacity:1,duration:.4},0);tl.to("#b",{rotation:12,clipPath:"inset(0)",duration:1.2},0);tl.to("#c",{skewX:4,duration:.5},1);')
 assert rich == [], rich
+# shader(): o efeito tem de existir em fx/, o relógio é o tempo absoluto da linha do tempo e efeito de fundo escuro em fundo claro vira aviso
+shutil_fx = __import__("shutil"); shutil_fx.copytree(KIT / "fx", "fx")
+h, j = kit.shader("s01", "god-rays", 3, calm=(.5, .3))
+assert 'id="s01-sh"' in h and "mount(el,'god-rays'" in j and '"calmX": 0.5' in j and f"tl.time()*{kit.FX_VEL}" in j and not kit.AVISOS, (j, kit.AVISOS)
+kit.shader("s02", "god-rays", 3, bg="#FFFAEA"); assert len(kit.AVISOS) == 1 and "fundo escuro" in kit.AVISOS[0], kit.AVISOS
+kit.shader("s03", "caustics", 3, bg="#FFFAEA"); assert len(kit.AVISOS) == 1, kit.AVISOS
+try: kit.shader("s04", "nao-existe", 3); raise SystemExit("shader desconhecido passou")
+except AssertionError as e: assert "god-rays" in str(e), e
+kit.AVISOS.clear(); kit._FX_N[0] = 0
 # câmera de mundo: pose contínua entre cenas, tipos de movimento e lint de direção
 kit.S.clear()
 kit.scene(1, 0, 2, 'red', None, world=dict(scale=1.1))
@@ -86,6 +95,12 @@ assert f'#tcam {{ position:absolute; left:0; top:0px; width:1080px; height:{H //
 assert f'id="rfcam" style="position:absolute;left:0;width:1080px;top:{H // 2}px;height:{H - H // 2}px' in html, 'a referência ocupa a metade de baixo, oposta ao painel'
 assert 'tl.set("#rcam",{opacity:1},0);' in html and 'tl.set("#tcam",{opacity:1},3);' in html and 'tl.set("#tcam",{opacity:1},6);' in html and 'tl.set("#rfcam",{opacity:1},6);' in html
 assert mask[1]["ignore"] == [[0, 0, 1080, H // 2]] and mask[2]["ignore"] == [[0, 0, 1080, H]] and mask[3]["ignore"] == [], mask
+# recorte desligado (planos sem 'cut', cutWindows []): a CTA vale em qualquer plano, nenhum cut.webm entra no index.html e cena recortada é erro
+kit.PLANOS[:] = ['panel-top', 'none']; kit.CUT_WINDOWS = []
+kit.S.clear(); kit.ERROS.clear(); kit.scene(1, 0, 5, 'red', 'panel-top', cta=True); kit.scene(2, 5, 10, 'black', None, cta=True); kit.lint_static(); assert kit.ERROS == [], kit.ERROS
+kit.render(); assert 'cut.webm' not in open("index.html").read(), 'sem recorte não há clipe do cut.webm'
+assert any('fora dos planos' in e for e in erros((('XXL', 'hold', 'XXL'), 'red')))
+kit.CUT_WINDOWS = None
 kit.PANEL, kit.PANEL_SIDE, kit.PANEL_TOP, kit.PANEL_Y0, kit.PANEL_H, kit.REF_VIDEO = None, 'bottom', None, 0, 0, False
 kit.PLANOS[:] = ['cut', 'panel', 'none']
 kit.AVISOS.clear(); kit.ERROS.clear(); kit.S.clear()

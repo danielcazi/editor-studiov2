@@ -3,11 +3,11 @@
 import { execFile, execFileSync, spawn, execSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { pipeline as pipe } from 'node:stream/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { agent, ask, type Cost, MAX_TURNS_HIT } from './models.ts';
-import { cutWindows, deepMerge, FORMATS, lookOnly, PACE, pickFormats, paceFromSkill, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill, type Pace, type Plan, type Word } from './lib.ts';
+import { cutWindows, deepMerge, FORMATS, lookOnly, PACE, pickFormats, paceFromSkill, reaResumo, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill, type Pace, type Plan, type Word } from './lib.ts';
 import { CAPTION_PRESETS, validateCaptionStyle, validateFont, validateFormat, validateIcon } from './validate.ts';
 import { isVideoReference, processSiteReference } from './site_extractor.ts';
 import { aiCopy, captionLines, checkLayers, colorsOf, isMarked, listLayers, readLayers, syncEdits, textRuns } from './edits.ts';
@@ -59,6 +59,7 @@ type State = {
   completedAt?: number;
   approvedAt?: number;   // the reviewer approved the AI composition (Revisão); cleared by any new AI pass, not by manual edits
   skillId?: string;                    // a cloned video (workspace/skills/<id>/): locks format shots, look and rhythm
+  recorte?: boolean;                   // cut-out toggle: false = the speaker is never cut out (lib.ts semRecorte); absent = on, as every reel before it
   pace?: Pace;                         // rhythm toggle (PACE table); absent = dinamico, the pace every reel had before the toggle
   styleId?: string;                    // motion style (workspace/styles/<id>/) chosen at creation or in Revisão; none = the director picks from the list in the brief
   broll?: boolean;                     // "Inserir b-roll": the asset fetch also takes named people, brands and events (photos, YouTube clips, no license filter) and a music bed
@@ -975,7 +976,7 @@ const PLANO_CAM: Record<string, string> = { cut: "cam=('M'|'L'|'XL'|'XXL', modo,
 const fmtOf = (st: State): any => {
   let f: any; try { f = getFormat(st.formatId || 'business-reels'); } catch { return {}; }
   let skill: any = null; if (st.skillId) try { skill = getSkill(st.skillId); } catch {}
-  return skill ? resolveChoices({ format: f, skill }).format : f;   // the skill's shots: the RVM cut-out and the talk panel follow them
+  return resolveChoices({ format: f, skill, recorte: st.recorte }).format;   // the skill's shots and the cut-out toggle: the RVM cut-out and the talk panel follow them
 };
 const cutWindowsOf = (st: State, dur: number) => cutWindows(fmtOf(st).janelas?.cut, dur);
 async function overLength(id: string, P: string, brand: any): Promise<string | null> {
@@ -1223,12 +1224,13 @@ function formatGuide(st: State): string {
   let f: any;
   try { f = getFormat(st.formatId || 'business-reels'); } catch { return ''; }
   let skill: any = null; if (st.skillId) try { skill = getSkill(st.skillId); } catch {}
-  if (skill) f = resolveChoices({ format: f, skill }).format;
+  f = resolveChoices({ format: f, skill, recorte: st.recorte }).format;
   const z = f.safeZones, r = effectivePace(st);
   const lines = [
     `Format: ${f.name} (${f.aspectRatio ?? '9:16'}${f.speaker === false ? ', no speaker on screen' : ''})`,
     f.planos?.length && `Speaker shots this format allows: ${f.planos.join(', ')} (cut = cut-out full screen, panel = raw video in a bottom panel, panel-top = raw video on top, raw = raw full screen, none = animation only, react = reference video beside the speaker)`,
     f.regras && `When each shot is used: ${f.regras}`,
+    f.semRecorte && 'The speaker is never cut out in this project (cut-out toggle off): ignore any mention of the cut-out in the rules above; plan no giant text behind the speaker.',
     f.janelas?.cut && `The speaker is cut out only in these windows (seconds; "tail" = counted from the end): ${JSON.stringify(f.janelas.cut)}`,
     `Rhythm (${skill ? 'locked by the skill' : st.pace ?? 'dinamico'}): something new on screen about every ${r.every}s, scenes of ${r.scene[0]}-${r.scene[1]}s`,
     z && `Keep graphics inside the safe zones (px): top ${z.top}, bottom ${z.bottom}, left ${z.left}, right ${z.right}`,
@@ -1276,6 +1278,17 @@ export function createFormat(id: string, data?: any) {
 // visual direction, so those numbers never come from the model's eye.
 export const execP = (cmd: string, args: string[]) => new Promise<string>((ok, ko) =>
   execFile(cmd, args, { maxBuffer: 64 << 20 }, (e, out, err) => e ? ko(new Error(`${cmd} failed: ${String(err || e.message).slice(-400)}`)) : ok(out + err)));
+
+// Optional measurement by rea-video (pip install, see CLAUDE.md): shots, transitions and element motion of a reference clip.
+// null when the CLI is not installed or fails, and the caller falls back to ffmpeg's scene detector.
+const REA_VIDEO = process.env.REA_VIDEO ?? 'rea-video';
+export async function reaMedir(clip: string): Promise<{ cuts: number[]; texto: string } | null> {
+  const out = join(tmpdir(), `rea-${process.pid}-${Date.now()}`);
+  try {
+    await execP(REA_VIDEO, ['decompose', clip, '-o', out, '--no-vlm', '--no-stems', '--no-asr', '--no-speakers', '--no-packaging', '--no-ocr', '--lang', 'en']);
+    return reaResumo(JSON.parse(readFileSync(join(out, 'breakdown.json'), 'utf8')));
+  } catch { return null; } finally { rmSync(out, { recursive: true, force: true }); }
+}
 
 // Sound-effect hits of a clip: energy jumps above 2.5 kHz (a voice carries little there, whooshes/clicks/pops a lot), as seconds.
 // shortcut: no voice separation, so sibilants can show up as hits; the model sees the frame at each hit and drops the ones that are speech
@@ -1459,12 +1472,14 @@ async function cloneRef(kind: 'style' | 'skill', body: CloneBody) {
       await execP(YT_DLP, ['-f', 'best[ext=mp4]/best', '--download-sections', '*0-60', '-o', f, '--', u]);
       clips.push(f);
     }
-    const frames: string[] = [], pairs: string[] = [], hires: string[] = [], hitFrames: string[] = [];
+    const frames: string[] = [], pairs: string[] = [], hires: string[] = [], hitFrames: string[] = [], medido: string[] = [];
     const stats: { clip: string; duration: number; cuts: number; secondsPerCut: number; size: string; sfxHits?: number[] }[] = [];
     for (const [i, clip] of clips.entries()) {
       const info = (await execP('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration', '-of', 'json', clip]));
       const j = JSON.parse(info), dur = Math.min(60, Number(j.format.duration) || 0), size = `${j.streams?.[0]?.width}x${j.streams?.[0]?.height}`;
-      const cuts = [...(await execP('ffmpeg', ['-v', 'info', '-t', '60', '-i', clip, '-vf', "select='gt(scene,0.3)',showinfo", '-f', 'null', '-'])).matchAll(/pts_time:([\d.]+)/g)].map(m => +m[1]);
+      const rea = await reaMedir(clip);
+      if (rea) medido.push(`${basename(clip)}:\n${rea.texto}`);
+      const cuts = rea ? rea.cuts.filter(t => t < dur) : [...(await execP('ffmpeg', ['-v', 'info', '-t', '60', '-i', clip, '-vf', "select='gt(scene,0.3)',showinfo", '-f', 'null', '-'])).matchAll(/pts_time:([\d.]+)/g)].map(m => +m[1]);
       stats.push({ clip: basename(clip), duration: +dur.toFixed(1), cuts: cuts.length, secondsPerCut: +(dur / (cuts.length + 1)).toFixed(2), size });
       // the opening frame, one frame just after each cut (at most 12 per video) and the last held frame (end card, CTA)
       const step = Math.max(1, Math.ceil(cuts.length / 10)), times = [0.2, ...cuts.filter((_, k) => k % step === 0).map(t => t + 0.15)].slice(0, 11);
@@ -1491,20 +1506,20 @@ async function cloneRef(kind: 'style' | 'skill', body: CloneBody) {
         '(typography, colour use, card/graphic types, how elements enter and leave, text-versus-presenter layout, density), and the recipes. Be concrete (positions, sizes, colours, durations). Write in Brazilian Portuguese. Never copy the on-screen words of the references, only the design. ' +
         'Rhythm numbers and sound-hit times are measured by a script and given to you: use them, do not re-estimate. Frames named v*b.jpg were taken 0.4 s after the frame of the same number: compare the pair to read the camera and the motion. x*.jpg are full-width for type and icon detail. ' +
         'camera.world: the camera moves seen, in this grammar: push/pull (target scale 0.9-1.35), pan/crane (px, up to ±120), tilt/orbit (degrees, up to ±8), roll (degrees, up to ±6); "when" says on which kind of beat it happens. Empty list when the stage is static: never invent moves. ' +
-        'camera.framing: presenter framing modes used (M, L, XL punch-in, XXL) and how the frame changes (hold, snap, push, shake) and every how many seconds. camera.transitions: which transitions appear (push, fade, slide, wipe, cut) and how often the hard cut. ' +
+        'camera.framing: presenter framing modes used (M, L, XL punch-in, XXL) and how the frame changes (hold, snap, push, shake) and every how many seconds. camera.transitions: which transitions appear (push, fade, slide, wipe, cut) and how often the hard cut. presenter: false when nobody speaks on camera anywhere in the references (pure motion graphics, screen recording, animation), true otherwise. ' +
         'camera.depth: parallax between layers (plate, background, presenter, foreground) and how much, depth-of-field blur (what is sharp, what is soft), and where the focal point sits per kind of scene. camera.signature: the single most striking shot. ' +
         'sfxRules: which visual event gets which sound (sfx = a name from the available list, or "" if the reference plays something not in the list); ignore hits that are speech; empty list if the video has no effects. ' +
         'motionRecipes: 3 to 6 reusable motions of this style as GSAP fragments (tween/timeline calls on the selector placeholder SEL, with from/to values, duration and ease), concrete enough to paste. ' +
         'sfxGainDb: overall sound-effect gain in dB when stated (negative number), else 0. sfxForbidden: sounds the skill or user rejects (e.g. typing, riser), else empty. sceneSeconds: typical seconds one idea/scene stays on screen, from the skill or the frames; 0 if unknown.',
       readDir: refs,
       content: `Frames from reference videos (read each): ${frames.join(', ') || 'none'}\nFrames 0.4 s after the ones above (read each, compare the pairs): ${pairs.join(', ') || 'none'}\nFull-width frames (type and icon detail): ${hires.join(', ') || 'none'}\nFrames at detected sound hits (read each): ${hitFrames.join(', ') || 'none'}\nAvailable sound effects (use these names only): ${Object.keys(JSON.parse(readFileSync(join(SKILL, 'compose/sfx/manifest.json'), 'utf8'))).join(', ')}\nDesign reference images (the target look, not content): ${imgs.join(', ') || 'none'}\n` +
-        `Measured: ${JSON.stringify(stats)}\n` + (body.note ? `What the user wants copied (priority): ${body.note}\n` : '') +
+        `Measured: ${JSON.stringify(stats)}\n` + (medido.length ? `Measured per shot (each shot, the transition it enters by, then every element that moves: time, box as fractions of the frame, direction, ease, colour). Take camera.transitions and the beat times from this, and check them against the frames:\n${medido.join('\n')}\n` : '') + (body.note ? `What the user wants copied (priority): ${body.note}\n` : '') +
         (skill ? `\nA skill the user already uses with Claude for this style. Its rules WIN over what you infer from the frames; fold them into guide, sfxRules and motionRecipes:\n<skill>\n${skill}\n</skill>\n` : ''),
       schema: obj({
         beats: { type: 'array', items: obj({ from: num, to: num, composition: str, elements: str, typography: str, motion: str, transitionOut: str, sfx: str }) },
         palette: { type: 'array', items: obj({ hex: str, role: str }) },
         camera: obj({ world: { type: 'array', items: move }, framing: str, transitions: str, depth: str, signature: str }),
-        motif: str, name: str, description: str, guide: str,
+        motif: str, name: str, description: str, guide: str, presenter: { type: 'boolean' },
         sfxRules: { type: 'array', items: obj({ when: str, sfx: str, level: { type: 'string', enum: ['subtle', 'normal', 'loud'] } }) },
         sfxGainDb: num, sfxForbidden: { type: 'array', items: str }, sceneSeconds: num,
         motionRecipes: { type: 'array', items: obj({ name: str, use: str, gsap: str }) },
@@ -1518,7 +1533,7 @@ async function cloneRef(kind: 'style' | 'skill', body: CloneBody) {
       camera: clampCamera(res.camera), beats: (res.beats ?? []).slice(0, 12 * Math.max(1, clips.length)), pace: pace || undefined,
       sfxRules: res.sfxRules, sfxGainDb: res.sfxGainDb || undefined, sfxForbidden: res.sfxForbidden?.length ? res.sfxForbidden : undefined,
       sfxPerMinute: stats.length ? Math.round(stats.reduce((a, x) => a + (x.sfxHits?.length ?? 0) / Math.max(1, x.duration), 0) / stats.length * 60) : 0, motionRecipes: res.motionRecipes,
-      clonedFrom: { urls, measured: stats, note: body.note ?? '' },
+      clonedFrom: { urls, measured: stats, note: body.note ?? '' }, ...(res.presenter === false ? { speaker: false } : {}),
     };
     if (skill) writeFileSync(join(dir, 'skill.md'), skill);   // also given verbatim to every project that uses it
     const out = kind === 'skill' ? styleToSkill(base) : lookOnly(base);
@@ -1601,6 +1616,7 @@ export async function createProject(o: {
   formats?: string[];
   styleId?: string;                    // motion style id (workspace/styles/<id>/); validated here
   pace?: string;                       // 'lento' | 'normal' | 'dinamico' (default); validated here
+  recorte?: boolean;                   // false = do not cut the speaker out (formats with another speaker shot)
   skillId?: string;                    // skill id (workspace/skills/<id>/); validated here
   broll?: boolean;                     // "Inserir b-roll" at creation: the script step fetches people, clips and music (no license filter)
   /** Text → voice: the script is spoken as written; replaces the video. `voice` falls back to the brand's `voice`. */
@@ -1658,9 +1674,11 @@ export async function createProject(o: {
   let own: string[] | null = null;   // default export: the chosen format's own aspect ratio
   try { own = pickFormats([getFormat(o.formatId || 'business-reels').aspectRatio]); } catch {}
   const formats = o.formats === undefined ? own ?? FORMATS : checkFormats(o.formats);   // a default: the final step picks again
-  const id = `${new Date().toISOString().slice(0, 10)}-${slug}`;
+  // same name on the same day (a second take, a batch of clips with one file name): -2, -3… instead of refusing
+  const base = `${new Date().toISOString().slice(0, 10)}-${slug}`;
+  let id = base;
+  for (let n = 2; existsSync(projDir(id)); n++) id = `${base}-${n}`;
   const P = projDir(id);
-  if (existsSync(P)) fail(`project ${id} exists`);
   mkdirSync(P, { recursive: true });
   appendProjectLog(id, `🚀 Projeto criado: ${o.name} (marca: ${o.brand})`);
   // a step that fails must not leave a folder with no state.json: it would hide the project and block its name
@@ -1715,7 +1733,7 @@ export async function createProject(o: {
       }
     }
 
-    writeFileSync(join(P, '.gitignore'), '._*\nactivity.log\nraw.*\n*.mp4\n*.wav\nproj/\n*_whisper/\nqa_transcript/\nframes/\nref/\ncutout/\ncutout.webm\ncutout.json\nnose.json\nfillers.json\ncut_filter.txt\nafter-effects/\nref_extra/\nassets/user/\n' + COMPOSE_IGNORE);
+    writeFileSync(join(P, '.gitignore'), '._*\nactivity.log\nraw.*\n*.mp4\n*.wav\nproj/\n*_whisper/\nqa_transcript/\nframes/\nref/\ncutout/\ncutout.webm\ncutout.json\nnose.json\nface.json\nfillers.json\ncut_filter.txt\nafter-effects/\nref_extra/\nassets/user/\n' + COMPOSE_IGNORE);
     const userImages = images.map((img, k) => {
       const name = `${k}-${basename(img).replace(/[^\w.-]+/g, '_')}`;
       mkdirSync(join(P, 'assets', 'user'), { recursive: true });
@@ -1723,7 +1741,7 @@ export async function createProject(o: {
       return `assets/user/${name}`;
     });
     if (userImages.length) appendProjectLog(id, `🖼️ Imagens importadas: ${userImages.length}`);
-    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], ...(o.styleId ? { styleId: styleChoice(o.styleId) } : {}), ...(o.pace ? { pace: checkPace(o.pace) } : {}), ...(o.skillId ? { skillId: getSkill(o.skillId).id } : {}), ...(o.broll === true ? { broll: true } : {}), ...(o.character ? { character: o.character } : {}) };
+    const st: State = { id, name: o.name, brand: o.brand, formatId: o.formatId || 'business-reels', preEdited: o.preEdited, subtitle: subName, referenceUrl, extraReferenceUrls: extraReferenceUrls.length ? extraReferenceUrls : undefined, referenceNote, userImages: userImages.length ? userImages : undefined, formats, override: {}, step: 'created', cost: [], ...(o.styleId ? { styleId: styleChoice(o.styleId) } : {}), ...(o.pace ? { pace: checkPace(o.pace) } : {}), ...(o.recorte === false ? { recorte: false } : {}), ...(o.skillId ? { skillId: getSkill(o.skillId).id } : {}), ...(o.broll === true ? { broll: true } : {}), ...(o.character ? { character: o.character } : {}) };
     save(st);
     await run(id, 'git', ['init', '-q', P]);
     await run(id, 'git', ['-C', P, 'config', 'core.autocrlf', 'false']);
@@ -1785,14 +1803,15 @@ export const effectivePace = (st: State) => { if (st.skillId) try { const p = pa
 // one call for the four selectors (SPEC-v9 §5); a field left out is left alone, null clears the optional ones
 // 'none' = no illustration pack at all (the director gets no estilos/ list either); '' / undefined = the director picks one
 const styleChoice = (id: string) => id === 'none' ? 'none' : getStyle(id).id;
-export function setChoices(id: string, b: { formatId?: string; styleId?: string | null; skillId?: string | null; pace?: unknown }) {
+export function setChoices(id: string, b: { formatId?: string; styleId?: string | null; skillId?: string | null; pace?: unknown; recorte?: unknown }) {
   const st = load(id);
   if (b?.formatId !== undefined) { getFormat(b.formatId); st.formatId = b.formatId; }
   if (b?.styleId !== undefined) st.styleId = b.styleId ? styleChoice(b.styleId) : undefined;
   if (b?.skillId !== undefined) st.skillId = b.skillId ? getSkill(b.skillId).id : undefined;
   if (b?.pace !== undefined) st.pace = checkPace(b.pace);
+  if (b?.recorte !== undefined) st.recorte = b.recorte === false ? false : undefined;
   save(st);
-  return { ok: true, formatId: st.formatId, styleId: st.styleId ?? null, skillId: st.skillId ?? null, pace: st.pace ?? 'dinamico' };
+  return { ok: true, formatId: st.formatId, styleId: st.styleId ?? null, skillId: st.skillId ?? null, pace: st.pace ?? 'dinamico', recorte: st.recorte !== false };
 }
 export const listProjects = () => existsSync(join(WS, 'projects')) ? readdirSync(join(WS, 'projects')).filter(p => safeId(p) && existsSync(join(projDir(p), 'state.json'))).sort().reverse() : [];
 
@@ -2051,7 +2070,9 @@ const MOMENT = obj({
   sfx: str,
   motivo: str
 });
-const SCRIPT = obj({ moments: { type: 'array', items: MOMENT }, accentWords: { type: 'array', items: str } });
+// the concept and the blocks come first in the answer: the model commits to one idea before it writes any beat
+const SCRIPT = obj({ conceito: obj({ ideia: str, mundo: str, motivos: { type: 'array', items: str } }), blocos: { type: 'array', items: obj({ t_start: num, t_end: num, funcao: str, ideia: str }) },
+  moments: { type: 'array', items: MOMENT }, accentWords: { type: 'array', items: str } });
 
 export const script = (id: string) => locked(id, 'script', async st => {
   const P = projDir(id), brand = writeBrand(st);
@@ -2072,21 +2093,22 @@ export const script = (id: string) => locked(id, 'script', async st => {
   emit(id, 'log', '✨ Concebendo roteiro e momentos com IA (Claude)...');
   const res = await ask<any>('script', 'script:moments', {
     system: `# Brand rules (brand.md)\n${readFileSync(join(P, 'brand.md'), 'utf8')}\n\n${formatGuide(st)}\n# DIRETOR.md\n${readFileSync(join(K_DIR, 'DIRETOR.md'), 'utf8')}\n\n` +
-      'You are an art director planning the graphics and motion design of a short talking-head reel. ' +
-      'Return moments that each illustrate exactly what that line says, at the density the brand asks for ' +
-      '("graphics": minimal 8-12 s, balanced 4-6 s, busy 2-4 s apart). Write texto in the language of the transcript.\n' +
-      'Without a "graphics" value, follow the format pacing: a new moment every 2-3 s, and no moment over 3.5 s without an internal change written in visual_action. ' +
-      'Split long sentences: each number, product, promise, list item and CTA gets its own moment. Read the whole script first and plan an arc (hook, offer/argument, proof, CTA).\n' +
-      'Direct it (DIRETOR.md below, §2-4 and §7): end every visual_action with "câmera: push|pull|pan|crane|tilt|orbit|roll|hold" plus the reason in three words, use at least four different camera moves across the reel, ' +
-      'never the same move in two moments in a row, mark exactly one moment "PLANO-ASSINATURA" (the oner, scale reveal or transition made from the medium) and give one moment before the turn or the CTA as "respiração" (a held pause).\n' +
+      'You are the creative director of a short talking-head reel. The speech is recorded and fixed: you decide what the screen does with it. Read the whole talk first. Work in this order (the answer fields are in this order).\n' +
+      '1) conceito: ONE visual idea for the whole reel, found in what the speaker argues (his thesis, the tension, the turn of the talk), not in its nouns. Think of three different concepts and discard the first that came to mind: it is the one every editor would make. ' +
+      'ideia: the concept in one sentence a designer could pitch. mundo: the single visual world it lives in (one material or technique, one kind of ground, how things enter and leave), two sentences at most, inside the brand and the style above. ' +
+      'motivos: 2 or 3 elements that come back along the reel and change meaning (what is small at the hook fills the screen at the turn).\n' +
+      '2) blocos: 4 to 7 blocks of about 5-12 s covering the whole duration without gaps, following the arc of the talk (hook, argument, proof, turn, CTA). funcao: its job in the arc. ' +
+      'ideia: the one thing the screen does in this block and how it DEVELOPS from its start to its end (grows, fills, breaks, gets counted, turns into the next block). A block is one scene that evolves, never a row of unrelated pictures.\n' +
+      '3) moments: the beats inside the blocks, at the density the brand asks for ("graphics": minimal 8-12 s, balanced 4-6 s, busy 2-4 s apart; without a value, the format pacing above). Every moment belongs to one block and is a step of that block\'s idea: ' +
+      'moments of the same block share the ground and the world, and the picture changes world only where a block changes. Each number, product, promise, list item and CTA gets its own moment. ' +
+      'A moment may add nothing new when the line needs to be heard: say so. Write texto (the words on screen, few) in the language of the transcript.\n' +
+      'Show what the line MEANS or the tension in it, never its noun: no light bulb for an idea, heart for interest, brain for knowledge, target for a goal, rocket for growth, gears for a process. If the picture would work as a stock icon beside the word, find another.\n' +
       (siteRef(st) ? 'A site reference is attached (site in the content). Open the site screenshots and the images in assets/img/ with Read before planning. ' +
         'Tie each line to the site: when the speaker names something the site shows (a product, track, theme, testimonial, number, the brand on stage), that moment uses the site image ' +
         '(write its file name, e.g. "imagem: assets/img/12_tema-7.webp") or the site fact. Use at least one site image every ~10 s. In motivo, note when the speech and the site disagree on a number.\n' : '') +
-      '- visual_action: Describe in Brazilian Portuguese, as a precise brief for the editor, in this order: fundo (cor sólida da paleta, vídeo desfocado ou imagem/B-roll do site), ' +
-      'enquadramento do locutor (M, L, XL, XXL ou sem locutor), o destaque único da cena (palavra gigante atrás, número, card, imagem) com a cor, o apoio (ícone, pílula, imagem) e a troca interna se a cena passa de 2,5 s. ' +
-      'Never two moments in a row with the same background or the same kind of highlight.\n' +
-      '- motion_style: The visual motion category (a short free label for the visual idea, e.g. "Manchete editorial", "Diagrama orbital", "Tipografia gigante", "UI & Mockup"; not a fixed list, vary it across the reel).\n' +
-      '- visual_action and motion_style are only a brief: Opus redesigns each moment freely.\n' +
+      '- visual_action: in Brazilian Portuguese, two sentences at most: what the viewer sees in this beat and what changes, as a step of the block\'s idea. ' +
+      'No hex colours, easing names, pixel positions, durations, speaker framing or camera moves: the director and the composer decide those with the kit and the asset library in hand.\n' +
+      '- motion_style: a short label for the block\'s world, the same in every moment of that block.\n' +
       '- icone: the name of one of the brand icons, or "". sfx: a sound name or "". motivo: why this moment, in one short sentence. accentWords: one key word per sentence.',
     readDir: projDir(id),
     content: `Frames: ${frames.join(', ')}. Read each one before planning.\n` + siteFiles(id) + JSON.stringify({ duration: dur, segments, graphics: brand.graphics, sfx: brand.sfx,
@@ -2227,23 +2249,26 @@ async function fetchAssets(id: string, st: State, moments: any[]) {
   for (const d of Object.values(DIR_OF)) mkdirSync(join(P, 'assets', d), { recursive: true });
   const old: AssetEntry[] = existsSync(manifestFile) ? readJSON(manifestFile) : [];
   for (const e of old) rmSync(join(P, 'assets', e.file), { force: true });   // a new script replaces the library of the old one
-  const entries: AssetEntry[] = [];
-  let n = 0;
   const wants = plan.wants.slice(0, max).map(w => ({ ...w, kind: broll || ['image', 'icon', 'model', 'art'].includes(w.kind) ? w.kind : 'image' }));
   if (broll && plan.music) wants.push({ moment: -1, query: plan.music, kind: 'music' as any });
-  for (const w of wants) {
+  const um = async (w: (typeof wants)[number], n: number): Promise<AssetEntry | null> => {
     const kind: Kind = w.kind === 'model' ? 'model' : w.kind === 'video' || w.kind === 'clip' ? 'video' : (w.kind as string) === 'music' ? 'audio' : 'image';
     const providers = w.kind === 'icon' ? ['iconify'] : w.kind === 'art' ? ['cleveland', 'met'] : w.kind === 'model' ? ['polypizza'] : w.kind === 'clip' ? ['youtube'] : w.kind === 'video' ? ['pexels', 'pixabay', 'commons']
       : kind === 'audio' ? ['openverse'] : ['openverse', 'pexels', 'pixabay', 'commons'];
     const { results, errors } = await brollSearch(w.query, { kind, providers, limit: 6 });
     const best = broll ? brollPick(kind === 'audio' ? results.filter(c => (c.duration ?? 60) >= 20) : results, 3)
       : results.find(c => extOf(c) && (c.provider !== 'commons' && c.provider !== 'openverse' || rightsOf(c).status === 'licensed'));
-    if (!best) { appendProjectLog(id, `🖼 "${w.query}" (${w.kind}): nada encontrado${Object.keys(errors).length ? ` (${Object.entries(errors).map(([k, v]) => `${k}: ${v}`).join('; ')})` : ''}`); continue; }
+    if (!best) { appendProjectLog(id, `🖼 "${w.query}" (${w.kind}): nada encontrado${Object.keys(errors).length ? ` (${Object.entries(errors).map(([k, v]) => `${k}: ${v}`).join('; ')})` : ''}`); return null; }
     const slug = w.query.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    const file = `${DIR_OF[kind]}/lib${++n}-${w.kind}-${slug}${extOf(best)}`;
-    try { await brollDownload(best, join(P, 'assets', file)); } catch (e) { appendProjectLog(id, `🖼 Falha ao baixar "${w.query}": ${(e as Error).message}`); n--; continue; }
-    entries.push({ file, moment: w.moment, query: w.query, kind, provider: best.provider, title: best.title, license: best.license, author: best.author, url: best.pageUrl });
-  }
+    const file = `${DIR_OF[kind]}/lib${n}-${w.kind}-${slug}${extOf(best)}`;
+    try { await brollDownload(best, join(P, 'assets', file)); } catch (e) { appendProjectLog(id, `🖼 Falha ao baixar "${w.query}": ${(e as Error).message}`); return null; }
+    return { file, moment: w.moment, query: w.query, kind, provider: best.provider, title: best.title, license: best.license, author: best.author, url: best.pageUrl };
+  };
+  // 4 pedidos por vez: em série a biblioteca levava 2 a 3 min (13 pedidos, cada um busca em até 4 fontes e baixa um arquivo)
+  const got: (AssetEntry | null)[] = wants.map(() => null);
+  let next = 0;
+  await Promise.all(Array.from({ length: 4 }, async () => { for (let i: number; (i = next++) < wants.length;) got[i] = await um(wants[i], i + 1); }));
+  const entries = got.filter((e): e is AssetEntry => !!e);
   writeJSON(manifestFile, entries);
   emit(id, 'log', `🖼 Biblioteca do reel: ${entries.length} arquivo(s) baixado(s) de ${wants.length} pedido(s) (assets/manifest.json)${broll ? ', com b-roll' : ''}`);
 }
@@ -2534,6 +2559,7 @@ async function cutoutNow(id: string, force: boolean): Promise<CutoutResult> {
   const st: State = readJSON(join(P, 'state.json'));
   const m = statSync(videoInput), key = `${m.size}:${Math.floor(m.mtimeMs / 1000)}${st.character ? `:${st.character.name}:${characterPose(st).pose.name}:${statSync(characterPose(st).pose.file).mtimeMs}` : ''}`;
   const out = join(P, 'cutout.webm'), meta = join(P, 'cutout.json');
+  if (!force && (fmtOf(st).semRecorte || fmtOf(st).speaker === false)) return { cached: true };   // cut-out toggle off: nothing to cut (the explicit /cutout with force still runs)
   const win = cutWindowsOf(st, (await probeMedia(videoInput)).duration);   // Speech Screen: inference only where the cut-out shows; the rest is transparent
   const fullKey = win ? `${key}:${JSON.stringify(win)}` : key;
   if (!force && existsSync(out) && existsSync(meta) && readJSON(meta).key === fullKey) return { cached: true };
@@ -2597,10 +2623,31 @@ function headFracFromCutout(P: string): number | null {
   } catch { return null; }
 }
 
+// Face centre as a fraction of the source width without a cut-out (cut-out toggle off): Apple Vision on one frame every 3 s of the master,
+// cached in face.json by the master's size and mtime. shortcut: macOS only, elsewhere the 980 default; swap for a portable detector when Windows needs it.
+function faceFracFromVision(P: string): number | null {
+  const master = join(P, 'master.mp4'), cache = join(P, 'face.json');
+  if (process.platform !== 'darwin' || !existsSync(master)) return null;
+  const m = statSync(master), key = `${m.size}:${Math.floor(m.mtimeMs / 1000)}`;
+  if (existsSync(cache)) try { const c = readJSON(cache); if (c.key === key) return c.frac; } catch {}
+  const D = join(P, 'face-tmp');
+  try {
+    mkdirSync(D, { recursive: true });
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', master, '-vf', 'fps=1/3,scale=640:-2', '-q:v', '4', join(D, '%04d.jpg')]);   // one frame every 3 s: three seeks gave a noisy median on a speaker who moves
+    const frames = readdirSync(D).filter(f => f.endsWith('.jpg')).map(f => join(D, f));
+    if (!frames.length) return null;
+    const xs = execFileSync('swift', [join(S, 'face_boxes.swift'), ...frames]).toString().split('\n').filter(l => l.startsWith('{')).map(l => JSON.parse(l).face as number[] | null).filter(Boolean).map(b => b![0] + b![2] / 2).sort((a, b) => a - b);
+    const frac = xs.length ? xs[xs.length >> 1] : null;
+    writeJSON(cache, { key, frac });
+    return frac;
+  } catch { return null; }
+  finally { rmSync(D, { recursive: true, force: true }); }
+}
+
 function faceXOf(P: string, width: number, height: number) {
   const track: number[][] = existsSync(join(P, 'nose.json')) ? readJSON(join(P, 'nose.json')).track : [];
   const fw = Math.min(1920, width * 1080 / height);
-  const frac = track.length ? track.reduce((s, t) => s + t[1], 0) / track.length : headFracFromCutout(P) ?? 980 / 1920;
+  const frac = track.length ? track.reduce((s, t) => s + t[1], 0) / track.length : headFracFromCutout(P) ?? faceFracFromVision(P) ?? 980 / 1920;
   return Math.round((1920 - fw) / 2 + frac * fw);
 }
 const CUTOUT_SMOOTH = "format=rgba,split[c][b];[b]alphaextract,tmix=frames=3:weights='1 2 1',erosion,gblur=sigma=1.2[m];[c][m]alphamerge";
@@ -2651,7 +2698,7 @@ export const composeDirOf = (P: string, st: State, aspect?: string | null) => jo
 export async function composeScaffold(id: string, motion = false, aspect?: string | null, media = true) {
   const P = projDir(id), st = load(id), C = join(P, composeDirName(st, aspect, motion)), A = join(C, 'assets');
   // no speaker on screen: the só-motion test, or a format with speaker: false (Só Motion); the folder name only follows the test
-  const noSpeaker = motion || (() => { try { return getFormat(st.formatId || 'business-reels').speaker === false; } catch { return false; } })();
+  const noSpeaker = motion || fmtOf(st).speaker === false;   // the Só Motion format or a motion-only skill
   await ensureComposeIgnored(id);
   for (const old of [join(P, composeDirName(st, aspect, motion), 'index.ai.html')]) if (existsSync(old)) { if (!existsSync(old.replace(/\.ai\.html$/, '.html.ai'))) renameSync(old, old.replace(/\.ai\.html$/, '.html.ai')); else rmSync(old); }   // old pristine name broke `hyperframes check`
   if (!noSpeaker && media) await ensureCutout(id);
@@ -2663,6 +2710,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   copyFileSync(join(K, 'DIRETOR.md'), join(C, 'DIRETOR.md'));
   mkdirSync(join(C, 'engines'), { recursive: true });
   for (const f of readdirSync(join(K, 'engines')).filter(f => f.endsWith('.js'))) copyFileSync(join(K, 'engines', f), join(C, 'engines', f));
+  cpSync(join(K, 'fx'), join(C, 'fx'), { recursive: true });   // shader grounds for kit.py's shader()
   // v8: no illustration packs and no brand drawing guide. The reel's own library (assets/manifest.json, fetched at the script
   // step) and the shared one (workspace/library/{img,3d}/: 3D icon packs, brand objects the user drops there) go in instead.
   for (const f of ['ESTILO.md', 'ILUSTRACAO.md']) rmSync(join(C, f), { force: true });
@@ -2692,7 +2740,8 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   // react (SPEC-v9 §4): the reaction video (react.mp4, or the style reference's ref/ref.mp4 for old projects) goes beside the speaker; the kit lints a react scene without it
   const refMp4 = existsSync(join(P, 'react.mp4')) ? join(P, 'react.mp4') : join(P, 'ref', 'ref.mp4'), hasRef = !noSpeaker && !!fmtOf(st).refVideo && existsSync(refMp4);   // react.mp4 (the reaction video chosen at creation) wins over the style reference's clip
   if (hasRef) copyFileSync(refMp4, join(A, 'ref.mp4'));
-  for (const [from, to] of [['cutout.webm', 'cut.webm'], ['master.mp4', 'raw.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json'], ['talk.mp4', 'talk.mp4']].filter(([f]) => (!noSpeaker || f === 'voice.m4a' || f === 'transcript.json' || f === 'master.mp4') && (f !== 'talk.mp4' || existsSync(join(P, f))))) if (media || (existsSync(join(P, from)) && !cutoutJobs.has(id))) { const src = join(P, from), dst = join(A, to); if (!existsSync(dst) || statSync(dst).size !== statSync(src).size || statSync(dst).mtimeMs < statSync(src).mtimeMs) copyFileSync(src, dst); }   // deferred: RVM writes cutout.webm in place, so a running job means a partial file. Só Motion keeps master.mp4 too: the hidden layer 1 (kit.py #pcam) for Edição and the After export
+  for (const [from, to] of [['cutout.webm', 'cut.webm'], ['master.mp4', 'raw.mp4'], ['voice.m4a', 'voice.m4a'], ['transcript.json', 'transcript.json'], ['talk.mp4', 'talk.mp4']].filter(([f]) => (f !== 'cutout.webm' || !fmtOf(st).semRecorte) && (!noSpeaker || f === 'voice.m4a' || f === 'transcript.json' || f === 'master.mp4') && (f !== 'talk.mp4' || existsSync(join(P, f))))) if (media || (existsSync(join(P, from)) && !cutoutJobs.has(id))) { const src = join(P, from), dst = join(A, to); if (!existsSync(dst) || statSync(dst).size !== statSync(src).size || statSync(dst).mtimeMs < statSync(src).mtimeMs) copyFileSync(src, dst); }   // deferred: RVM writes cutout.webm in place, so a running job means a partial file. Só Motion keeps master.mp4 too: the hidden layer 1 (kit.py #pcam) for Edição and the After export
+  if (noSpeaker) for (const f of ['cut.webm', 'talk.mp4']) rmSync(join(A, f), { force: true });   // left by a composition made when the reel still had a speaker
   // the brand as it is now (global + this project's override): the copy in the project folder goes stale when the brand gains a font or colour
   const brand = writeBrand(st);
   const fontFile = brandFontFile(st, brand);
@@ -2764,7 +2813,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   let skill: any = null;
   if (st.skillId) try { skill = getSkill(st.skillId); } catch { skill = null; }
   if (skill) style = null;
-  const ch = resolveChoices({ format: fmt, style, skill, pace: st.pace, site: !!siteRef(st), noBrand: st.brand === NO_BRAND });
+  const ch = resolveChoices({ format: fmt, style, skill, pace: st.pace, recorte: st.recorte, site: !!siteRef(st), noBrand: st.brand === NO_BRAND });
   const fmtR: any = ch.format, pc = effectivePace(st), look: any = skill ? skillAsStyle(skill) : style;
   // a one-take skill (no cut, the camera travels one space): its transitions say so
   const oner = !noSpeaker && !!skill && /one-take|oner|plano-sequ[eê]ncia|sem corte|nunca corte|n[aã]o h[aá] corte/i.test(`${skill.format?.camera?.transitions ?? ''} ${skill.look?.guide ?? ''}`);
@@ -2782,10 +2831,10 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     faceX,
     pace: pc,
     speaker: !noSpeaker && (media || (existsSync(join(A, 'cut.webm')) && !cutoutJobs.has(id))),
-    ...(!noSpeaker && fmtR.planos ? { planos: fmtR.planos } : {}),
+    ...(noSpeaker ? { planos: ['none'] } : fmtR.planos ? { planos: fmtR.planos } : {}),   // no speaker: the kit refuses any speaker shot and drops the CTA-needs-XXL and same-shot checks
     ...(!noSpeaker && fmtR.panel ? { panel: fmtR.panel } : {}),
     ...(hasRef ? { refVideo: true } : {}),
-    ...(!noSpeaker && fmtR.janelas?.cut ? { cutWindows: cutWindows(fmtR.janelas.cut, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
+    ...(!noSpeaker && fmtR.semRecorte ? { cutWindows: [] } : !noSpeaker && fmtR.janelas?.cut ? { cutWindows: cutWindows(fmtR.janelas.cut, duration) } : {}),   // deferred scaffold: the illustrator's demo must not reference a cut.webm that is not there yet
     colors,
     fonte: { w: width, h: height },
     // from the motion style (set by hand in style.json): giantCase 'lower' and speakerShadow true for product styles like Insula Build
@@ -2829,7 +2878,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
   const skillColors = { skill: 'Cores: as da skill (paleta travada abaixo), no lugar das da marca e de RED/RED2/AMB/BLK/CRM do compose.json.',
     site: 'Cores, imagens, logo e números vêm do site de referência (seção da marca e site abaixo), aplicados nos papéis da paleta da skill (fundo, acento, cartão, tinta).',
     brand: 'Cores e fontes vêm da marca (seção abaixo), aplicadas nos papéis da paleta da skill (fundo, acento, cartão, tinta).' }[ch.sources.colors as 'skill' | 'site' | 'brand'];
-  const skillBlock = skill ? `## Skill (${skill.name}): é ela que manda neste reel\nUm vídeo clonado, travado inteiro. A skill decide a estrutura e o visual: planos e escalas do locutor, câmera e transições, composição dos blocos, texturas, forma da tipografia, densidade e ritmo. Isso vence o formato, o DIRETOR.md, o GUIDE.md e qualquer regra de estilo do site ou do brand.md. ${skillColors} O que a observação do usuário pedir vale sobre a skill; onde marca, site e observação não dizem nada, siga a skill à risca.${oner ? '\n**One-take:** esta skill não corta, a câmera atravessa um mundo só. Use o modo one-take do kit (GUIDE.md "One-take"): toda cena com `at=(x, y)` num bloco do mundo, a câmera viaja de bloco em bloco por whip com desfoque, o locutor anda junto (pose por bloco com `cam` e `spk=`) e os blocos anteriores ficam no mundo para os pull-outs. Sem `at=` o kit reprova.' : ''}\n${fmtBlock}\n${rhythmBlock}\n${ch.sources.colors === 'skill' && look.palette?.length ? `Paleta travada (use estes hex): ${look.palette.map((c: any) => `${c.hex} = ${c.role}`).join(', ')}\n` : ''}${styleBrief(look, skillRefs(skill.id), skillMd(skill.id))}` : '';
+  const skillBlock = skill ? `## Skill (${skill.name}): é ela que manda neste reel\nUm vídeo clonado, travado inteiro. A skill decide a estrutura e o visual: planos e escalas do locutor, câmera e transições, composição dos blocos, texturas, forma da tipografia, densidade e ritmo.${noSpeaker ? ' Esta skill é só motion: não há locutor na tela em nenhuma cena.' : ''} Isso vence o formato, o DIRETOR.md, o GUIDE.md e qualquer regra de estilo do site ou do brand.md. ${skillColors} O que a observação do usuário pedir vale sobre a skill; onde marca, site e observação não dizem nada, siga a skill à risca.${oner ? '\n**One-take:** esta skill não corta, a câmera atravessa um mundo só. Use o modo one-take do kit (GUIDE.md "One-take"): toda cena com `at=(x, y)` num bloco do mundo, a câmera viaja de bloco em bloco por whip com desfoque, o locutor anda junto (pose por bloco com `cam` e `spk=`) e os blocos anteriores ficam no mundo para os pull-outs. Sem `at=` o kit reprova.' : ''}\n${fmtBlock}\n${rhythmBlock}\n${ch.sources.colors === 'skill' && look.palette?.length ? `Paleta travada (use estes hex): ${look.palette.map((c: any) => `${c.hex} = ${c.role}`).join(', ')}\n` : ''}${styleBrief(look, skillRefs(skill.id), skillMd(skill.id))}` : '';
   writeFileSync(join(C, 'brief.md'), [`# Briefing: ${st.name}`,
     `Formato ${targetAspect} (${targetW}×${targetH}), ${Math.round(duration * 100) / 100} s, 30 fps. Centro do rosto do locutor: x≈${faceX} de ${width} (já em compose.json).`,
     skillBlock,
@@ -2839,6 +2888,7 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
       : siteRef(st) ? `## Marca (${st.brand}) e site\nPaleta em compose.json (RED, RED2, AMB, BLK, CRM) já é a do site, que é a campanha atual: ela vence as cores do brand.md. Do brand.md valem só o tom e a fonte.\nOlhe ../ref/top_mobile.png e ../ref/top_desktop.png com Read: o print mostra qual cor é fundo, destaque e botão.\n${referenceGuide(st)}\n\n${brandMd.replace(/## Cores[\s\S]*?(?=\n## |$)/, '')}`
       : `## Marca (${st.brand})\nPaleta mapeada em compose.json (RED, RED2, AMB, BLK, CRM; ajuste se o brand.md pedir outra).\n\n${brandMd}`,
     !noSpeaker && fmtR.janelas?.cut ? (() => { const w = cutWindows(fmtR.janelas.cut, duration) ?? [], top = Math.round(targetH * (fmtR.panel?.top ?? 0.42)); return `## Locutor: Speech Screen\nO recorte do locutor (cut.webm) só existe nas janelas ${w.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} s`).join(', ')} (fora delas o alfa é vazio). Cena dentro de uma janela: câmera normal (M/L/XL/XXL) com texto gigante atrás; a CTA (cta=True) fica na última janela. Toda outra cena usa \`cam='panel'\`: o vídeo bruto do locutor (assets/talk.mp4) ocupa o painel de baixo (de y=${top} até o rodapé, sem recorte) e TODA a animação (3D, ilustrações, tipografia, imagens do site) fica na área de cima, acima de y=${top}; ou \`cam=None\` para tela cheia sem locutor. O kit reprova recorte fora das janelas.`; })() : '',
+    !noSpeaker && fmtR.semRecorte ? `## Locutor sem recorte\nEste projeto não recorta o locutor: não existe cut.webm. Nenhuma cena usa câmera de recorte (M/L/XL/XXL) nem tipografia gigante atrás dele, e o que os outros blocos disserem sobre recorte e reenquadramento não vale aqui. O locutor só aparece nos planos permitidos acima; a CTA (cta=True) vai numa cena desses planos.` : '',
     !noSpeaker ? `## Liberdade e limites\nSem cotas: quantas imagens, movimentos de câmera e tipografias cada cena tem é decisão sua pelo que a fala pede; uma cena limpa com a peça certa vale mais que três genéricas. O que não se negocia: fluidez (toda entrada com ease-out e saída com ease-in, algo sempre em movimento lento, passagens desenhadas entre cenas); texto inteiro dentro da zona segura (topo ${safeZones.top}, base ${safeZones.bottom}, laterais ${safeZones.left} px); nada sobre o rosto ou o queixo do locutor; o locutor reenquadrado com o rosto em faceX (centro do quadro) em toda troca de enquadramento, e enquadramento trocando com a fala (M, L, XL, XXL). Fundo das cenas: NUNCA o vídeo do locutor desfocado ou replicado (bg='plate' é erro no kit); use cor sólida ou gradiente da marca, imagem da biblioteca ou do site.` : '',
     skill ? '' : fmtBlock,
     skill ? '' : rhythmBlock,
@@ -2848,14 +2898,15 @@ export async function composeScaffold(id: string, motion = false, aspect?: strin
     `## Imagens e objetos\nA peça visual de cada cena vem, nesta ordem: 1) a biblioteca do reel e a compartilhada (seções abaixo) e as imagens do site; 2) objetos 3D (\`obj3d\` com um .glb da biblioteca, ou os tipos prontos do kit); 3) desenho em código (\`canvas()\` / \`scene3d()\`) só quando nada pronto mostra o que a fala diz. Cada peça demonstra a frase em que entra (mockup, objeto, gravura, ícone com material e sombra), nunca enfeite. Proibido: emoji, balão ou card com texto de exemplo, texto em outra língua que a fala não diz, ícone de linha fina chapado sem sombra nem material. Decida a câmera de cada plano pelo DIRETOR.md e escreva treatment.md antes do scenes.py.`,
     manifest.length ? `## Biblioteca do reel (assets/manifest.json)\nBaixada da internet para os momentos do roteiro, com licença e autor. Abra cada imagem com Read antes de usar (o nome não diz o que ela mostra); .svg entra como <img> ou inline; .glb entra com obj3d(p, 'assets/3d/arquivo.glb', x, y, size, at, d).${manifest.some(e => e.kind === 'video') ? ` Vídeo (assets/video/, 15 s, mudo) entra com footage(p, src, x, y, w, h, d, at, start): janela com cantos redondos na cena do momento, nunca sobre o rosto; confira o trecho (start) com ffmpeg antes de usar.` : ''}${manifest.some(e => e.kind === 'audio') ? ` A trilha (assets/music/) entra uma vez no scenes.py com music('assets/music/arquivo.mp3', vol=.16): baixa, sob a voz.` : ''}\n${manifest.map(e => `- assets/${e.file} · ${e.kind === 'audio' ? 'trilha' : `momento ${e.moment}`} · "${e.query}" · ${e.provider} · ${e.license}${e.author ? ` · ${e.author}` : ''}`).join('\n')}` : '',
     libLines.length ? `## Biblioteca compartilhada (assets/lib/)\nObjetos, imagens e trilhas do estúdio (workspace/library/): ${libLines.slice(0, 80).join(', ')}${libLines.length > 80 ? ` e mais ${libLines.length - 80}` : ''}. PNG com alfa entra como floatimg; .glb com obj3d; música (assets/lib/music/) com music(src, vol=.16), uma por reel, só quando a biblioteca do reel não trouxe uma.` : '',
-    !noSpeaker && script.moments?.length ? `## Momentos do roteiro\nUm bloco por momento: tempo, fala e ação visual sugerida. O kit.py é opcional: use um helper só quando ele for a melhor ideia para o momento.\n${script.moments.map((m: any) => `- ${m.t_start}s–${m.t_end}s · "${m.texto ?? ''}" · ${m.visual_action ?? ''}`).join('\n')}` : '',
+    !noSpeaker && script.moments?.length ? (script.conceito?.ideia ? `## Conceito do reel\n${script.conceito.ideia}\nMundo visual: ${script.conceito.mundo ?? ''}\nMotivos que voltam: ${(script.conceito.motivos ?? []).join('; ')}\n\n### Blocos (cada um é uma cena que evolui, não uma fila de imagens)\n${(script.blocos ?? []).map((b: any) => `- ${b.t_start}s–${b.t_end}s · ${b.funcao}: ${b.ideia}`).join('\n')}\n\n` : '') +
+      `## Momentos do roteiro\nUma linha por momento: tempo, texto em destaque e o que a tela faz; "PEDIDO DO USUÁRIO" manda sobre a sugestão. O kit.py é opcional: use um helper só quando ele for a melhor ideia para o momento.\n${script.moments.map((m: any) => `- ${m.t_start}s–${m.t_end}s · "${m.texto ?? ''}" · ${m.visual_action ?? ''}${m.observacao ? ` · PEDIDO DO USUÁRIO: ${m.observacao}` : ''}`).join('\n')}` : '',
     charLines.length || brand.animation?.style ? `## Brandkit de animação\n${brand.animation?.style ? `Estilo de movimento: ${brand.animation.style}\n` : ''}${charLines.length ? `Personagens (PNG com fundo transparente; olhe cada um com Read). Anime entrada, gesto e troca de pose em GSAP, escolhendo a pose pela emoção da fala. Sem boca sincronizada: o personagem é voz em off, só reage.${st.character ? ` O locutor (cut.webm) é o personagem ${st.character.name}, parado e respirando: faça-o reagir com câmera e com as outras poses por cima (front), nunca invente outro rosto.` : ''}\n${charLines.join('\n')}` : ''}` : '',
     bancoSection,
     script.accentWords?.length ? `## Palavras-chave sugeridas\n${script.accentWords.join(', ')}` : '',
     srt ? `## Roteiro e tempos (.srt)\n${srt}` : '',
     `## Transcript por palavra\nassets/transcript.json (${words.length} palavras).`,
     noSpeaker ? `## Assets\nvoice.m4a (narração), fonts/font.otf (peso 600)${giantFile ? ' e fonts/giant.otf (peso 900, a tipografia gigante já usa)' : ''}, ${imgDesc}, sfx/ (ver sfx/manifest.json). Sem locutor.`
-      : `## Assets\ncut.webm (locutor, alfa), raw.mp4 (o vídeo original inteiro, escondido na camada 1 como backup: nunca o mostre nem o use como fundo), voice.m4a, fonts/font.otf (peso 600)${giantFile ? ' e fonts/giant.otf (peso 900, a tipografia gigante já usa)' : ''}, ${imgDesc}, sfx/ (ver sfx/manifest.json).`,
+      : `## Assets\n${fmtR.semRecorte ? '' : 'cut.webm (locutor, alfa), '}raw.mp4 (o vídeo original inteiro, escondido na camada 1 como backup: nunca o mostre nem o use como fundo), voice.m4a, fonts/font.otf (peso 600)${giantFile ? ' e fonts/giant.otf (peso 900, a tipografia gigante já usa)' : ''}, ${imgDesc}, sfx/ (ver sfx/manifest.json).`,
     `Siga GUIDE.md. Escreva scenes.py, valide, olhe os snapshots e corrija antes de renderizar.`].filter(Boolean).join('\n\n'));
   return { dir: C };
 }
@@ -2886,7 +2937,7 @@ async function composeRun(id: string, st: State, note?: string, mode?: string, a
   const other = aspect && aspect !== primaryAspect(st) && !motion ? pickFormats([aspect])?.[0] ?? fail(`formato ${JSON.stringify(aspect)} não existe: use ${FORMATS.join(', ')}`) : null;
   const full = !note && !other;   // the full run: the treatment first, so the cutout (started at ingest) finishes behind it
   const agentFmt: any = getFormat(st.formatId || 'business-reels');
-  const noSpeaker = motion || agentFmt.speaker === false;   // the só-motion test, or the Só Motion format: no cutout, no speaker on screen
+  const noSpeaker = motion || fmtOf(st).speaker === false;   // the só-motion test, the Só Motion format or a motion-only skill: no cutout, no speaker on screen
   if (full && !noSpeaker) ensureCutout(id).catch(() => {});   // started at ingest normally; after a restart it must run behind the treatment, not after it
   await composeScaffold(id, motion, other, !full);
   const C = composeDirOf(P, st, other);

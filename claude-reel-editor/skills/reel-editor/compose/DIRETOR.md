@@ -57,7 +57,7 @@ O benchmark sobe a qualidade mais do que qualquer regra abaixo. O primeiro visua
 O scenes.py segue o treatment; se mudar de ideia ao compor, atualize o treatment antes.
 
 ## 7. Roteiro (quem escreve os momentos)
-Cada momento diz, além do destaque: o **movimento de câmera** do plano (`câmera: push|pull|pan|crane|tilt|orbit|roll|hold`) e o motivo em três palavras. Um momento é marcado **PLANO-ASSINATURA**. Planeje o arco inteiro antes do primeiro momento: gancho, argumento, prova, virada, CTA. Momentos vizinhos nunca repetem fundo, destaque nem movimento de câmera.
+O roteiro entrega três coisas, nesta ordem: o **conceito** (uma ideia visual para o reel inteiro, o mundo em que ela vive e dois ou três motivos que voltam), os **blocos** (4 a 7 cenas de 5 a 12 s que evoluem, seguindo gancho, argumento, prova, virada, CTA) e os **momentos** (as batidas dentro de cada bloco). O roteiro diz o que a tela mostra e por quê; cor, easing, posição, enquadramento do locutor e câmera são do treatment e do compositor. A imagem mostra o que a frase quer dizer, nunca o substantivo dela (nada de lâmpada para ideia, coração para interesse, cérebro para conhecimento). Momentos do mesmo bloco dividem fundo e mundo; o mundo só troca onde o bloco troca.
 
 ## 8. Antes de entregar
 - Folhas de contato de todas as cenas, e um passe olhando só o movimento: a câmera tem quatro gramáticas? Há um plano-assinatura? Há uma respiração?

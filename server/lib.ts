@@ -96,12 +96,22 @@ export const PACE: Record<Pace, { every: number; scene: [number, number]; framin
 
 // Who answers each question (SPEC-v9 §1). A skill locks format, look and rhythm; without one, format + style + rhythm toggle are independent
 // (a style's paceHint is only the starting value of the toggle). Colours: site reference > the skill's locked hex > brand.
-export function resolveChoices(i: { format: any; style?: any; skill?: any; pace?: Pace; site?: boolean; noBrand?: boolean }) {
-  const { format, style, skill, pace, site, noBrand } = i;
+// The cut-out toggle off (state.recorte === false): the format keeps its layout but loses the cut-out shot, so RVM never runs.
+// Ignored when the cut-out is the format's only speaker shot (Recorte): there the speaker would vanish.
+export function semRecorte(f: any) {
+  const planos: string[] = (f?.planos ?? ['cut', 'none']).filter((p: string) => p !== 'cut');
+  if (!planos.some(p => p !== 'none')) return f;
+  return { ...f, planos, janelas: null, semRecorte: true };
+}
+export function resolveChoices(i: { format: any; style?: any; skill?: any; pace?: Pace; site?: boolean; noBrand?: boolean; recorte?: boolean }) {
+  const { style, skill, pace, site, noBrand } = i;
+  const format = !skill && i.recorte === false ? semRecorte(i.format) : i.format;   // a skill locks the cut-out on
   // a skill locks the speaker shots even when it does not list them: the chosen format keeps only size and safe zones, the
   // speaker is cut out the whole reel (no Speech Screen windows, no panel) and the skill's framing says when
+  // a skill cloned from a reel with nobody on camera (format.speaker false) is motion only: no speaker shot, no cut-out, like the Só Motion format
+  const mudo = skill?.format?.speaker === false;
   if (skill) return {
-    format: { ...format, janelas: null, panel: undefined, regras: skill.format?.camera?.framing ?? '', ...(skill.format?.planos ? {} : { planos: ['cut', 'none'] }), ...skill.format },
+    format: { ...format, janelas: null, panel: undefined, regras: mudo ? '' : skill.format?.camera?.framing ?? '', ...(skill.format?.planos ? {} : { planos: ['cut', 'none'] }), ...skill.format, ...(mudo ? { planos: ['none'] } : {}) },
     look: skill.look ?? null, rhythm: skill.rhythm ?? null,
     // colours: the site, then the chosen brand; with brand "Nenhuma" (or a skill that locks them) the skill's palette
     sources: { format: 'skill', look: 'skill', rhythm: 'skill', colors: site ? 'site' : skill.colorsLocked || noBrand ? 'skill' : 'brand' },
@@ -117,11 +127,11 @@ export function resolveChoices(i: { format: any; style?: any; skill?: any; pace?
 // speaker is shot (format); the rest of the camera, the palette, recipes and sounds are the look; pace and beats are the rhythm. A skill that does not
 // know the reel's speaker shots leaves `format.planos` out, so the chosen format keeps deciding them.
 export function styleToSkill(s: any) {
-  const { id, name, description, camera, guide, motif, palette, motionRecipes, sfxRules, sfxGainDb, sfxForbidden, giantCase, speakerShadow,
+  const { id, name, description, camera, guide, motif, palette, motionRecipes, sfxRules, sfxGainDb, sfxForbidden, giantCase, speakerShadow, speaker,
     pace, beats, sfxPerMinute, clonedFrom, refineLog, ...rest } = s;
   const { framing, transitions, ...lookCam } = camera ?? {};
   return { id, name, description,
-    format: framing || transitions ? { camera: { framing, transitions } } : {},
+    format: { ...(framing || transitions ? { camera: { framing, transitions } } : {}), ...(speaker === false ? { speaker: false } : {}) },
     look: { guide, motif, palette, ...(camera ? { camera: lookCam } : {}), motionRecipes, sfxRules, sfxGainDb, sfxForbidden, giantCase, speakerShadow, ...rest },
     rhythm: { pace, beats, sfxPerMinute },
     colorsLocked: false, clonedFrom, ...(refineLog ? { refineLog } : {}) };
@@ -131,11 +141,11 @@ export function skillAsStyle(k: any) {
   const { camera: lookCam, ...look } = k.look ?? {};
   const cam = { ...(lookCam ?? {}), ...(k.format?.camera ?? {}) };
   return { id: k.id, name: k.name, description: k.description, ...look, ...(Object.keys(cam).length || lookCam ? { camera: cam } : {}),
-    pace: k.rhythm?.pace, beats: k.rhythm?.beats, sfxPerMinute: k.rhythm?.sfxPerMinute, clonedFrom: k.clonedFrom, ...(k.refineLog ? { refineLog: k.refineLog } : {}) };
+    ...(k.format?.speaker === false ? { speaker: false } : {}), pace: k.rhythm?.pace, beats: k.rhythm?.beats, sfxPerMinute: k.rhythm?.sfxPerMinute, clonedFrom: k.clonedFrom, ...(k.refineLog ? { refineLog: k.refineLog } : {}) };
 }
 // the look of a flat clone and nothing else: a style cloned "only for the visual" carries no shots, rhythm or origin
 export function lookOnly(s: any) {
-  const { beats: _b, pace: _p, sfxPerMinute: _s, clonedFrom: _c, refineLog: _r, ...rest } = s;
+  const { beats: _b, pace: _p, sfxPerMinute: _s, clonedFrom: _c, refineLog: _r, speaker: _k, ...rest } = s;
   if (rest.camera) { const { framing: _f, transitions: _t, ...cam } = rest.camera; rest.camera = cam; }
   return rest;
 }
@@ -167,4 +177,17 @@ export function textContrast(com: Uint8Array, sem: Uint8Array, w: number, box: {
   const mid = (k: 'a' | 'b') => core.map(p => p[k]).sort((p, q) => p - q)[core.length >> 1];
   const fg = mid('a'), bg = mid('b');
   return (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05);
+}
+
+// What we keep of a rea-video breakdown.json (github.com/JuneYaooo/rea-video, Apache 2.0): the cut times and one
+// line per shot with its measured transition and element motion (time, box as fractions of the frame, direction, ease).
+export function reaResumo(b: any): { cuts: number[]; texto: string } {
+  const shots: any[] = Array.isArray(b?.shots) ? b.shots : [], n = (v: unknown) => +Number(v).toFixed(2);
+  const linhas = shots.map(s => {
+    const t = s.transition, evs: any[] = s.motion?.events ?? [];
+    return `${n(s.start)}–${n(s.end)} s` + (t?.type && t.type !== 'cut' ? ` | enters by ${t.type}${t.direction ? ' ' + t.direction : ''} ${n(t.duration ?? 0)} s` : '') +
+      evs.map(e => `\n  ${n(e.t0)}–${n(e.t1)} s ${e.kind} box x${n(e.box?.[0])} y${n(e.box?.[1])} w${n(e.box?.[2])} h${n(e.box?.[3])}` +
+        (e.sweep ? ` unfolds ${e.sweep}` : e.slide ? ` slides ${e.slide}` : e.scale ? ' scales up' : '') + ` ${e.easing} ${e.colour ?? ''}`.trimEnd()).join('');
+  });
+  return { cuts: shots.slice(1).map(s => n(s.start)), texto: linhas.join('\n') };
 }

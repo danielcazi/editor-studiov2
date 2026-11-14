@@ -6381,6 +6381,10 @@ async function projects() {
                   <div class="np-tile-sub">a skill traz os planos</div>
                 </button>
               </div>
+                <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:12.5px;cursor:pointer" title="Desmarcado, o locutor nunca é recortado: as cenas de recorte do formato viram painel, vídeo cru ou só animação">
+                  <input type="checkbox" id="npRecorte" style="margin-top:3px">
+                  <span>✂ Recortar o locutor <span class="muted" style="display:block;font-size:11px">Recorta o fundo nas cenas de recorte do formato (≈5 min por minuto recortado). Desmarcado, o formato usa só os outros planos. O formato Recorte e as skills sempre recortam.</span></span>
+                </label>
                 <select class="np-select" hidden style="display:none" name="formatId" id="npFormatSelect">
                   ${fl.map((f, idx) => `
                     <option value="${esc(f.id)}" ${idx === 0 ? 'selected' : ''} title="${esc(f.regras || f.description || '')}">
@@ -6406,7 +6410,7 @@ async function projects() {
               <label class="np-field-label"><span>Estilo de motion</span><span class="opt">(automático deixa o diretor escolher)</span></label>
               <div class="np-tile-grid" id="npStyleGrid">
                 <button type="button" class="np-tile active" data-style="">
-                  <div class="np-thumb"><span>automático</span></div>
+                  <div class="np-thumb">${(u => u.length ? `<img data-reel="${esc(JSON.stringify(u))}" src="${u[0]}" alt="">` : `<span>automático</span>`)(motionStyles.filter(x => x.refs?.length).map(x => `/styles/${encodeURIComponent(x.id)}/refs/${encodeURIComponent(x.refs[0])}`))}</div>
                   <div class="np-tile-name">O diretor escolhe</div>
                   <div class="np-tile-sub">entre os estilos da lista</div>
                 </button>
@@ -6429,8 +6433,21 @@ async function projects() {
                 </select>
             </div>
             <div class="np-field">
-              <label class="np-field-label"><span>Skill</span><span class="opt">(um vídeo clonado: trava o estilo, o ritmo e, se ela traz planos, o formato)</span></label>
-              <select class="np-select" name="skillId" id="npSkillSelect">
+              <label class="np-field-label"><span>Skill</span><span class="opt">(um vídeo clonado: trava o formato, o estilo e o ritmo; os dois primeiros vão para Nenhum)</span></label>
+              <div class="np-tile-grid" id="npSkillGrid">
+                <button type="button" class="np-tile active" data-skill="">
+                  <div class="np-thumb"><span>nenhuma</span></div>
+                  <div class="np-tile-name">Nenhuma</div>
+                  <div class="np-tile-sub">formato e estilo livres</div>
+                </button>
+                ${skillList.map(k => { const fr = (k.refs || []).filter(f => /^v\d+_\d+\.jpg$/.test(f)), refs = (fr.length ? fr : k.refs || []).map(f => `/skills/${encodeURIComponent(k.id)}/refs/${encodeURIComponent(f)}`); return `
+                <button type="button" class="np-tile" data-skill="${esc(k.id)}" title="${esc(k.description || '')}">
+                  <div class="np-thumb">${refs.length ? `<img data-reel="${esc(JSON.stringify(refs))}" src="${refs[0]}" alt="">` : `<span>sem quadros</span>`}</div>
+                  <div class="np-tile-name">${esc(k.name || k.id)}</div>
+                  <div class="np-tile-sub">${k.rhythm?.pace ? `~${k.rhythm.pace} s por corte` : esc(k.description || '').slice(0, 60)}</div>
+                </button>`; }).join('')}
+              </div>
+              <select class="np-select" hidden style="display:none" name="skillId" id="npSkillSelect">
                 <option value="">Nenhuma</option>
                 ${skillList.map(k => `<option value="${esc(k.id)}" data-planos="${k.format?.planos ? '1' : ''}" title="${esc(k.description || '')}">${esc(k.name || k.id)}${k.rhythm?.pace ? ` · ~${k.rhythm.pace} s por corte` : ''}</option>`).join('')}
               </select>
@@ -6628,17 +6645,18 @@ async function projects() {
     syncReactBox();   // the first tile is active at load
     $('#npStyleGrid').querySelectorAll('[data-style]').forEach(t => t.onclick = () => { $('#npMotionStyleSelect').value = t.dataset.style; pickTile($('#npStyleGrid'), 'style', t.dataset.style); updateFooterStatus(); });
     $('#npPaceBar').querySelectorAll('[data-pace]').forEach(b => b.onclick = () => { $('#npPaceSelect').value = b.dataset.pace; $('#npPaceBar').querySelectorAll('[data-pace]').forEach(x => x.classList.toggle('active', x === b)); updateFooterStatus(); });
-    // a skill locks style, rhythm and (when it carries shots) the format: the selectors stay visible but cannot be changed
+    // a skill locks format, style and rhythm (resolveChoices): format and style go to Nenhum and the selectors stay visible but cannot be changed
     const lock = (el, on) => { el.style.opacity = on ? '.4' : ''; el.style.pointerEvents = on ? 'none' : ''; };
     let beforeSkill = null;   // the format and style picked before a skill moved them to Nenhum, put back when the skill is cleared
     const pick = (grid, attr, val) => grid.querySelector(`[data-${attr}="${CSS.escape(val)}"]`)?.click();
     $('#npSkillSelect').onchange = () => {
-      const o = $('#npSkillSelect').selectedOptions[0], on = !!o.value, planos = on && !!o.dataset.planos;
+      const on = !!$('#npSkillSelect').value;
       if (on && !beforeSkill) beforeSkill = [formatSelect.value, $('#npMotionStyleSelect').value];
-      if (on) { pick($('#npStyleGrid'), 'style', 'none'); pick($('#npFormatGrid'), 'format', planos ? '' : beforeSkill[0]); }
+      if (on) { pick($('#npStyleGrid'), 'style', 'none'); pick($('#npFormatGrid'), 'format', ''); }
       else if (beforeSkill) { pick($('#npFormatGrid'), 'format', beforeSkill[0]); pick($('#npStyleGrid'), 'style', beforeSkill[1]); beforeSkill = null; }
-      lock($('#npStyleGrid'), on); lock($('#npPaceBar'), on); lock($('#npFormatGrid'), planos); updateFooterStatus();
+      lock($('#npStyleGrid'), on); lock($('#npPaceBar'), on); lock($('#npFormatGrid'), on); updateFooterStatus();
     };
+    $('#npSkillGrid').querySelectorAll('[data-skill]').forEach(t => t.onclick = () => { $('#npSkillSelect').value = t.dataset.skill; pickTile($('#npSkillGrid'), 'skill', t.dataset.skill); $('#npSkillSelect').onchange(); });
     updateFormatPreview();   // the first format starts selected
     // Relembrar projeto anterior: batch production repeats the name, brand, references, format, style and pace of the last reel;
     // Clonar also takes its files (raw video, subtitle, images) so the whole selection is redone
@@ -6658,7 +6676,7 @@ async function projects() {
         if (p.formatId) $('#npFormatGrid').querySelector(`[data-format="${CSS.escape(p.formatId)}"]`)?.click();
         $('#npStyleGrid').querySelector(`[data-style="${CSS.escape(p.styleId || '')}"]`)?.click();
         $('#npPaceBar').querySelector(`[data-pace="${CSS.escape(p.pace || 'dinamico')}"]`)?.click();
-        $('#npBroll').checked = !!p.broll;
+        $('#npBroll').checked = !!p.broll; $('#npRecorte').checked = p.recorte !== false;
         refUrlInput.value = [p.referenceUrl, ...(p.extraReferenceUrls || [])].filter(Boolean).join('\n');
         $('#npRefNote').value = p.referenceNote || '';
         preToggle.querySelector(`[data-val="${p.preEdited === false ? '0' : '1'}"]`)?.click();
@@ -7043,7 +7061,7 @@ async function projects() {
           name: nameInput.value.trim() || 'novo-video', text: speechEl.value, voice: { provider: provEl.value, voice: voiceEl.value }, character: charEl.value ? { name: charEl.value } : undefined,
           referenceUrl: refUrlInput.value.trim() || undefined, referenceNote: $('#npRefNote').value.trim() || undefined,
           preEdited: true, brand: selectedBrand, formatId: formatSelect.value || 'business-reels', images: imagePaths,
-          styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
+          styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, recorte: !!$('#npRecorte')?.checked, broll: $('#npBroll')?.checked || undefined
         });
         sessionStorage.removeItem('npDraft');
         location.hash = `#/p/${st.id}`;
@@ -7081,7 +7099,7 @@ async function projects() {
             formatId,
             reactVideo,
             images: imagePaths,
-            styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
+            styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, recorte: !!$('#npRecorte')?.checked, broll: $('#npBroll')?.checked || undefined
           });
           api('POST', `/projects/${st.id}/ingest`).catch(() => {});
         }
@@ -7107,7 +7125,7 @@ async function projects() {
         formatId,
         reactVideo,
         images: imagePaths,
-        styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, broll: $('#npBroll')?.checked || undefined
+        styleId: $('#npMotionStyleSelect')?.value || undefined, pace: $('#npPaceSelect')?.value || undefined, skillId: $('#npSkillSelect')?.value || undefined, recorte: !!$('#npRecorte')?.checked, broll: $('#npBroll')?.checked || undefined
       });
 
       sessionStorage.removeItem('npDraft');
@@ -7120,14 +7138,14 @@ async function projects() {
       step, recalled, videoPaths, subtitlePath, imagePaths, multiMode, selectedPre, brand: selectedBrand,
       name: nameInput.value, textMode, speech: speechEl.value, voiceProv: provEl.value,
       refs: refUrlInput.value, note: $('#npRefNote').value,
-      format: formatSelect.value, style: $('#npMotionStyleSelect').value, pace: $('#npPaceSelect').value, broll: $('#npBroll').checked,
+      format: formatSelect.value, style: $('#npMotionStyleSelect').value, pace: $('#npPaceSelect').value, broll: $('#npBroll').checked, recorte: $('#npRecorte').checked,
     }));
     for (const ev of ['click', 'input', 'change']) $('#npCard').addEventListener(ev, saveDraft);
     if (draft) {
       nameInput.value = draft.name || '';
       refUrlInput.value = draft.refs || '';
       $('#npRefNote').value = draft.note || '';
-      $('#npBroll').checked = !!draft.broll;
+      $('#npBroll').checked = !!draft.broll; $('#npRecorte').checked = !!draft.recorte;
       recalled = draft.recalled || '';
       if (draft.textMode) { provEl.value = draft.voiceProv || provEl.value; $('#npModeBar [data-mode="text"]').click(); speechEl.value = draft.speech || ''; updateSpeechInfo(); }
       $('#npFormatGrid').querySelector(`[data-format="${CSS.escape(draft.format || '')}"]`)?.click();
@@ -7463,8 +7481,8 @@ async function project(id) {
     if (badgesEl) {
       badgesEl.innerHTML = `
         ${st.brand ? `<span style="background:var(--panel2);border:1px solid var(--line);padding:2px 8px;border-radius:4px;font:600 11px var(--sans);color:var(--cream)">${esc(st.brand)}</span>` : ''}
-        <select id="pt-format-select" title="Formato deste projeto (quais planos do locutor existem): vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
-          <option value="${esc(st.formatId || '')}" selected>📐 ${esc(st.formatId || 'formato')}</option>
+        <select id="pt-format-select" title="${st.skillId ? 'Com skill, o formato só dá o tamanho e as zonas seguras: os planos do locutor (ou a falta dele) vêm da skill' : 'Formato deste projeto (quais planos do locutor existem): vale a partir da próxima composição'}" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
+          <option value="${esc(st.formatId || '')}" selected>📐 ${esc(st.formatId || 'formato')}${st.skillId ? ' · planos da skill' : ''}</option>
         </select>
         <select id="pt-skill-select" title="Skill deste projeto (aba Skills): um vídeo clonado que trava estilo e ritmo; vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
           <option value="">🧬 skill: nenhuma</option>
@@ -7478,6 +7496,7 @@ async function project(id) {
         <select id="pt-pace-select" ${st.skillId ? 'disabled' : ''} title="Ritmo deste projeto: vale a partir da próxima composição" style="background:var(--panel2);color:var(--cream);border:1px solid var(--line);padding:2px 6px;border-radius:12px;font:700 11px var(--mono);cursor:pointer">
           ${[['dinamico', 'dinâmico'], ['normal', 'normal'], ['lento', 'lento']].map(([v, n]) => `<option value="${v}"${(st.pace || 'dinamico') === v ? ' selected' : ''}>⏱ ritmo: ${n}</option>`).join('')}
         </select>
+        <label title="Recortar o locutor nas cenas de recorte do formato; vale a partir da próxima composição. O formato Recorte e as skills sempre recortam" style="display:inline-flex;align-items:center;gap:4px;font:700 11px var(--mono);cursor:pointer"><input type="checkbox" id="pt-recorte" ${st.recorte !== false ? 'checked' : ''} ${st.skillId ? 'disabled' : ''}>✂ recorte</label>
         ${st.completed ? `<span class="badge-done-pill" style="display:inline-flex;align-items:center;gap:5px;background:rgba(0,230,118,0.12);color:#00e676;border:1px solid rgba(0,230,118,0.3);padding:3px 9px;border-radius:12px;font:700 11px var(--mono)">✓ CONCLUÍDO</span>` : ''}
         ${st.interrupted ? `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,170,0,0.14);color:#ffb340;border:1px solid rgba(255,170,0,0.4);padding:2px 8px;border-radius:12px;font:700 11px var(--mono)">⚠ composição interrompida
           <button id="btn-int-open" title="Abrir na Revisão o que o compositor chegou a gerar">abrir o que ficou</button><button id="btn-int-redo" title="Compor de novo do zero">recompor</button></span>` : ''}
@@ -7490,6 +7509,8 @@ async function project(id) {
         running = { step: 'motion', startedAt: Date.now() }; viewStep = 'motion'; render();
         api('POST', `/projects/${id}/motion`).catch(err => { running = null; line(`ERRO ao recompor: ${err.message}`); render(); });
       };
+      const recSel = $('#pt-recorte');
+      if (recSel) recSel.onchange = async () => { await api('PUT', `/projects/${id}/choices`, { recorte: recSel.checked }); render(); };
       const paceSel = $('#pt-pace-select');
       if (paceSel) paceSel.onchange = async () => { await api('PUT', `/projects/${id}/choices`, { pace: paceSel.value }); render(); };
       const fmtSel = $('#pt-format-select');
@@ -7805,12 +7826,18 @@ async function scriptStep(id, body) {
         <button id="broll" title="Busca na internet fotos e clipes das pessoas, marcas e eventos citados, e uma trilha">${project.broll ? '✓ B-roll ligado · buscar de novo' : '🎞 Inserir b-roll (este projeto nasceu sem)'}</button>
       </div>
     </div>
+    ${s.conceito?.ideia ? `<div style="margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:8px">
+      <div style="font:700 9.5px var(--mono);color:var(--accent);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">Conceito do reel</div>
+      <div style="font-size:14px;line-height:1.4;margin-bottom:6px">${esc(s.conceito.ideia)}</div>
+      <div class="muted" style="font-size:12.5px;line-height:1.4">${esc(s.conceito.mundo || '')}${(s.conceito.motivos || []).length ? `<br>Motivos que voltam: ${esc(s.conceito.motivos.join('; '))}` : ''}</div>
+      ${(s.blocos || []).map(b => `<div style="font-size:12.5px;line-height:1.4;margin-top:6px"><span style="font-family:var(--mono);color:var(--mute)">${b.t_start}–${b.t_end} s · ${esc(b.funcao)}</span><br>${esc(b.ideia)}</div>`).join('')}
+    </div>` : ''}
     <table><tr><th style="width:75px">início</th><th style="width:75px">fim</th><th style="min-width:180px">texto em destaque</th><th style="min-width:320px">o que será animado (ação visual)</th><th style="width:90px">status</th></tr>
     ${s.moments.map((m, i) => {
       const origMotivo = m.orig_motivo || (m.motivo ? m.motivo.replace(/\s*\[Alteração:.*?\]$/, '') : '');
       const currentObs = m.observacao || (m.motivo?.match(/\[Alteração:\s*(.*?)\]/)?.[1] ?? '');
       const visualDesc = m.visual_action || origMotivo || 'Animação livre concebida pelo Opus 5.5';
-      const hasObs = Boolean(currentObs);
+      const hasObs = Boolean(currentObs) && currentObs !== m.visual_action;   // old scripts saved the suggestion itself as the note
       return `<tr data-i="${i}">
         <td><input type="number" step="0.1" class="m-start" value="${m.t_start}" style="width:65px"></td>
         <td><input type="number" step="0.1" class="m-end" value="${m.t_end}" style="width:65px"></td>
@@ -7829,7 +7856,7 @@ async function scriptStep(id, body) {
             </div>
           </div>
           <div class="m-motivo-edit" style="${hasObs ? '' : 'display:none;'}">
-            <input class="m-obs" value="${esc(currentObs || m.visual_action || '')}" placeholder="Descreva o que o Opus 5.5 deve animar (ex: contador neon de 0 a 100k, texto com rotação 3D...)" style="width:100%;padding:7px 10px;font-size:12px;">
+            <input class="m-obs" value="${esc(currentObs && currentObs !== m.visual_action ? currentObs : '')}" placeholder="Descreva o que o Opus 5.5 deve animar (ex: contador neon de 0 a 100k, texto com rotação 3D...)" style="width:100%;padding:7px 10px;font-size:12px;">
             <div class="muted" style="font-size:11px;margin-top:4px;line-height:1.3;">Original: ${esc(visualDesc)}</div>
           </div>
         </td>
@@ -7979,7 +8006,7 @@ async function scriptStep(id, body) {
         const b = tr.querySelector('.m-end');
         const x = tr.querySelector('.m-text');
         const obsInp = tr.querySelector('.m-obs');
-        const obs = (obsInp ? obsInp.value : '').trim();
+        const obs = (obsInp && tr.querySelector('.m-chk').checked ? obsInp.value : '').trim();   // an unticked row keeps the suggestion
         const orig = s.moments[tr.dataset.i];
         const origMotivo = orig.orig_motivo || (orig.motivo ? orig.motivo.replace(/\s*\[Alteração:.*?\]$/, '') : '');
         const finalMotivo = obs ? (origMotivo ? `${origMotivo} [Alteração: ${obs}]` : obs) : origMotivo;
@@ -8513,7 +8540,7 @@ async function editStep(id, body, st) {
       <div class="ed-insp" id="ed-insp"></div>
     <div class="ed-tl" id="ed-tl">
       <div class="ed-tl-bar">
-        <span class="muted" style="font-size:11px">Arraste o corpo para mover, as bordas para aparar, o nome da trilha para mudar a ordem · Backspace liga ou desliga a camada (ou o trecho) selecionada · solte arquivos aqui para importar</span>
+        <span class="muted" style="font-size:11px">A agulha gruda nas bordas dos clipes (Alt solta) · arraste o corpo para mover, as bordas para aparar, o nome da trilha para mudar a ordem · Backspace liga ou desliga a camada (ou o trecho) selecionada · solte arquivos aqui para importar</span>
         <label class="muted" style="font-size:11px;margin-left:auto;display:flex;gap:6px;align-items:center">Zoom <input type="range" id="ed-zoom" min="0" max="100" value="0" style="width:110px;padding:0"></label>
       </div>
       <div class="ed-tl-body"><div class="ed-heads" id="ed-heads"></div><div class="ed-lanes" id="ed-lanes"><div class="ed-lanes-in" id="ed-in"></div></div></div>
@@ -8650,7 +8677,7 @@ async function editStep(id, body, st) {
       items().filter(i => i.ai && !ED_AUDIO.has(i.kind)).forEach(stillOn);   // also drops the razor cuts made at those moves
       save(true);
     }
-    paintTl();
+    paintTl(); paintInsp();   // the mask fields read the loaded page
     $('#ed-hit').onpointerdown = onStageDown;
     $('#ed-box').onpointerdown = onHandleDown;
   }
@@ -8687,8 +8714,17 @@ async function editStep(id, body, st) {
     el.style.rotate = `${e.rotation || 0}deg`;
     const obj = (added(id) && added(id).kind !== 'video' && el.querySelector('.in')) || el;
     obj.style.clipPath = e.crop?.some(n => n > 0) ? `inset(${e.crop.map(n => n + '%').join(' ')})` : 'none';
+    const m = maskEl(id), mk = m && E.layers[maskId(m)]?.mask;   // important: the saved rule is !important too
+    if (mk) ['left', 'top', 'width', 'height'].forEach((k, i) => m.style.setProperty(k, mk[i] + 'px', 'important'));
     el.style.filter = (e.opacity ?? 100) !== 100 || e.gaps?.length ? `opacity(calc(var(--hfv,1)*${(e.opacity ?? 100) / 100}))` : 'none';
   }
+  // the AI's window around a layer (the Speech Screen panel): the nearest wrapper that clips. A freed layer sits in a copy of it (data-hf-of)
+  function maskEl(id) {
+    const d = doc();
+    for (let n = d?.getElementById(id)?.parentElement; n && !n.hasAttribute('data-composition-id'); n = n.parentElement) if (n.id && d.defaultView.getComputedStyle(n).overflow === 'hidden') return n;
+  }
+  const maskId = m => m.dataset.hfOf || m.id;
+  const maskBox = m => E.layers[maskId(m)]?.mask ?? [m.offsetLeft, m.offsetTop, m.offsetWidth, m.offsetHeight];
   const compW = () => Number(doc()?.querySelector('[data-composition-id]')?.getAttribute('data-width')) || 1080;
   // a click on the preview selects the layer under the pointer (play is only the button or the space bar)
   function pick(ev) {
@@ -8846,7 +8882,7 @@ async function editStep(id, body, st) {
       if (to === from || to === from + 1) return;
       const next = keys.filter(k => k !== keys[from]);
       next.splice(to > from ? to - 1 : to, 0, keys[from]);
-      change(true, () => { E.order = next; stack(next); });
+      change(true, () => { E.order = next; stack(next); items().filter(i => i.ai && i.row === keys[from]).forEach(i => { ed(i.id).free = true; }); });   // free: the dragged track leaves the AI's wrapper, so its place in the pile is what shows
     };
     addEventListener('pointermove', mv); addEventListener('pointerup', up);
   }
@@ -8855,16 +8891,20 @@ async function editStep(id, body, st) {
     keys.forEach((k, i) => (R.get(k) || []).forEach(it => { ed(it.id).z = (keys.length - i) * 10; }));
   }
   const tAt = ev => Math.max(0, (ev.clientX - inner.getBoundingClientRect().left) / pps);
-  // snap to the playhead and to the edges of the other clips within 6 px
-  function snapT(t, skip) {
-    const c = [0, now(), ...items().filter(i => i.id !== skip).flatMap(i => [i.start, i.end])];
-    const best = c.reduce((b, x) => Math.abs(x - t) < Math.abs(b - t) ? x : b, t);
+  // snap to the playhead and to the edges of the other clips (and of their cut pieces) within 6 px; the playhead itself snaps with ph = false, and not to the sound effects (too many edges)
+  function snapT(t, skip, ph = true) {
+    const c = [0, ...(ph ? [now()] : []), ...items().filter(i => i.id !== skip && (ph || !i.sfx)).flatMap(i => segs(i).flatMap(g => [g.a, g.b]))];
+    const best = c.reduce((b, x) => Math.abs(x - t) < Math.abs(b - t) ? x : b, Infinity);   // not t: starting from t itself nothing was ever closer and the snap never fired
     return Math.abs(best - t) * pps < 6 ? best : t;
   }
   lanes.addEventListener('pointerdown', ev => {
     if (ev.target.closest('#ed-ruler') || !ev.target.closest('.ed-clip')) {
-      seek(tAt(ev));
-      const mv = e => seek(tAt(e)), up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
+      const go = e => {   // Alt: free needle. A snapped edge between two frames lands on the next frame, the first one of the incoming clip
+        const t = tAt(e), s = e.altKey ? t : snapT(t, null, false);
+        seek(s === t ? t : Math.ceil(s * RV_FPS - 1e-6) / RV_FPS);
+      };
+      go(ev);
+      const mv = go, up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
       addEventListener('pointermove', mv); addEventListener('pointerup', up);
       if (!ev.target.closest('#ed-ruler')) { sel = null; paintTl(); paintInsp(); }
       return;
@@ -8973,7 +9013,7 @@ async function editStep(id, body, st) {
     else if (free(keys[i + step])) target = keys[i + step];
     const order = keys.slice();
     if (!target) { target = 'n' + Date.now().toString(36); order.splice(far ? (step < 0 ? 0 : order.length) : (step < 0 ? i - 1 : i + 2), 0, target); }
-    change(true, () => { ed(it.id).row = target; E.order = order; stack(order); });
+    change(true, () => { ed(it.id).row = target; E.order = order; stack(order); if (it.ai) ed(it.id).free = true; });
   }
   let popTab = 'org';
   function paintPop() {
@@ -9036,6 +9076,12 @@ async function editStep(id, body, st) {
     const crop = aud ? '' : `<h4>RECORTE</h4><div class="sec">Cima / baixo<div class="two">${numIn('crop0', 1, 'min="0" max="100"')}${numIn('crop2', 1, 'min="0" max="100"')}</div>
         Esq. / dir.<div class="two">${numIn('crop3', 1, 'min="0" max="100"')}${numIn('crop1', 1, 'min="0" max="100"')}</div>
         <span></span><button data-act="uncrop" title="Ferramenta ⧉ (X): arraste as bordas no vídeo">Sem recorte</button></div>`;
+    const mEl = !aud && maskEl(it.id);
+    const mask = mEl ? `<h4>MÁSCARA DA IA</h4><div class="sec">X / Y (px)<div class="two">${numIn('mask0')}${numIn('mask1')}</div>
+        Largura / altura<div class="two">${numIn('mask2', 1, 'min="10"')}${numIn('mask3', 1, 'min="10"')}</div>
+        ${it.kind === 'video' ? `<span></span><label style="display:flex;gap:8px;align-items:center;color:var(--cream)" title="A IA usa um arquivo já cortado em volta do rosto. Marque para usar o vídeo inteiro: Posição e Escala passam a mover o vídeo por baixo da máscara."><input type="checkbox" data-act="full" ${e.full ? 'checked' : ''}> Vídeo inteiro</label>` : ''}
+        <span></span><button data-act="unmask">Máscara original</button></div>
+        <div class="sec col"><span>A janela em que a IA encaixou o vídeo. Vale para todos os trechos desta janela.</span></div>` : '';
     // colors: the layer's own palette (any AI layer: click a swatch to swap that color) or text color + background of an added text
     const swatches = it.ai && it.colors?.length ? `<h4>CORES</h4><div class="sec col"><div class="ed-sw">${it.colors.map(c => {
         const cur = (e.colors || []).find(x => x.from === c);
@@ -9052,7 +9098,8 @@ async function editStep(id, body, st) {
         <label style="margin-left:auto;display:flex;gap:5px;align-items:center;font-size:11px;color:var(--mute)"><input type="checkbox" data-act="on" ${e.hidden ? '' : 'checked'}> ${aud ? 'Som' : 'Ativa'}</label></div>
       ${it.kind === 'plate' ? `<h4>FONTE</h4><div class="sec col"><label style="display:flex;gap:8px;align-items:center;color:var(--cream)"><input type="checkbox" data-act="original" ${e.original ? 'checked' : ''}> Vídeo original, sem desfoque</label>
         <span>A IA usa uma cópia desfocada do vídeo como fundo atrás do recorte. Marque para usar o vídeo original.</span></div>` : ''}
-      <div class="grps">${[aiTexts + addedText + capLines, motion + width + crop, timing + cuts + swatches + textColors, sound, licSec].filter(Boolean).map(g => `<div class="grp">${g}</div>`).join('')}</div>
+      <div class="grps">${[aiTexts + addedText + capLines, motion + width + crop + mask, timing + cuts + swatches + textColors, sound, licSec].filter(Boolean).map(g => `<div class="grp">${g}</div>`).join('')}</div>
+      ${e.free ? `<div class="sec col"><button data-act="unfree" title="A camada foi solta do lugar que a IA deu a ela quando você mudou a trilha de ordem: aparece o clipe inteiro, na ordem da pilha. Clique para devolver.">Devolver ao lugar da IA</button></div>` : ''}
       ${a ? `<div class="sec col"><button data-act="del" style="color:var(--red)">Apagar camada</button></div>` : ''}`;
     // numbers: instant ones go straight to the player, timing reloads it
     box.querySelectorAll('[data-p]').forEach(i => {
@@ -9069,7 +9116,7 @@ async function editStep(id, body, st) {
       i.onchange = () => {
         const n = Number(i.value);
         if (!Number.isFinite(n)) return;
-        setVal(it, p, n); save(!instant); paintTl();
+        setVal(it, p, n); save(!instant || p.startsWith('mask')); paintTl();   // the mask: reload, other clips share the window
       };
     });
     // a word spread over letter runs: one character per run, the last run takes the rest (or they go empty when it got shorter)
@@ -9111,6 +9158,9 @@ async function editStep(id, body, st) {
       if (act === 'nolic') b.onchange = () => change(true, () => { a.rights = { ...(a.rights || {}), status: b.checked ? 'unlicensed' : 'licensed' }; });
       if (act === 'original') b.onchange = () => change(true, () => { if (b.checked) ed(it.id).original = true; else delete ed(it.id).original; });
       if (act === 'reset') b.onclick = () => change(false, () => { const l = ed(it.id); ['x', 'y', 'scale', 'rotation', 'opacity'].forEach(k => delete l[k]); live(it.id); });
+      if (act === 'full') b.onchange = () => change(true, () => { if (b.checked) ed(it.id).full = true; else delete ed(it.id).full; });
+      if (act === 'unmask') b.onclick = () => change(true, () => { delete ed(maskId(mEl)).mask; });
+      if (act === 'unfree') b.onclick = () => change(true, () => { delete ed(it.id).free; });
       if (act === 'uncolor') b.onclick = () => change(true, () => { delete ed(it.id).colors; });
       if (act === 'uncrop') b.onclick = () => change(false, () => { delete ed(it.id).crop; live(it.id); });
       if (act === 'splitkf') b.onclick = () => change(false, () => kfTimes(it.id).filter(t => t > it.start + 0.05 && t < it.end - 0.05).forEach(t => addCut(ed(it.id), t)));
@@ -9130,10 +9180,12 @@ async function editStep(id, body, st) {
     if (p === 'mediaStart') return r2((it.a ? it.a.mediaStart : e.mediaStart) || 0);
     if (p === 'volume') return Math.round((e.volume ?? 1) * 100);
     if (p.startsWith('crop')) return e.crop?.[Number(p[4])] ?? 0;
+    if (p.startsWith('mask')) { const m = maskEl(it.id); return m ? maskBox(m)[Number(p[4])] : 0; }
     return e[p] ?? (p === 'scale' || p === 'opacity' ? 100 : 0);
   }
   function setVal(it, p, n) {
     if (it.a && ['start', 'duration', 'mediaStart'].includes(p)) { it.a[p] = r2(Math.max(p === 'duration' ? 0.1 : 0, n)); return; }
+    if (p.startsWith('mask')) { const m = maskEl(it.id), k = Number(p[4]); if (m) (ed(maskId(m)).mask = [...maskBox(m)])[k] = Math.round(k > 1 ? Math.max(10, n) : n); return; }
     const e = ed(it.id);
     if (p.startsWith('crop')) { e.crop = e.crop || [0, 0, 0, 0]; e.crop[Number(p[4])] = Math.max(0, Math.min(100, Math.round(n))); return; }
     if (p === 'start' || p === 'duration') { e.start = r2(p === 'start' ? Math.max(0, n) : it.start); e.duration = r2(p === 'duration' ? Math.max(0.1, n) : it.end - it.start); return; }
@@ -10409,7 +10461,7 @@ async function openFormatModal(id) {
 
 // ---- Configurações (Dimensões Técnicas, Safe-Zones & Câmera) ---------------------------------------------------------
 // Chaves de API (B-roll e vozes). O servidor só devolve a máscara; a chave inteira nunca volta para esta página.
-async function configKeys() {
+async function configKeys(testar) {   // testar: id da chave recém-salva, validada logo depois de desenhar
   const rows = await api("GET", "/settings/keys");
   const group = (kind, title) => `<h4 style="margin:18px 0 8px">${title}</h4>` + rows.filter(r => r.kind === kind).map(r => `
     <div class="fmt-prop-card" data-p="${esc(r.id)}" style="margin-bottom:10px">
@@ -10437,7 +10489,7 @@ async function configKeys() {
       const input = card.querySelector(".key-in");
       await api("PUT", `/settings/keys/${id}`, { key: input.value });
       input.value = "";
-      configKeys();
+      configKeys(id);
     }));
     card.querySelector(".key-del")?.addEventListener("click", e => act(e.target, async () => {
       if (!confirm("Remover esta chave?")) return;
@@ -10450,6 +10502,7 @@ async function configKeys() {
       status.style.color = r.ok ? "var(--accent)" : "#ff6b6b";
     }));
   });
+  if (testar) app.querySelector(`[data-p="${CSS.escape(testar)}"] .key-test`)?.click();
 }
 
 // Atualização do Editor: busca commits novos no GitHub e, se o usuário quiser, faz git pull + npm install e reinicia o servidor.

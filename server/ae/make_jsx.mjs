@@ -19,7 +19,7 @@ import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import { findChrome } from '../host.ts';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -68,7 +68,8 @@ const srv = http.createServer((q, r) => {
 });
 await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
 
-const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--hide-scrollbars', '--disable-lcd-text', '--font-render-hinting=none'] });
+const CHROME_OPTS = { executablePath: CHROME, headless: 'new', args: ['--hide-scrollbars', '--disable-lcd-text', '--font-render-hinting=none'] };
+const browser = await puppeteer.launch(CHROME_OPTS);
 const page = await browser.newPage();
 const avisos = [];
 page.on('pageerror', (e) => avisos.push('erro na página: ' + String(e.message).slice(0, 160)));
@@ -85,13 +86,24 @@ await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'load', 
 await page.waitForFunction(() => window.__playerReady && window.__player, { timeout: 60000 });
 await page.evaluate(() => { window.__player.enableRenderMode && window.__player.enableRenderMode(); return document.fonts.ready.then(() => 0); });
 const DUR = +(+opt('dur', await page.evaluate(() => window.__player.getDuration()))).toFixed(3);
-const seek = (t) => page.evaluate(async (x) => {
-  if (window.__AE) window.__AE.antes();   // zera o registro de texto em canvas: os canvases desenham durante o seek
-  await window.__player.renderSeek(x);
-  if (window.__hfWaitForSeekCompletion) await window.__hfWaitForSeekCompletion();
-  await document.fonts.ready;   // a fonte de uma cena só carrega quando ela aparece; medir antes dá a fonte reserva
-  if (window.__AE) window.__AE.repouso();   // câmera de mundo em repouso: medimos sem ela e o After a recria
-}, t);
+// Cronômetro dos seeks: duas exportações do mesmo reel de 45 s levaram 28 min a mais (1,2 s por quadro numa passada inteira) e outras
+// três não, sem causa achada. O resumo no fim diz em qual das três esperas o tempo ficou, para a próxima vez que acontecer.
+const SEEK = { n: 0, lentos: 0, ms: [0, 0, 0], fase: 'início', onde: {}, t0: Date.now(), tClipes: 0 };
+const seek = async (t, pg = page) => {
+  const d = await pg.evaluate(async (x) => {
+    if (window.__AE) window.__AE.antes();   // zera o registro de texto em canvas: os canvases desenham durante o seek
+    const t0 = performance.now();
+    await window.__player.renderSeek(x);
+    const t1 = performance.now();
+    if (window.__hfWaitForSeekCompletion) await window.__hfWaitForSeekCompletion();
+    const t2 = performance.now();
+    await document.fonts.ready;   // a fonte de uma cena só carrega quando ela aparece; medir antes dá a fonte reserva
+    if (window.__AE) window.__AE.repouso();   // câmera de mundo em repouso: medimos sem ela e o After a recria
+    return [t1 - t0, t2 - t1, performance.now() - t2];
+  }, t);
+  SEEK.n++; if (d[0] + d[1] + d[2] > 500) { SEEK.lentos++; SEEK.onde[SEEK.fase] = (SEEK.onde[SEEK.fase] || 0) + 1; }
+  d.forEach((v, i) => { SEEK.ms[i] += v; });
+};
 
 // ---- Funções injetadas na página ----
 const INPAGE = () => {
@@ -134,6 +146,58 @@ const INPAGE = () => {
     }
     return null;
   };
+  // ---- filter de cor e drop-shadow numa folha (<img> ou caixa sem filhos-elemento) e clip-path: polygon() numa caixa lisa ----
+  // Cor: cada função é uma matriz 3×4 (Filter Effects). Em forma e texto ela é aplicada na própria cor (exato, com o corte 0–255
+  // entre funções); na imagem vira um Channel Mixer com o produto das matrizes. Cada drop-shadow vira um Drop Shadow, na ordem.
+  // Num grupo com filhos a sombra passa por trás de todos eles (em cada camada cairia sobre os irmãos): só a raiz da peça pode ser
+  // grupo, e aí as camadas dela vão numa pré-composição que leva os efeitos (gfx). Grupo no meio da peça segue em clipe.
+  const lin = (R, G, B) => (a) => { const g = 1 - Math.min(1, a); return [R, G, B].map((r, i) => [...r.map((v, j) => i === j ? v + (1 - v) * g : v - v * g), 0]); };
+  const MAT = {
+    grayscale: lin([.2126, .7152, .0722], [.2126, .7152, .0722], [.2126, .7152, .0722]),
+    sepia: lin([.393, .769, .189], [.349, .686, .168], [.272, .534, .131]),
+    saturate: (v) => [[.213 + .787 * v, .715 - .715 * v, .072 - .072 * v, 0], [.213 - .213 * v, .715 + .285 * v, .072 - .072 * v, 0], [.213 - .213 * v, .715 - .715 * v, .072 + .928 * v, 0]],
+    brightness: (v) => [[v, 0, 0, 0], [0, v, 0, 0], [0, 0, v, 0]],
+    contrast: (v) => [[v, 0, 0, .5 - .5 * v], [0, v, 0, .5 - .5 * v], [0, 0, v, .5 - .5 * v]],
+    invert: (v) => [[1 - 2 * v, 0, 0, v], [0, 1 - 2 * v, 0, v], [0, 0, 1 - 2 * v, v]],
+  };
+  const FN = /([a-z-]+)\(((?:[^()]|\([^()]*\))*)\)/g;
+  const fxDe = (el, cs, p) => {
+    if (cs.filter === 'none' || (el.tagName !== 'IMG' && el.children.length && el !== p) || cs.filter.replace(FN, '').trim()) return null;
+    const ms = [], shs = [];
+    for (const [, fn, arg] of cs.filter.matchAll(FN)) {
+      if (fn === 'drop-shadow') { const sh = shadow(arg); if (sh) shs.push({ ...sh, blur: sh.blur * 2 }); }   // no filter o raio é o desvio padrão; na box-shadow é o dobro dele (conferido no After contra o Chrome)
+      else if (shs.length || !MAT[fn]) return null;   // cor depois da sombra tingiria a sombra; blur, hue-rotate, opacity: clipe
+      else ms.push(MAT[fn](parseFloat(arg) / (/%/.test(arg) ? 100 : 1)));
+    }
+    return { ms, shs };
+  };
+  const tingir = (c, ms) => ms.reduce((v, m) => m.map((r) => Math.max(0, Math.min(255, r[0] * v[0] + r[1] * v[1] + r[2] * v[2] + r[3] * 255))), c).map(Math.round);
+  const produto = (ms) => ms.reduce((cur, m) => m.map((r) => [0, 1, 2, 3].map((j) => r[0] * cur[0][j] + r[1] * cur[1][j] + r[2] * cur[2][j] + (j === 3 ? r[3] : 0))), [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]);
+  // clip-path: polygon() numa caixa de cor lisa, sem filhos, texto, borda nem imagem de fundo: os pontos viram o path da forma
+  const polyDe = (el, cs) => {
+    const m = /^polygon\((?:(?:nonzero|evenodd),\s*)?(.*)\)$/.exec(cs.clipPath);
+    if (!m || el.tagName === 'IMG' || el.childNodes.length || cs.backgroundImage !== 'none' || num(cs.borderTopWidth) > 0) return null;
+    const w = el.offsetWidth, h = el.offsetHeight, pts = [];
+    for (const par of m[1].split(',')) {
+      const q = par.trim().split(/\s+/);
+      if (q.length !== 2 || !q.every((v) => /^-?[\d.]+(px|%)$/.test(v))) return null;   // calc() e afins: clipe
+      pts.push([/%$/.test(q[0]) ? w * num(q[0]) / 100 : num(q[0]), /%$/.test(q[1]) ? h * num(q[1]) / 100 : num(q[1])]);
+    }
+    return pts.length > 2 && w && h ? pts.map((v) => [+(v[0] / w).toFixed(5), +(v[1] / h).toFixed(5)]) : null;
+  };
+
+  // janela: caixa com overflow:hidden e um único filho de texto que desliza por dentro (phrase() do kit). O texto fica nativo, com
+  // a caixa como máscara e um animador de posição que leva o deslocamento do filho quadro a quadro.
+  const janela = (p) => {
+    if (p.children.length !== 1 || direct(p) || getComputedStyle(p).overflow !== 'hidden') return null;
+    const c = p.firstElementChild;
+    if (c.children.length || !direct(c)) return null;
+    const t = getComputedStyle(c).transform, m = t === 'none' ? [1, 0, 0, 1, 0, 0] : /^matrix\(/.test(t) ? t.slice(7, -1).split(',').map(Number) : null;
+    return m && Math.abs(m[0] - 1) < 1e-4 && Math.abs(m[3] - 1) < 1e-4 && Math.abs(m[1]) < 1e-4 && Math.abs(m[2]) < 1e-4 ? { c, d: [+m[4].toFixed(2), +m[5].toFixed(2)] } : null;
+  };
+  // texto de uma peça sem filhos, como o After vai escrever: o conteúdo que muda (count(), digitação) vira keyframes de Source Text
+  const dito = (p, cs) => (cs.textTransform === 'uppercase' ? p.textContent.toUpperCase() : p.textContent).replace(/[\u2060\u200b]/g, '').replace(/\s+/g, ' ').trim();
+
   // degradê de 2 cores do computed style → o que o After recria: 'ramp' (Gradient Ramp, as duas opacas), 'wipe' (sólido + Linear
   // Wipe: linear com uma ponta transparente) ou 'vig' (sólido + máscara elíptica com pluma: radial com uma ponta transparente).
   // Qualquer outro (3+ cores, repeating, canto, circle, duas pontas semitransparentes) → null, e a peça segue em clipe.
@@ -295,9 +359,9 @@ const INPAGE = () => {
       if (/matrix3d/.test(cs.transform) || cs.perspective !== 'none' || cs.transformStyle === 'preserve-3d') why.add('3D/perspectiva');
       if (el !== p && cs.transform !== 'none' && !/^matrix\(1, 0, 0, 1,/.test(cs.transform)) why.add('transformação interna');
       // blur() na própria peça vira Gaussian Blur com keyframes; outros filtros (e blur em filhos) continuam em clipe
-      if (cs.backdropFilter !== 'none' || (cs.filter !== 'none' && !(el === p && BLUR.test(cs.filter)))) why.add('filtro');
+      if (cs.backdropFilter !== 'none' || (cs.filter !== 'none' && !(el === p && BLUR.test(cs.filter)) && !fxDe(el, cs, p))) why.add('filtro');
       if (/url\(/.test(cs.backgroundImage) || (cs.backgroundImage !== 'none' && !gradOf(el, cs))) why.add('gradiente/imagem de fundo');
-      if (cs.clipPath !== 'none' || (cs.webkitMaskImage || 'none') !== 'none') why.add('máscara');
+      if ((cs.clipPath !== 'none' && !polyDe(el, cs)) || (cs.webkitMaskImage || 'none') !== 'none') why.add('máscara');
       if (cs.borderTopStyle === 'dashed' || cs.borderTopStyle === 'dotted') why.add('borda tracejada');
       if (el !== p && cs.overflow === 'hidden' && el.children.length) why.add('recorte (overflow)');
     }
@@ -306,11 +370,16 @@ const INPAGE = () => {
 
   // assinatura do conteúdo: muda quando algo anima por dentro (contador, digitação, barra)
   const assinatura = (p) => {
-    const r0 = p.getBoundingClientRect(), out = [], trim = new Set(trimEls(p));
+    const r0 = p.getBoundingClientRect(), out = [], trim = new Set(trimEls(p)), cp = getComputedStyle(p);
+    // na janela só o filho anda e no texto solto só o conteúdo muda: os dois saem em keyframes, não são "conteúdo que muda"
+    if (janela(p)) return ['janela', p.textContent.trim(), Math.round(r0.width), Math.round(r0.height), cp.clipPath].join('|');
+    if (!p.children.length && direct(p)) return ['solto', cp.fontSize, cp.color, cp.backgroundColor, BLUR.test(cp.filter) ? '' : cp.filter, cp.clipPath].join('|');
+    // filtro de cor, sombra e polígono saem medidos num quadro só: se animam, a peça é conteúdo que muda (clipe)
+    out.push(BLUR.test(cp.filter) ? '' : cp.filter, cp.clipPath);
     for (const el of p.querySelectorAll('*')) {
       const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
       // stroke-dashoffset: traço que se desenha não muda a caixa, mas é conteúdo animado; o que vira Trim Paths sai da assinatura
-      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color, trim.has(el) ? '' : cs.strokeDashoffset].join(','));
+      out.push([Math.round(r.left - r0.left), Math.round(r.top - r0.top), Math.round(r.width), Math.round(r.height), (+cs.opacity).toFixed(2), cs.backgroundColor, cs.color, trim.has(el) ? '' : cs.strokeDashoffset, cs.filter, cs.clipPath].join(','));
     }
     out.push(p.textContent.replace(/\s+/g, ' ').trim(), Math.round(r0.width), Math.round(r0.height));
     return out.join('|');
@@ -386,38 +455,42 @@ const INPAGE = () => {
     const Lo = [r0.left + org[0], r0.top + org[1]], Ot = [rt.left + org[0] * k, rt.top + org[1] * k];
     const mt = m && [m[0] * k, m[1] * k, m[2] * k, m[3] * k, m[4] * k, m[5] * k];
     const nome = (p.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 28) || (typeof p.className === 'string' && p.className.split(/\s+/)[0]) || p.id || p.tagName.toLowerCase();
-    const tr = trimEls(p).map(trimFrac);
+    const tr = trimEls(p).map(trimFrac), jan = janela(p);
     if (tr.some((v) => v === null)) why.push('traço tracejado');   // dash que não é um traço só desenhando: fica em clipe
-    return { i, on: true, nome, tr: tr.map((v) => +((v || 0) * 100).toFixed(2)), op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct };
+    return { i, on: true, nome, tr: tr.map((v) => +((v || 0) * 100).toFixed(2)), op: +op.toFixed(4), blend: cs.mixBlendMode, bl: +((BLUR.exec(cs.filter) || [])[1] || 0), m: mt, O: Ot, Lo, sig, why, box: [L, T, Rr, B], ct, win: jan ? jan.d : undefined, stx: p.children.length ? undefined : dito(p, cs) };
   });
 
   // textos e formas nativos na pose de repouso
   const extrair = (p) => {
     const out = { shapes: [], texts: [], avisos: [] };
     let ord = 0;
-    const salvoT = p.style.transform, salvoO = p.style.opacity;
+    const salvoT = p.style.transform, salvoO = p.style.opacity, jan = janela(p), salvoJ = jan && jan.c.style.transform;
     p.style.transform = 'none'; p.style.opacity = '1';
+    if (jan) jan.c.style.transform = 'none';   // o texto é medido no lugar de repouso; o deslocamento vai no animador
     try { return semInvolucros(p, () => {
     const stop = p.parentElement;
 
-    const shapeOf = (el, o, cs) => {
+    const shapeOf = (el, o, cs, fx) => {
+      const tg = (c) => fx && fx.ms.length ? tingir(c, fx.ms) : c, shs = fx && fx.shs.length ? fx.shs : undefined;
       const bg = col(cs.backgroundColor);
-      const fill = bg.a > 0.01 ? bg : null;
+      const fill = bg.a > 0.01 ? { c: tg(bg.c), a: bg.a } : null;
       const bw = num(cs.borderTopWidth), bc = col(cs.borderTopColor);
-      const stroke = bw > 0 && cs.borderTopStyle !== 'none' && bc.a > 0.01 ? { c: bc.c, a: bc.a, w: bw } : null;
-      const g = gradOf(el, cs);
+      const stroke = bw > 0 && cs.borderTopStyle !== 'none' && bc.a > 0.01 ? { c: tg(bc.c), a: bc.a, w: bw } : null;
+      let g = gradOf(el, cs);
+      if (g) g = { ...g, c0: { ...g.c0, c: tg(g.c0.c) }, c1: { ...g.c1, c: tg(g.c1.c) } };
+      const poly = cs.clipPath !== 'none' ? polyDe(el, cs) : null;   // o recorte também corta a box-shadow: só a sombra do filter fica
       if (!fill && !stroke && !g) return;
       const rects = el.getClientRects().length > 1 ? [...el.getClientRects()] : [el.getBoundingClientRect()];
       const cls = String(el.id || el.className || el.tagName).slice(0, 40);
       for (const r of rects) {
         if (r.width < 2 || r.height < 2) continue;
-        if (fill || stroke) out.shapes.push({ ord: ord++, ...R(r), rad: radOf(cs, r), fill, stroke, o: +o.toFixed(3), sh: shadow(cs.boxShadow), cls });
-        if (g) out.shapes.push({ ord: ord++, kind: 'grad', ...R(r), rad: radOf(cs, r), grad: g, o: +o.toFixed(3), cls });   // a cor de fundo fica por baixo, como no CSS
+        if (fill || stroke) out.shapes.push({ ord: ord++, ...R(r), rad: radOf(cs, r), fill, stroke, o: +o.toFixed(3), sh: poly ? null : shadow(cs.boxShadow), shs, poly: poly || undefined, cls });
+        if (g) out.shapes.push({ ord: ord++, kind: 'grad', ...R(r), rad: radOf(cs, r), grad: g, o: +o.toFixed(3), shs, cls });   // a cor de fundo fica por baixo, como no CSS
       }
     };
-    const imgOf = (el, o, cs) => {
+    const imgOf = (el, o, cs, fx) => {
       const r = el.getBoundingClientRect();
-      out.shapes.push({ ord: ord++, kind: 'img', ...R(r), rad: radOf(cs, r), src: el.currentSrc, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, o: +o.toFixed(3), sh: shadow(cs.boxShadow), cls: String(el.id || el.className || el.tagName).slice(0, 40) });
+      out.shapes.push({ ord: ord++, kind: 'img', cm: fx && fx.ms.length ? produto(fx.ms).map((l) => l.map((v) => +v.toFixed(5))) : undefined, shs: fx && fx.shs.length ? fx.shs : undefined, ...R(r), rad: radOf(cs, r), src: el.currentSrc, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, o: +o.toFixed(3), sh: shadow(cs.boxShadow), cls: String(el.id || el.className || el.tagName).slice(0, 40) });
     };
 
     const PINTURA = ['fill', 'fill-opacity', 'fill-rule', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-miterlimit', 'opacity', 'display', 'visibility'];
@@ -442,7 +515,7 @@ const INPAGE = () => {
       out.shapes.push({ ord: ord++, kind: 'svg', ...R(r), svg: new XMLSerializer().serializeToString(raiz), trims, n: el.children.length, o: +o.toFixed(3), cls: String(el.id || el.getAttribute('class') || 'svg').slice(0, 40) });
     };
 
-    const textOf = (el, o, cs) => {
+    const textOf = (el, o, cs, fx) => {
       const size = num(cs.fontSize), pre = /^pre/.test(cs.whiteSpace), up = cs.textTransform === 'uppercase';
       const rg = document.createRange();
       let txt = '', lastTop = null, first = null, box = null;
@@ -469,13 +542,14 @@ const INPAGE = () => {
       const asc = ctx.measureText('Hg').fontBoundingBoxAscent || size * 0.95;
       const lh = num(cs.lineHeight) || size * 1.2;
       const tc = col(cs.color);
+      if (fx && fx.ms.length) tc.c = tingir(tc.c, fx.ms);
       const al = cs.textAlign === 'center' ? 'center' : (cs.textAlign === 'right' || cs.textAlign === 'end') ? 'right' : 'left';
       out.texts.push({
         ord: ord++, text: txt, fam, weight: num(cs.fontWeight), size, color: tc.c, alpha: tc.a, align: al, lh,
         track: cs.letterSpacing === 'normal' ? 0 : num(cs.letterSpacing) / size * 1000,
         x: +(al === 'center' ? (box.l + box.r) / 2 : al === 'right' ? box.r : box.l).toFixed(1),
         l: +box.l.toFixed(1), lines: txt.split('\n').length, base: +(first.top + asc).toFixed(1),
-        w: +(box.r - box.l).toFixed(1), o: +o.toFixed(3), sh: shadow(cs.textShadow), cls: String(el.id || el.className || el.tagName).slice(0, 40)
+        w: +(box.r - box.l).toFixed(1), o: +o.toFixed(3), sh: shadow(cs.textShadow), shs: fx && fx.shs.length ? fx.shs : undefined, cls: String(el.id || el.className || el.tagName).slice(0, 40)
       });
     };
 
@@ -483,11 +557,13 @@ const INPAGE = () => {
       const o = vis(el, stop);
       if (!o) return;
       const cs = getComputedStyle(el);
-      if (el.tagName === 'IMG') { imgOf(el, o, cs); return; }
+      let fx = el === p && BLUR.test(cs.filter) ? null : fxDe(el, cs, p);
+      if (fx && el.tagName !== 'IMG' && el.children.length) { out.gfx = { cm: fx.ms.length ? produto(fx.ms).map((l) => l.map((v) => +v.toFixed(5))) : undefined, shs: fx.shs }; fx = null; }
+      if (el.tagName === 'IMG') { imgOf(el, o, cs, fx); return; }
       if (svgOk(el)) { svgOf(el, o, cs); return; }
-      shapeOf(el, o, cs);
+      shapeOf(el, o, cs, fx);
       if (direct(el) && inlineKids(el)) {
-        textOf(el, o, cs);
+        textOf(el, o, cs, fx);
         [...el.querySelectorAll('*')].forEach((d) => { const v = vis(d, stop); if (v) shapeOf(d, v, getComputedStyle(d)); });
         return;
       }
@@ -496,8 +572,9 @@ const INPAGE = () => {
     };
 
     walk(p);
+    if (jan && out.texts.length === 1) out.texts[0].win = R(p.getBoundingClientRect());
     return out;
-    }); } finally { p.style.transform = salvoT; p.style.opacity = salvoO; }
+    }); } finally { p.style.transform = salvoT; p.style.opacity = salvoO; if (jan) jan.c.style.transform = salvoJ; }
   };
 
   const isolar = (g, ids) => {
@@ -533,6 +610,17 @@ const INPAGE = () => {
 };
 
 await page.evaluate(`window.__AE = (${INPAGE.toString()})();`);
+// outra página igual à das medições, para capturar clipes em paralelo
+const abrir = async (pg) => {
+  pg.on('pageerror', (e) => avisos.push('erro na página: ' + String(e.message).slice(0, 160)));
+  await pg.setViewport({ width: W_COMP + 2 * MARGEM, height: H_COMP + 2 * MARGEM, deviceScaleFactor: 1 });
+  await pg.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'load', timeout: 120000 });
+  await pg.waitForFunction(() => window.__playerReady && window.__player, { timeout: 60000 });
+  await pg.evaluate(() => { window.__player.enableRenderMode && window.__player.enableRenderMode(); return document.fonts.ready.then(() => 0); });
+  await pg.evaluate(`window.__AE = (${INPAGE.toString()})();`);
+  await pg.evaluate(() => { window.__AE.grupos(); window.__AE.mundo(); });
+  return pg;
+};
 // só na hora dos clipes a página desliza pela margem, para a captura alcançar o que sai do quadro (as medições ficam em coordenadas do quadro)
 const STYLE_ONLY = `html,body,[data-composition-id],[data-hf-inner-root]{background:transparent!important}body *{visibility:hidden!important}[data-ae-only],[data-ae-only] *{visibility:visible!important}html{transform:translate(${MARGEM}px,${MARGEM}px)}html,body,[data-composition-id],[data-hf-inner-root]{overflow:visible!important}`;   // shortcut: o que a cena esconde fora do quadro aparece na margem do clipe
 const r3 = (x) => +x.toFixed(3);
@@ -576,7 +664,15 @@ const imgFile = (src) => {
 
 const pieces = [];
 const fontsUsed = new Set();
+// Grão do kit (#grain): textura em overlay sobre o reel inteiro. Não passa pela sonda quadro a quadro: o clipe saía vazio (overlay
+// sobre fundo transparente não pinta nada). Vira sólido cinza + Noise no build_comp.
+const grao = await page.evaluate(() => {
+  const e = document.getElementById('grain'), cs = e && getComputedStyle(e);
+  return cs && /feTurbulence/.test(cs.backgroundImage) && +cs.opacity > 0 ? { op: +cs.opacity, blend: cs.mixBlendMode } : null;
+});
 for (const g of grupos) {
+  if (g.id === 'grain') continue;
+  SEEK.fase = g.id;
   const a = Math.max(0, g.a), b = Math.min(DUR, g.b ?? DUR);
   const f0 = Math.round(a * FPS), f1 = Math.max(f0 + 1, Math.round(b * FPS));
   const tracks = new Map();
@@ -600,7 +696,11 @@ for (const g of grupos) {
     const pa = on[0].t, pb = r3(Math.min(b, on[on.length - 1].t + STEP / FPS));
     const why = new Set(on.flatMap((x) => x.why));
     if (on.some((x) => !x.m)) why.add('transformação não 2D');
-    if (new Set(on.filter((x) => x.op > 0.05).map((x) => x.sig)).size > 1) why.add('conteúdo muda por dentro (contador, digitação, barra, troca de texto)');
+    const MUDA = 'conteúdo muda por dentro (contador, digitação, barra, troca de texto)';
+    // texto solto que só troca de conteúdo (mesma fonte e cor em todos os quadros com texto): Source Text com keyframes
+    const ditos = on.filter((x) => x.stx), dig = new Set(ditos.map((x) => x.stx)).size > 1 && new Set(ditos.map((x) => x.sig)).size === 1;
+    const jan = on.every((x) => x.win);
+    if (!dig && new Set(on.filter((x) => x.op > 0.05).map((x) => x.sig)).size > 1) why.add(MUDA);
     const base = { scene: g.id, i, z: g.z, ord: g.ord, a: pa, b: pb };
     // texto nativo sempre, salvo dentro de animação complexa (3D, transformação, conteúdo que muda): aí o clipe leva o texto junto
     const animacao = [...why].filter((w) => /^(transformação|3D|conteúdo muda|emoji)/.test(w));
@@ -616,14 +716,23 @@ for (const g of grupos) {
         ex.texts.forEach((x) => fontsUsed.add(`${x.fam} ${x.weight}`));
         for (const x of ex.shapes.filter((y) => y.kind === 'svg')) { x.file = svgFile(x.svg, `${slug(g.id)}-${i}`); delete x.svg; }
         for (const x of ex.shapes.filter((y) => y.kind === 'img')) { x.file = imgFile(x.src); if (!x.file) { why.add('ilustração/imagem'); decor.push('ilustração/imagem'); } }
+        // o que não cabe nas formas nativas volta a ser clipe inteiro: contador com fundo ou em mais de uma linha, janela sem um texto só,
+        // e grupo com filter que ainda tem decoração (o texto não pode sair do clipe sem levar o contorno)
+        if (dig && (ex.shapes.length || ex.texts.length !== 1 || ex.texts[0].lines !== 1)) { why.add(MUDA); decor.push(MUDA); }
+        if (jan && !ex.texts.some((t) => t.win) && on.some((x) => x.win[0] || x.win[1])) { why.add(MUDA); decor.push(MUDA); }
+        if (ex.gfx && decor.length) { why.add('filtro'); decor.push('filtro'); }
       }
     }
     if (ex && !decor.length) {
       if (!ex.shapes.length && !ex.texts.length) continue;
-      pieces.push({ kind: 'native', ...base, O: [+rest.Lo[0].toFixed(2), +rest.Lo[1].toFixed(2)], keys: keysOf(s), shapes: ex.shapes, texts: ex.texts });
+      const keys = keysOf(s);
+      if (jan) keys.forEach((k, n) => { if (s[n].win) k.w = s[n].win; });
+      // Source Text: um keyframe por troca de conteúdo (vazio antes da digitação começar)
+      const stx = dig ? s.filter((x) => x.on).map((x) => [x.t, x.stx || '']).filter((v, n, l) => !n || v[1] !== l[n - 1][1]) : undefined;
+      pieces.push({ kind: 'native', ...base, O: [+rest.Lo[0].toFixed(2), +rest.Lo[1].toFixed(2)], keys, shapes: ex.shapes, texts: ex.texts, gfx: ex.gfx, stx });
     } else {
       // decoração (gradiente, filtro, máscara, imagem) fica em clipe; quando há texto estático, o texto vai nativo e sai do clipe
-      const comTexto = !!(ex && ex.texts.length);
+      const comTexto = !!(ex && ex.texts.length) && !ex.gfx && !decor.includes(MUDA);
       if (comTexto) pieces.push({ kind: 'native', ...base, O: [+rest.Lo[0].toFixed(2), +rest.Lo[1].toFixed(2)], keys: keysOf(s), shapes: [], texts: ex.texts });
       const PAD = 70;
       let L = 1e9, T = 1e9, Rr = -1e9, B = -1e9;
@@ -715,16 +824,23 @@ for (const m of midias) {
 }
 
 // ---- Clipes ProRes 4444 com alfa ----
+// A captura (seek + screenshot de cada quadro, depois ffmpeg) era em série e levava 6 dos 7 min de um reel de 45 s. Agora são
+// --paginas (padrão 3) capturando ao mesmo tempo, cada uma num Chrome próprio: aba em segundo plano do mesmo Chrome não pinta
+// (nos Embrulhos uma camada saiu em branco com três abas em paralelo). A primeira é a página das medições.
+const ffmpeg = (args) => new Promise((ok) => execFile('ffmpeg', args, { encoding: 'utf8', maxBuffer: 1 << 28 }, (err, stdout, stderr) => ok({ status: err ? 1 : 0, stderr })));
 if (!flag('sem-clipes')) {
+  const fila = pieces.filter((p) => p.kind === 'clip'), extras = [];
+  SEEK.fase = 'clipes'; SEEK.tClipes = Date.now();
+  const capturar = async (page) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aeclip-'));
   const h = await page.addStyleTag({ content: STYLE_ONLY });
-  for (const c of pieces.filter((p) => p.kind === 'clip')) {
+  for (let c; (c = fila.shift());) {
     fs.readdirSync(tmp).forEach((f) => fs.unlinkSync(path.join(tmp, f)));
     let n = 0;
     await page.evaluate((keys) => window.__AE.suprimir(keys), c.sup || []);   // antes do seek: o canvas desenha durante o seek
     const a0 = Math.max(0, Math.round(c.a * FPS) - STEP), b0 = Math.min(Math.round(DUR * FPS), Math.round(c.b * FPS) + STEP);
     for (let f = a0; f < b0; f++) {
-      await seek(f / FPS);
+      await seek(f / FPS, page);
       await page.evaluate((id, ids) => window.__AE.isolar(id, ids), c.scene, c.ids);
       if (c.semTexto) await page.evaluate((id, ids) => window.__AE.ocultarTexto(id, ids), c.scene, c.ids);
       await page.screenshot({ path: path.join(tmp, String(n++).padStart(5, '0') + '.png'), clip: { x: c.x + MARGEM, y: c.y + MARGEM, width: c.w, height: c.h }, omitBackground: true });
@@ -733,7 +849,7 @@ if (!flag('sem-clipes')) {
     // caixa justa: a união do alfa visível (> ~1%) em todos os quadros; a folga de PAD/margem serviu só para não cortar a captura.
     // cropdetect com reset=0 devolve a maior área vista; sem nenhum pixel visível mantém a caixa medida.
     let corte = null;
-    const cd = spawnSync('ffmpeg', ['-hide_banner', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), '-vf', 'alphaextract,blackframe=amount=100:threshold=3,cropdetect=limit=3:round=2:skip=0:reset=0', '-f', 'null', '-'], { encoding: 'utf8' });
+    const cd = await ffmpeg(['-hide_banner', '-framerate', String(FPS), '-i', path.join(tmp, '%05d.png'), '-vf', 'alphaextract,blackframe=amount=100:threshold=3,cropdetect=limit=3:round=2:skip=0:reset=0', '-f', 'null', '-']);
     for (const m of (cd.stderr || '').matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)) corte = m.slice(1).map(Number);
     // quadros 100% transparentes no começo e no fim saem do clipe: a camada dura só o tempo em que algo aparece
     const vazio = new Set([...(cd.stderr || '').matchAll(/frame:(\d+) pblack:100/g)].map((m) => +m[1]));
@@ -747,14 +863,22 @@ if (!flag('sem-clipes')) {
       vf = ['-vf', `crop=${corte.join(':')}`];
       c.x += corte[2]; c.y += corte[3]; c.w = corte[0]; c.h = corte[1];
     }
-    const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(FPS), '-start_number', String(f0), '-i', path.join(tmp, '%05d.png'), '-frames:v', String(f1 - f0 + 1), ...vf,
-      '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-qscale:v', '9', '-alpha_bits', '16', path.join(OUT, c.file)], { encoding: 'utf8' });
+    const r = await ffmpeg(['-v', 'error', '-y', '-framerate', String(FPS), '-start_number', String(f0), '-i', path.join(tmp, '%05d.png'), '-frames:v', String(f1 - f0 + 1), ...vf,
+      '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-qscale:v', '9', '-alpha_bits', '16', path.join(OUT, c.file)]);
     if (r.status !== 0) { avisos.push(`clipe ${c.file}: ffmpeg falhou (${(r.stderr || '').slice(0, 160)})`); c.kind = 'erro'; }
     process.stdout.write(`\rclipe ${c.file} (${n} quadros)        `);
   }
   await page.evaluate(() => window.__AE.suprimir([]));
   await h.evaluate((e) => e.remove());
   fs.rmSync(tmp, { recursive: true, force: true });
+  };
+  const outra = async () => {
+    const b = await puppeteer.launch(CHROME_OPTS); extras.push(b);
+    return abrir(await b.newPage());
+  };
+  const n = Math.max(1, Math.min(+opt('paginas', 3), fila.length));
+  await Promise.all([capturar(page), ...Array.from({ length: n - 1 }, async () => capturar(await outra()))]);
+  await Promise.all(extras.map((b) => b.close()));
   console.log('');
 }
 
@@ -776,6 +900,7 @@ const ok = pieces.filter((p) => p.kind !== 'erro');
 const data = {
   name: NAME, fps: FPS, dur: DUR, w: W_COMP, h: H_COMP, aep: AEP,
   markers: grupos.filter((g) => g.comp).map((g) => ({ t: r3(g.a), label: g.id })),
+  grain: grao,
   media, pieces: ok.map((p) => ({ ...p, depth: grupos.find((g) => g.id === p.scene)?.depth || null })), world: mundo
 };
 const tpl = fs.readFileSync(path.join(HERE, 'build_comp.template.jsx'), 'utf8');
@@ -799,7 +924,7 @@ const report = {
   comp: NAME, aep: AEP, fps: FPS, dur: DUR, passo_amostragem: STEP,
   camadas: {
     videos: media.filter((m) => m.tag === 'video').length, audios: media.filter((m) => m.tag === 'audio').length,
-    grupos: grupos.length, pecas_nativas: nat.length + ctexts.length,
+    grupos: grupos.filter((g) => g.id !== 'grain').length, grao: !!grao, pecas_nativas: nat.length + ctexts.length,
     textos: nat.reduce((n, p) => n + p.texts.length, 0) + ctexts.length, textos_canvas: ctexts.length,
     formas: nat.reduce((n, p) => n + p.shapes.filter((x) => !x.kind).length, 0), degrades: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'grad').length, 0),
     imagens: nat.reduce((n, p) => n + p.shapes.filter((x) => x.kind === 'img').length, 0),
@@ -816,3 +941,5 @@ const report = {
 fs.writeFileSync(path.join(OUT, 'ae_report.json'), JSON.stringify(report, null, 2));
 console.log(`✓ ${OUT}\n  ${report.camadas.videos} vídeo(s), ${report.camadas.audios} áudio(s), ${nat.length + ctexts.length} peças nativas (${report.camadas.textos} textos, ${ctexts.length} de canvas, ${report.camadas.formas} formas), ${clips.length} clipes ProRes`);
 if (fontesFaltando.length) console.log(`  ⚠️ fontes faltando: ${fontesFaltando.join(', ')}`);
+console.log(`  tempo: medição ${Math.round(((SEEK.tClipes || Date.now()) - SEEK.t0) / 1000)} s, clipes ${SEEK.tClipes ? Math.round((Date.now() - SEEK.tClipes) / 1000) : 0} s`);
+console.log(`  seeks: ${SEEK.n}, ${SEEK.lentos} acima de 0,5 s; renderSeek ${(SEEK.ms[0] / 1000).toFixed(0)} s, espera do seek ${(SEEK.ms[1] / 1000).toFixed(0)} s, fontes ${(SEEK.ms[2] / 1000).toFixed(0)} s${SEEK.lentos ? '; lentos em ' + Object.entries(SEEK.onde).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k} (${v})`).join(', ') : ''}`);

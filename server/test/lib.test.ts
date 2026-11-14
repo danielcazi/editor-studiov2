@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cutWindows, deepMerge, lookOnly, PACE, paceFromSkill, pickFormats, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill, textContrast } from '../lib.ts';
+import { cutWindows, deepMerge, lookOnly, PACE, paceFromSkill, pickFormats, reaResumo, remapSrt, remapWords, resolveChoices, safeId, shortcutPlan, skillAsStyle, styleToSkill, textContrast } from '../lib.ts';
 
 test('formats render in a fixed order and reject unknown ones', () => {
   assert.deepEqual(pickFormats(['4:5', '1:1', '9:16']), ['9:16', '1:1', '4:5']);
@@ -57,6 +57,21 @@ test('cutWindows: head, mid and tail clipped to the clip and merged when they to
   assert.deepEqual(cutWindows([], 30), []);
 });
 
+test('semRecorte: the toggle off drops the cut-out shot, except where it is the only speaker shot or a skill locks it', () => {
+  const speech = { planos: ['cut', 'panel', 'none'], janelas: { cut: [[0, 5]] }, panel: { side: 'bottom', top: 0.42 } };
+  const off = resolveChoices({ format: speech, recorte: false }).format;
+  assert.deepEqual(off.planos, ['panel', 'none']); assert.equal(off.janelas, null); assert.equal(off.semRecorte, true); assert.deepEqual(off.panel, speech.panel);
+  assert.equal(resolveChoices({ format: speech }).format, speech);   // absent = on
+  const recorte = { planos: ['cut', 'none'] };
+  assert.equal(resolveChoices({ format: recorte, recorte: false }).format, recorte);   // only speaker shot: stays cut out
+  assert.deepEqual(resolveChoices({ format: speech, skill: { format: {} }, recorte: false }).format.planos, ['cut', 'none']);   // a skill locks it on
+  const mudo = resolveChoices({ format: speech, skill: { format: { speaker: false, camera: { framing: 'inserts sobre o apresentador' } } } }).format;   // motion-only skill
+  assert.deepEqual([mudo.speaker, mudo.planos, mudo.regras, mudo.janelas], [false, ['none'], '', null]);
+  assert.equal(styleToSkill({ id: 'x', speaker: false }).format.speaker, false);
+  assert.equal(skillAsStyle(styleToSkill({ id: 'x', speaker: false })).speaker, false);
+  assert.equal('speaker' in lookOnly({ id: 'x', speaker: false }), false);
+});
+
 test('resolveChoices: a skill locks format, look and rhythm; without one the three are independent', () => {
   const format = { id: 'recorte', planos: ['cut', 'none'], regras: 'r' }, style = { id: 'diorama', paceHint: 'lento' };
   const skill = { format: { planos: ['none'] }, look: { guide: 'g' }, rhythm: { pace: 1.3 }, colorsLocked: true };
@@ -107,4 +122,14 @@ test('textContrast: white on black is 21:1, grey on near-grey is flagged, hidden
   assert.equal(Math.round(textContrast(shot([0, 0, 0], [255, 255, 255]), shot([0, 0, 0]), 40, box)!), 21);
   assert.ok(textContrast(shot([120, 120, 120], [150, 150, 150]), shot([120, 120, 120]), 40, box)! < 1.6);
   assert.equal(textContrast(shot([240, 240, 240]), shot([240, 240, 240]), 40, box), null);   // masked or covered: nothing changes when the text goes transparent
+});
+
+test('reaResumo: cuts from the shot starts, one line per shot with transition and events', () => {
+  const r = reaResumo({ shots: [
+    { start: 0, end: 2.792, transition: { type: 'cut' }, motion: { events: [] } },
+    { start: 2.792, end: 5.8, transition: { type: 'wipe', direction: 'right', duration: 0.417 }, motion: { events: [{ t0: 2.86, t1: 4.12, box: [0.733, 0.12, 0.156, 0.2], kind: 'appear', easing: 'ease_out', sweep: 'up', colour: '#30a89b' }] } },
+  ] });
+  assert.deepEqual(r.cuts, [2.79]);
+  assert.equal(r.texto, '0–2.79 s\n2.79–5.8 s | enters by wipe right 0.42 s\n  2.86–4.12 s appear box x0.73 y0.12 w0.16 h0.2 unfolds up ease_out #30a89b');
+  assert.deepEqual(reaResumo({}), { cuts: [], texto: '' });
 });

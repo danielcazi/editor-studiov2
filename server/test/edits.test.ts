@@ -47,12 +47,27 @@ test('edits: clip timing, volume, transforms, switched off, added layers and gap
   assert.equal(warns.length, 1);   // "gone"
 });
 
-test('still: the layer is listed for the script that kills its timed tweens', () => {
-  const out = applyEdits(HTML, checkLayers({ layers: { b01: { still: true } } }));
-  assert.match(out, /"stills":\["b01"\]/);
-  assert.match(out, /w\.duration\(\)>0/);
-  assert.match(out, /w\.kill\(null,K\.join/);   // moves only: killing the whole tween left fade-in scenes at opacity 0
-  assert.ok(!applyEdits(HTML, checkLayers({ layers: { b01: { still: false } } })).includes('"stills":["b01"]'));
+test('still: the moves are rewritten out of the main script, not killed in the page', () => {
+  // b01 sits in a camera wrapper (#world > #mid) like the kit's hosts; its window is 1–3 s
+  const H2 = HTML.replace(/<div id="b01".*?<\/div>/, m => `<div id="world"><div id="mid">${m}</div></div>`)
+    .replace('window.__timelines = { main: tl };', [
+      'tl.set("#world",{x:0,scale:1},0);',
+      'tl.to("#world",{x:0.000,scale:1.050,duration:1.60,ease:"sine.inOut"},0.00);',   // touches 1–3 s: goes
+      'tl.to("#world",{scale:1.200,duration:2.00,ease:"sine.inOut"},5.00);',             // outside the window: stays
+      'tl.fromTo("#b01",{scale:1.08,opacity:0},{scale:1,opacity:1,duration:.45,ease:"power3.out"},1.00);',   // keeps the fade only
+      'tl.to("#b01",{scale:.96,opacity:0,duration:0.30,ease:"power2.in"},3.00);',
+      'tl.set("#plate",{scale:1.06},1.50);',   // another layer: untouched
+      'window.__timelines = { main: tl };'].join('\n'));
+  const out = applyEdits(H2, checkLayers({ layers: { b01: { still: true } } }));
+  assert.ok(!out.includes('"stills"'));
+  assert.ok(!out.includes('scale:1.050'));
+  assert.match(out, /tl\.to\("#world",\{scale:1\.200,duration:2\.00,ease:"sine\.inOut"\},5\.00\);/);
+  assert.match(out, /tl\.fromTo\("#b01",\{opacity:0\},\{opacity:1,duration:\.45,ease:"power3\.out"\},1\.00\);/);
+  assert.match(out, /tl\.to\("#b01",\{opacity:0,duration:0\.30,ease:"power2\.in"\},3\.00\);/);
+  assert.match(out, /tl\.set\("#plate",\{scale:1\.06\},1\.50\);/);
+  assert.match(out, /tl\.set\("#world",\{x:0,y:0,xPercent:0,yPercent:0,scale:1,rotation:0,rotationX:0,rotationY:0\},1\.002\);/);
+  assert.ok(!/tl\.set\("#mid"/.test(out));   // a wrapper with no moves is left alone
+  assert.ok(applyEdits(H2, checkLayers({ layers: { b01: { still: false } } })).includes('scale:1.050'));
 });
 
 test('stacking: z goes to the ancestor right under the root, original swaps the background source', () => {
@@ -140,3 +155,15 @@ test('rights on an added clip are checked and never reach the composition HTML',
 });
 
 test('kfSplit keeps its stage marker', () => assert.equal(checkLayers({ layers: {}, added: [], kfSplit: 3 }).kfSplit, 3));
+
+test('a freed layer leaves its wrapper for a copy in the root; the mask and the whole video are rules', () => {
+  const html = HTML.replace('.a{color:red}', '.a{color:red} /* fundo */ #pcam video{width:1080px} #pcam{opacity:0}');
+  const d = checkLayers({ layers: { plate: { free: true, z: 70, full: true }, pcam: { mask: [0, 10.4, 1080, 700] } }, added: [] });
+  const out = applyEdits(html, d);
+  assert.match(out, /data-composition-id="main"[^>]*>\n<div id="plate-up" data-hf-of="pcam"><video id="plate"[^>]*src="media\/_original\.mp4"[^>]*><\/video><\/div>/);
+  assert.match(out, /<div id="pcam"><\/div>/);
+  assert.ok(out.includes('#plate-up video{width:1080px}') && out.includes('#plate-up{opacity:0}') && out.includes('#plate-up{opacity:1!important'));
+  assert.ok(out.includes('#plate-up{z-index:70!important}'));
+  assert.ok(out.includes('#pcam,#plate-up{left:0px!important;top:10px!important;width:1080px!important;height:700px!important'));
+  assert.throws(() => checkLayers({ layers: { pcam: { mask: [0, 0, 5, 700] } } }), /mask/);
+});

@@ -38,8 +38,11 @@ function write(keys: Record<string, string>) {
 
 const provider = (id: string) => PROVIDERS.find(p => p.id === id) ?? (() => { throw new UserError(`unknown provider ${JSON.stringify(id)}`); })();
 
+// the docs' example URL pasted whole (https://pixabay.com/api/?key=XXXX&q=...) instead of the key: keep only the key
+const soChave = (k: string) => { try { return /^https?:\/\//i.test(k.trim()) ? new URL(k.trim()).searchParams.get('key') || k : k; } catch { return k; } };
+
 /** For server-side use only (providers, scripts). Never send this to the UI. */
-export const getKey = (id: string): string | undefined => read()[provider(id).id];
+export const getKey = (id: string): string | undefined => { const k = read()[provider(id).id]; return k && soChave(k); };
 
 const mask = (k: string) => k.length <= 8 ? '••••' : `••••${k.slice(-4)}`;
 
@@ -52,8 +55,9 @@ export function setKey(id: string, key: unknown) {
   const p = provider(id);
   if (!p.needsKey) throw new UserError(`${p.name} does not use a key`);
   if (typeof key !== 'string' || !key.trim()) throw new UserError('key is empty');
-  if (/\s/.test(key.trim())) throw new UserError('key has spaces or line breaks: paste only the key');
-  write({ ...read(), [p.id]: key.trim() });
+  const k = soChave(key).trim();
+  if (/\s/.test(k)) throw new UserError('key has spaces or line breaks: paste only the key');
+  write({ ...read(), [p.id]: k });
   return listKeys();
 }
 

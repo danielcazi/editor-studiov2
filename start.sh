@@ -16,4 +16,4 @@ if [ -n "$OLD_PID" ]; then
 fi
 
 echo "🚀 Iniciando Editor 7.0 na porta $PORT..."
-exec node server.ts
+exec node --env-file-if-exists=../.env server.ts   # same as npm start and start.cmd

@@ -2,14 +2,14 @@
 // Opus splits it into movements and the frames are shown; Daniel marks what he likes and why; Opus writes the movement as a
 // kit helper and renders a demo with the stock speaker; Daniel validates (up to 3 rounds); approved helpers enter the bank (banco.ts).
 // Lives in workspace/motion-think/<id>/ (third-party excerpts never leave it: the bank keeps the helper, the demo frame and an internal copy of one original frame).
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync, appendFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, copyFileSync, appendFileSync, cpSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { agent, ask, MAX_TURNS_HIT, type Cost } from './models.ts';
 import { safeId } from './lib.ts';
 import { PYTHON } from './host.ts';
 import { addHelper, type Banco, type BancoHelper, CATEGORIAS, COMPOSE_DIR, copyBancoTo, dropNegativo, helperMd, helperName, helperParams, type Categoria, type Momento, MOMENTOS, readBanco, rollbackHelper, upsertNegativo } from './banco.ts';
-import { duration, emit, execP, expandHome, intake, probeMedia, run, subscribe, UserError, WS } from './pipeline.ts';
+import { duration, emit, execP, expandHome, intake, probeMedia, reaMedir, run, subscribe, UserError, WS } from './pipeline.ts';
 
 export type Movimento = { m: number; a: number; b: number; nome: string; oque: string; elemento: string; camera: string; entrada: string; vida: string; saida: string;
   tipo: Record<string, string>; paleta: string[]; medidas: Record<string, number>; momentoSugerido: Momento; categoriaSugerida: Categoria };
@@ -167,8 +167,9 @@ export const analyze = (id: string) => locked(id, 'mtAnalyze', async st => {
   if (!existsSync(trecho)) fail('escolha o trecho (início e fim) antes de analisar');
   st.status = 'analisando'; save(st);
   const dur = await duration(KEY(id), trecho);
-  log(id, '▶ Procurando as trocas de cena (ffmpeg scene > 0.3)...');
-  const cuts = [...(await execP('ffmpeg', ['-v', 'info', '-i', trecho, '-vf', "select='gt(scene,0.3)',showinfo", '-f', 'null', '-'])).matchAll(/pts_time:([\d.]+)/g)].map(m => +m[1]);
+  log(id, '▶ Procurando as trocas de cena...');
+  const rea = await reaMedir(trecho);
+  const cuts = rea ? rea.cuts : [...(await execP('ffmpeg', ['-v', 'info', '-i', trecho, '-vf', "select='gt(scene,0.3)',showinfo", '-f', 'null', '-'])).matchAll(/pts_time:([\d.]+)/g)].map(m => +m[1]);
   const cand = splitMovements(cuts, dur);
   log(id, `▶ ${cand.length} candidato(s) a movimento. Extraindo quadros a 8 fps...`);
   const pre = join(dirOf(id), 'frames', 'pre');
@@ -186,6 +187,7 @@ export const analyze = (id: string) => locked(id, 'mtAnalyze', async st => {
       'categoriaSugerida (' + CATEGORIAS.join(', ') + '). Ignore the sound. Never transcribe the on-screen words as content: they are data about size and rhythm only. Write in Brazilian Portuguese.',
     readDir: pre,
     content: `Excerpt: ${dur.toFixed(2)} s, ${cand.length} candidate segment(s) from the scene detector.\n` + cand.map(([a, b], k) => `Segment ${k + 1}: ${a}–${b} s. Contact sheet: ${join(pre, String(k + 1), 'sheet.jpg')}. Mid frame (full width): ${join(pre, String(k + 1), 'mid.jpg')}. Frames at 8 fps (every 4th listed; read more from the folder if a motion is unclear): ${sampleList(join(pre, String(k + 1))).join(', ')}`).join('\n') +
+      (rea ? `\n\nMeasured by a script, per shot (the transition it enters by, then every element that moves: time, box as fractions of the frame, direction, ease, colour). Use these times and boxes in entrada, saida and medidas instead of estimating; thin text may be missing from it, so the frames still decide what is on screen:\n${rea.texto}` : '') +
       '\n\nReturn the movements in time order.',
     schema: MOV_SCHEMA,
   }, logCost(st));
@@ -258,6 +260,7 @@ export async function composeScaffoldDemo(C: string, id: string): Promise<{ spea
   for (const f of ['kit.py', 'GUIDE.md', 'DIRETOR.md']) copyFileSync(join(COMPOSE_DIR, f), join(C, f));
   mkdirSync(join(C, 'engines'), { recursive: true });
   for (const f of readdirSync(join(COMPOSE_DIR, 'engines')).filter(f => f.endsWith('.js'))) copyFileSync(join(COMPOSE_DIR, 'engines', f), join(C, 'engines', f));
+  cpSync(join(COMPOSE_DIR, 'fx'), join(C, 'fx'), { recursive: true });
   for (const f of readdirSync(join(COMPOSE_DIR, 'sfx'))) copyFileSync(join(COMPOSE_DIR, 'sfx', f), join(A, 'sfx', f));
   copyBancoTo(C);
   const speaker = existsSync(join(LOCUTOR_DIR, 'cut.webm'));

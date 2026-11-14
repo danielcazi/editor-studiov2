@@ -67,15 +67,17 @@ function fonteExiste(ps) {
   return true; // After antigo: não dá para conferir
 }
 // sombra CSS → efeito Drop Shadow (nativo, editável)
-function dropShadow(L, sh) {
+// k: escala da camada (imagem importada no tamanho do arquivo); distância e suavidade do efeito são em pixels da camada
+function dropShadow(L, sh, k) {
   if (!sh) return;
+  k = k || 1;
   try {
     var fx = L.property('ADBE Effect Parade').addProperty('ADBE Drop Shadow');
     fx.property('ADBE Drop Shadow-0001').setValue(c01(sh.c));
     var op = fx.property('ADBE Drop Shadow-0002'); op.setValue(Math.min(op.hasMax ? op.maxValue : 100, sh.a * (op.hasMax && op.maxValue > 100 ? 255 : 100)));
     fx.property('ADBE Drop Shadow-0003').setValue(Math.atan2(sh.dx, -sh.dy) * 180 / Math.PI);
-    fx.property('ADBE Drop Shadow-0004').setValue(Math.sqrt(sh.dx * sh.dx + sh.dy * sh.dy));
-    fx.property('ADBE Drop Shadow-0005').setValue(sh.blur);
+    fx.property('ADBE Drop Shadow-0004').setValue(Math.sqrt(sh.dx * sh.dx + sh.dy * sh.dy) / k);
+    fx.property('ADBE Drop Shadow-0005').setValue(sh.blur / k);
   } catch (e) { log('sombra: ' + e.toString()); }
 }
 // câmera de mundo (compose): null 3D "mundo" com a pose do #world, um null 3D por profundidade (translateZ + escala de compensação)
@@ -156,6 +158,16 @@ function blurKeys(L, P) {
   setKeys(fx.property('ADBE Gaussian Blur 2-0001'), ts, vs);
 }
 var BM = { multiply: 'MULTIPLY', screen: 'SCREEN', overlay: 'OVERLAY', darken: 'DARKEN', lighten: 'LIGHTEN', 'color-dodge': 'COLOR_DODGE', 'color-burn': 'COLOR_BURN', 'hard-light': 'HARD_LIGHT', 'soft-light': 'SOFT_LIGHT', difference: 'DIFFERENCE', exclusion: 'EXCLUSION', hue: 'HUE', saturation: 'SATURATION', color: 'COLOR', luminosity: 'LUMINOSITY', 'plus-lighter': 'ADD' };
+// filter do CSS numa folha: cor (grayscale, sepia, saturate, brightness, contrast, invert) → Channel Mixer com a matriz 3×4 em %
+// (medido no After: grayscale(1) contrast(1.15) dá 60/128/172 contra 59,8/128,1/171,7 do CSS); cada drop-shadow → um Drop Shadow
+function filtros(L, S, k) {
+  var i;
+  if (S.cm) try {
+    var fx = L.property('ADBE Effect Parade').addProperty('ADBE CHANNEL MIXER');
+    for (i = 0; i < 12; i++) fx.property(i + 1).setValue(clamp(S.cm[Math.floor(i / 4)][i % 4] * 100, -200, 200));
+  } catch (e) { log('filtro de cor: ' + e.toString()); }
+  if (S.shs) for (i = 0; i < S.shs.length; i++) dropShadow(L, S.shs[i], k);
+}
 // mix-blend-mode da peça → blending mode de cada camada dela (clipes também: o .mov é composto com o mesmo modo)
 function blend(L, P) { if (P.blend && BM[P.blend]) try { L.blendingMode = BlendingMode[BM[P.blend]]; } catch (e) { log('blend ' + P.blend + ': ' + e); } }
 var KAPPA = 0.5523;
@@ -210,7 +222,7 @@ function gradLayer(comp, S, P, N) {
   var tr = L.property('ADBE Transform Group');
   tr.property('ADBE Scale').setValue([100, q * 100]);
   tr.property('ADBE Position').setValue([S.x + S.w / 2 - P.O[0], S.y + S.h / 2 - P.O[1]]);
-  span(L, P.a, P.b); opacityKeys(L, P, own); blurKeys(L, P); blend(L, P);
+  span(L, P.a, P.b); opacityKeys(L, P, own); blurKeys(L, P); filtros(L, S); blend(L, P);
   return L;
 }
 // <img>: o próprio arquivo importado, com a escala do object-fit; cover e cantos redondos viram máscara no espaço da imagem
@@ -229,7 +241,7 @@ function imgLayer(comp, S, P, N, folder) {
   tr.property('ADBE Anchor Point').setValue([S.nw / 2, S.nh / 2]);
   tr.property('ADBE Scale').setValue([sx * 100, sy * 100]);
   tr.property('ADBE Position').setValue([S.x + S.w / 2 - P.O[0], S.y + S.h / 2 - P.O[1]]);
-  span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); dropShadow(L, S.sh); blend(L, P);
+  span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); filtros(L, S, sx); dropShadow(L, S.sh, sx); blend(L, P);
   return L;
 }
 // traço que se desenha: Trim Paths no grupo do filho k, com o Fim (%) quadro a quadro. A conversão cria um grupo por filho do svg,
@@ -279,9 +291,16 @@ function shapeLayer(comp, S, P, N) {
   var g = L.property('ADBE Root Vectors Group').addProperty('ADBE Vector Group');
   var cont = g.property('ADBE Vectors Group');
   var sw = S.stroke ? S.stroke.w : 0;
-  var rc = cont.addProperty('ADBE Vector Shape - Rect');
-  rc.property('ADBE Vector Rect Size').setValue([Math.max(1, S.w - sw), Math.max(1, S.h - sw)]);
-  rc.property('ADBE Vector Rect Roundness').setValue(Math.max(0, S.rad - sw / 2));
+  if (S.poly) {   // clip-path: polygon() numa caixa lisa: os pontos (frações da caixa) viram o path, com o centro da caixa em 0,0
+    var sp = new Shape(), vs = [];
+    for (var q = 0; q < S.poly.length; q++) vs.push([(S.poly[q][0] - 0.5) * S.w, (S.poly[q][1] - 0.5) * S.h]);
+    sp.vertices = vs; sp.closed = true;
+    cont.addProperty('ADBE Vector Shape - Group').property('ADBE Vector Shape').setValue(sp);
+  } else {
+    var rc = cont.addProperty('ADBE Vector Shape - Rect');
+    rc.property('ADBE Vector Rect Size').setValue([Math.max(1, S.w - sw), Math.max(1, S.h - sw)]);
+    rc.property('ADBE Vector Rect Roundness').setValue(Math.max(0, S.rad - sw / 2));
+  }
   if (S.stroke) {
     var st = cont.addProperty('ADBE Vector Graphic - Stroke');
     st.property('ADBE Vector Stroke Color').setValue(c01(S.stroke.c)); st.property('ADBE Vector Stroke Width').setValue(sw);
@@ -293,7 +312,7 @@ function shapeLayer(comp, S, P, N) {
   }
   parentTo(L, N);
   L.property('ADBE Transform Group').property('ADBE Position').setValue([S.x + S.w / 2 - P.O[0], S.y + S.h / 2 - P.O[1]]);
-  span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); dropShadow(L, S.sh); blend(L, P);
+  span(L, P.a, P.b); opacityKeys(L, P, S.o); blurKeys(L, P); filtros(L, S); dropShadow(L, S.sh); blend(L, P);
   return L;
 }
 function textLayer(comp, T, P, N) {
@@ -305,7 +324,7 @@ function textLayer(comp, T, P, N) {
   td.font = ps; td.fontSize = T.size; td.applyFill = true; td.fillColor = c01(T.color); td.applyStroke = false;
   td.tracking = Math.round(T.track); td.leading = T.lh; // o After só aceita tracking inteiro
   // uma linha: alinhado à esquerda na borda medida no HTML (o After ignora a justificação de texto de ponto criado por script)
-  var umaLinha = (T.lines || 1) === 1 && T.l != null;
+  var umaLinha = (T.lines || 1) === 1 && T.l != null && !(P.stx && T.align !== 'left');   // conteúdo que muda cresce a partir do alinhamento do CSS
   var just = ParagraphJustification.RIGHT_JUSTIFY;
   if (umaLinha || T.align === 'left') just = ParagraphJustification.LEFT_JUSTIFY;
   else if (T.align === 'center') just = ParagraphJustification.CENTER_JUSTIFY;
@@ -315,12 +334,40 @@ function textLayer(comp, T, P, N) {
   var tr = L.property('ADBE Transform Group');
   tr.property('ADBE Anchor Point').setValue([0, 0]);
   tr.property('ADBE Position').setValue([(umaLinha ? T.l : T.x) - P.O[0], T.base - P.O[1]]);
+  var k, ts = [], vs = [];
+  if (T.win) try {   // janela (overflow:hidden): a caixa vira máscara, no espaço da camada (origem na linha de base), e o texto desliza no animador
+    var ox = umaLinha ? T.l : T.x;
+    addMask(L, rrShape(T.win.x - ox, T.win.y - T.base, T.win.x + T.win.w - ox, T.win.y + T.win.h - T.base, 0), 0, false);
+    for (k = 0; k < P.keys.length; k++) if (P.keys[k].w) { ts.push(P.keys[k].t); vs.push([P.keys[k].w[0], P.keys[k].w[1], 0]); }
+    var an = L.property('ADBE Text Properties').property('ADBE Text Animators').addProperty('ADBE Text Animator');
+    setKeys(an.property('ADBE Text Animator Properties').addProperty('ADBE Text Position 3D'), ts, vs);
+  } catch (e) { log('janela ' + T.text + ': ' + e); }
+  if (P.stx) try {   // contador, digitação: um keyframe de Source Text por troca
+    for (k = 0; k < P.stx.length; k++) { var d = st.value; d.text = P.stx[k][1]; st.setValueAtTime(P.stx[k][0], d); }
+  } catch (e) { log('texto que muda ' + T.text + ': ' + e); }
   ancoraNoCentro(L, P.a);
-  span(L, P.a, P.b); opacityKeys(L, P, T.o * T.alpha); blurKeys(L, P); dropShadow(L, T.sh); blend(L, P);
+  span(L, P.a, P.b); opacityKeys(L, P, T.o * T.alpha); blurKeys(L, P); filtros(L, T); dropShadow(L, T.sh); blend(L, P);
   return L;
 }
 // peça nativa: null + camadas na ordem do HTML (a última fica por cima)
+// filter na raiz de um grupo (contorno de adesivo, sombra de cartão): as camadas da peça vão numa pré-composição do tamanho do
+// quadro e ela leva os efeitos, porque a sombra do grupo passa por trás de todos os filhos. O efeito entra depois da transformação
+// da peça (no CSS é antes): a direção da sombra não gira com a peça, diferença pequena nos ângulos do kit.
 function nativePiece(comp, P, folder) {
+  if (P.gfx) {
+    var sub = app.project.items.addComp(P.scene + ' · grupo ' + P.i, W, H, 1, DUR, FPS), Q = {}, a, svg = false;
+    sub.parentFolder = folder;
+    for (a in P) Q[a] = P[a];
+    Q.gfx = null; Q.depth = null; Q.blend = null;
+    for (a = 0; a < P.shapes.length; a++) if (P.shapes[a].kind === 'svg') svg = true;
+    if (svg) sub.openInViewer();   // Create Shapes from Vector Layer age na composição do visor
+    nativePiece(sub, Q, folder);
+    if (svg) comp.openInViewer();
+    var G = comp.layers.add(sub);
+    G.name = P.scene + ' · grupo ' + P.i;
+    span(G, P.a, P.b); filtros(G, P.gfx); blend(G, P); pai(G, P.depth);
+    return;
+  }
   var N = pieceNull(comp, P), all = [], k;
   for (k = 0; k < P.shapes.length; k++) all.push({ ord: P.shapes[k].ord, s: P.shapes[k] });
   for (k = 0; k < P.texts.length; k++) all.push({ ord: P.texts[k].ord, t: P.texts[k] });
@@ -415,6 +462,15 @@ if (WN) {
   }
   for (var dk in DN) DN[dk].moveToBeginning();
   WN.moveToBeginning();
+}
+// grão do kit: sólido cinza 50% + Noise colorido, no modo e na opacidade do CSS, acima de tudo. Noise 19% medido contra o Chrome
+// (feTurbulence .9, overlay a 13% sobre cinza 128: desvio 1,72 no Chrome, 1,84 com Noise 20%; nas pontas 0,60 e 0,75).
+if (DATA.grain) {
+  var GR = comp.layers.addSolid([0.5, 0.5, 0.5], 'grain', W, H, 1, DUR);
+  GR.property('ADBE Effect Parade').addProperty('ADBE Noise').property('ADBE Noise-0001').setValue(19);
+  GR.property('ADBE Transform Group').property('ADBE Opacity').setValue(DATA.grain.op * 100);
+  blend(GR, DATA.grain);
+  GR.moveToBeginning();
 }
 for (k = 0; k < TRAVAR.length; k++) TRAVAR[k].locked = true;
 comp.hideShyLayers = true;   // os auxiliares (shy) somem da timeline; o botão de shy da timeline os traz de volta

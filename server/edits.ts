@@ -13,6 +13,9 @@ export type LayerEdit = {
   cuts?: number[]; gaps?: [number, number][];                  // razor points (UI only) and the stretches cut out of the layer
   texts?: Text[];
   font?: { size?: number; weight?: number; italic?: boolean; family?: string };   // the AI's text, restyled
+  mask?: [number, number, number, number];   // on a wrapper's id, not a clip's: the box (left, top, width, height in px) of the window the AI clips its videos to (the Speech Screen panel)
+  full?: boolean;    // a video inside such a window plays the whole master instead of the AI's pre-cropped file, at its natural height: x/y/scale then pan it under the mask
+  free?: boolean;    // the user moved this layer's track: it leaves the AI's wrapper (whose opacity and depth plane decided when and where it showed) and sits in the root, shown for its whole clip, stacked by z
   still?: boolean;   // the AI's moves on this layer are killed; on its wrappers (the speaker's #ccam, the world camera #world) those that touch the layer's time window, and the wrapper is put back at rest there. Show/hide sets stay. shortcut: the world camera holds every layer, so it also stops for a moving layer that overlaps a still one
 };
 export const ADDED_KINDS = ['text', 'title', 'captions', 'image', 'video', 'audio', 'model'] as const;
@@ -72,6 +75,8 @@ export function checkLayers(doc: any): Layers {
       texts,
       font: e.font === undefined ? undefined : fontOf(e.font, id),
       still: e.still === undefined ? undefined : !!e.still,
+      full: e.full === undefined ? undefined : !!e.full, free: e.free === undefined ? undefined : !!e.free,
+      mask: e.mask === undefined ? undefined : Array.isArray(e.mask) && e.mask.length === 4 && e.mask.every((n: any, k: number) => Number.isFinite(n) && Math.abs(n) <= 8000 && (k < 2 || n >= 10)) ? e.mask.map(Math.round) as [number, number, number, number] : bad(`${id}: mask is [left, top, width, height] in px`),
     }).filter(([, v]) => v !== undefined));
   }
   const ids = new Set<string>();
@@ -163,8 +168,8 @@ const setAttr = (tag: string, k: string, v: string) => new RegExp(`\\s${k}="[^"]
   ? tag.replace(new RegExp(`(\\s${k}=")[^"]*"`), `$1${v}"`) : tag.replace(/\s*\/?>$/, m => ` ${k}="${v}"${m}`);
 const openTag = (html: string, id: string) => new RegExp(`<[a-z][\\w-]*\\b[^>]*\\sid="${id}"[^>]*>`, 'i').exec(html);
 
-// the element whose z-index decides a layer's stacking: its ancestor right under the root, when that one has an id
-export function stackTarget(html: string, id: string) {
+// the ids of the elements around a layer, below the root, outermost first
+export function ancestors(html: string, id: string): string[] {
   const stack: { id: string; root: boolean; tag: string }[] = [];
   for (const m of html.matchAll(TOKEN)) {
     const t = m[0], close = /^<\/([\w-]+)/.exec(t), open = /^<([\w-]+)/.exec(t);
@@ -173,12 +178,14 @@ export function stackTarget(html: string, id: string) {
     const tid = /\sid="([^"]*)"/.exec(t)?.[1] ?? '';
     if (tid === id) {
       const r = stack.findIndex(s => s.root);
-      return r >= 0 ? stack.slice(r + 1).find(s => s.id)?.id ?? id : id;
+      return r >= 0 ? stack.slice(r + 1).map(s => s.id).filter(Boolean) : [];
     }
     if (!VOID.has(open[1].toLowerCase()) && !t.endsWith('/>')) stack.push({ id: tid, root: /\sdata-composition-id="/.test(t), tag: open[1].toLowerCase() });
   }
-  return id;
+  return [];
 }
+// the element whose z-index decides a layer's stacking: its ancestor right under the root, when that one has an id
+export const stackTarget = (html: string, id: string) => ancestors(html, id)[0] ?? id;
 
 // The layers the editor shows: every clip of the root composition (data-start), plus the cards and captions of a card reel
 // (no clips of their own: their windows come from edit.json).
@@ -243,20 +250,9 @@ function editScript(d: Layers, visual: (id: string) => boolean) {
     .map(a => [a.id, a.start, a.anim ?? 'pop']);
   const caps = d.added.filter(a => a.kind === 'captions').map(a => [a.id, a.start, (a.lines ?? []).map(l => [l.t, l.end])]);
   const models = d.added.filter(a => a.kind === 'model').map(a => [a.id, a.start, a.duration]);
-  const stills = Object.entries(d.layers).filter(([id, e]) => e.still && visual(id)).map(([id]) => id);
-  if (!gaps.length && !anims.length && !caps.length && !models.length && !stills.length) return '';
-  const data = JSON.stringify({ gaps, anims, caps, models, stills }).replace(/</g, '\\u003c');
+  if (!gaps.length && !anims.length && !caps.length && !models.length) return '';
+  const data = JSON.stringify({ gaps, anims, caps, models }).replace(/</g, '\\u003c');
   return `<script>(function(){var tl=window.__timelines&&window.__timelines.main;if(!tl||!window.gsap)return;var D=${data};
-D.stills.forEach(function(id){var el=document.getElementById(id);if(!el)return;var t=[el].concat(Array.prototype.slice.call(el.querySelectorAll('*')));
-var s=parseFloat(el.getAttribute('data-start')),e=s+parseFloat(el.getAttribute('data-duration'));if(!(e>s)){s=0;e=1e9;}
-var R={x:0,y:0,xPercent:0,yPercent:0,scale:1,rotation:0,rotationX:0,rotationY:0},K=['x','y','scale','scaleX','scaleY','rotation','rotationX','rotationY','xPercent','yPercent'];
-/* only the moves are killed: opacity/visibility tweens are the layer's show/hide and keep running (killing them left every fade-in scene at opacity 0: a black reel). A tween that starts with the layer settles at its end pose; later ones go back to their start. */
-tl.getTweensOf(t).forEach(function(w){if(w.duration()>0){var a=w.startTime();for(var q=w.parent;q&&q!==tl;q=q.parent)a+=q.startTime();w.progress(a<=s+.05?1:0);w.kill(null,K.join(','));}});
-for(var p=el.parentElement;p&&p!==document.body&&!p.hasAttribute('data-composition-id');p=p.parentElement){var at=[];
-tl.getTweensOf(p).forEach(function(w){var a=w.startTime();for(var q=w.parent;q&&q!==tl;q=q.parent)a+=q.startTime();var d=w.duration(),v=w.vars||{};
-if(d>0?(a>=e-.001||a+d<=s+.001):(a<s-.001||a>=e-.001))return;if(!K.some(function(k){return k in v;}))return;
-if(d>0){w.progress(0);w.kill();if(at.indexOf(s)<0)at.push(s);}else at.push(a);});
-at.forEach(function(a){tl.set(p,R,a+.002);});}});
 D.gaps.forEach(function(g){var el=document.getElementById(g[0]);if(!el)return;tl.set(el,{'--hfv':1},0);g[1].forEach(function(p){tl.set(el,{'--hfv':0},p[0]);tl.set(el,{'--hfv':1},p[1]);});});
 D.anims.forEach(function(a){var el=document.querySelector('#'+a[0]+' .in');if(!el)return;var t=a[1]+0.001;
 if(a[2]==='pop')tl.fromTo(el,{scale:.4,y:40,opacity:0},{scale:1,y:0,opacity:1,duration:.45,ease:'back.out(1.8)'},t);
@@ -272,6 +268,64 @@ new THREE.GLTFLoader().load(cv.dataset.src,function(o){var b=new THREE.Box3().se
 o.scene.position.sub(c);g.scale.setScalar(1.6/Math.max(s.x,s.y,s.z));g.add(o.scene);draw(tl.time()-m[1]);});
 var st={t:0};tl.fromTo(st,{t:0},{t:m[2],duration:m[2],ease:'none',onUpdate:function(){draw(st.t);}},m[1]);});}
 })();</script>`;
+}
+
+// Still layers, rewritten in the main script at build time. Killing the tweens in the page (the old way) was not seek-safe:
+// with more than one render worker HyperFrames showed the dead camera moves on alternate frames (a 4 % zoom flicker).
+// Only the moves go: opacity tweens are the layer's show/hide (killing them left every fade-in scene black). The layer's own
+// timed moves lose their move keys; a wrapper around it (#ccam, #world…) loses every move that touches the layer's window and
+// is put back at rest when the layer starts. A statement whose vars nest braces is left alone.
+// shortcut: only one statement form (tl.to|fromTo|from|set(sel,{..}[,{..}],time);) is parsed, which is all kit.py writes to the main script
+const MOVE = ['x', 'y', 'scale', 'scaleX', 'scaleY', 'rotation', 'rotationX', 'rotationY', 'xPercent', 'yPercent'];
+const NONPROP = new Set(['duration', 'ease', 'delay', 'stagger', 'repeat', 'yoyo', 'immediateRender', 'overwrite', 'autoRound', 'lazy', 'transformOrigin', 'startAt']);
+const REST = '{x:0,y:0,xPercent:0,yPercent:0,scale:1,rotation:0,rotationX:0,rotationY:0}';
+const STMT = /tl\.(to|fromTo|from|set)\(("[^"]*"|'[^']*'|\[[^\]]*\]),(\{[^{}]*\})(?:,(\{[^{}]*\}))?,(-?[\d.]+)\);/g;
+const PAIR = /\s*([\w$]+)\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,}]+)/g;
+const vars = (obj: string) => [...obj.matchAll(PAIR)].map(m => [m[1], m[2]] as [string, string]);
+const noMoves = (obj: string) => '{' + vars(obj).filter(([k]) => !MOVE.includes(k)).map(p => p.join(':')).join(',') + '}';
+const hasProp = (obj: string) => vars(obj).some(([k]) => !NONPROP.has(k));
+export function stillTweens(html: string, ids: string[]): string {
+  const at = html.indexOf('window.__timelines');
+  const a = at < 0 ? -1 : html.lastIndexOf('<script', at), b = at < 0 ? -1 : html.indexOf('</script>', at);
+  if (a < 0 || b < 0) return html;
+  let script = html.slice(a, b);
+  const tagOf = (id: string) => openTag(html, id);
+  const hit = (sel: string, id: string, tag: string) => {
+    const cls = (attrs(tag).class ?? '').split(/\s+/);
+    return sel.replace(/^[\["']+|[\]"']+$/g, '').split(/["'\s,]+/).some(t => t === '#' + id || (t[0] === '.' && cls.includes(t.slice(1))));
+  };
+  const allIds = [...html.matchAll(/<[a-z][\w-]*\b[^>]*\sid="([^"]+)"/gi)].map(m => m[1]);
+  for (const id of ids) {
+    const tag = tagOf(id);
+    if (!tag) continue;
+    const t = attrs(tag[0]);
+    let s = parseFloat(t['data-start']), e = s + parseFloat(t['data-duration']);
+    if (!(e > s)) { s = 0; e = 1e9; }
+    // the wrappers: every element around the layer up to (not including) the nearest composition
+    const around = allIds.filter(o => o !== id).map(o => [o, elementSpan(html, o), tagOf(o)!] as const)
+      .filter(([, sp, tg]) => sp && sp[0] < tag.index && sp[1] > tag.index && tg);
+    const comp = Math.max(-1, ...around.filter(([, , tg]) => /\sdata-composition-id="/.test(tg[0])).map(([, sp]) => sp![0]));
+    const wrappers = around.filter(([, sp, tg]) => sp![0] > comp && !/\sdata-composition-id="/.test(tg[0]));
+    const reset: string[] = [];
+    script = script.replace(STMT, (all, m, sel, v1, v2, time) => {
+      const toVars = v2 ?? v1, d = m === 'set' ? 0 : parseFloat(/duration\s*:\s*(-?[\d.]+)/.exec(toVars)?.[1] ?? '0.5'), a0 = parseFloat(time);
+      const moves = vars(v1).concat(v2 ? vars(v2) : []).some(([k]) => MOVE.includes(k));
+      if (hit(sel, id, tag[0])) {
+        if (d <= 0 || !moves) return all;
+        const nv1 = noMoves(v1), nv2 = v2 && noMoves(v2);
+        return hasProp(nv2 ?? nv1) ? `tl.${m}(${sel},${nv1}${nv2 ? ',' + nv2 : ''},${time});` : '';
+      }
+      const w = wrappers.find(([o, , tg]) => hit(sel, o, tg[0]));
+      if (!w || !moves) return all;
+      if (d > 0 ? (a0 >= e - .001 || a0 + d <= s + .001) : (a0 < s - .001 || a0 >= e - .001)) return all;
+      if (!reset.includes(w[0])) reset.push(w[0]);
+      if (d > 0) return '';
+      const nv = noMoves(v1);
+      return hasProp(nv) ? `tl.set(${sel},${nv},${time});` : '';
+    });
+    script += reset.map(o => `\ntl.set("#${o}",${REST},${(s + .002).toFixed(3)});`).join('');
+  }
+  return html.slice(0, a) + script + html.slice(b);
 }
 
 // The composition with the edits: attributes on the clips, a stylesheet for transforms and switched-off layers, the added
@@ -291,7 +345,22 @@ export function applyEdits(html: string, d: Layers, warn: (m: string) => void = 
   html = html.slice(0, at.index + at[0].length) + '\n' + d.added.map(addedHtml).join('\n') + html.slice(at.index + at[0].length);
   const known = (id: string) => !!openTag(html, id);
   const isAudio = (id: string) => /^<audio\b/i.test(openTag(html, id)?.[0] ?? '') || d.added.some(a => a.id === id && a.kind === 'audio');
-  const rules: string[] = [];
+  const rules: string[] = [], ups: Record<string, string[]> = {};
+  // a layer the user restacked leaves the AI's wrapper for a copy of it in the root, with the wrapper's own css rules.
+  // shortcut: the copy does not get the wrapper's tweens (camera pushes, the world camera); upgrade if a freed layer must keep moving
+  for (const [id, e] of Object.entries(d.layers)) {
+    const w = e.free ? ancestors(html, id).pop() : undefined, sp = w && elementSpan(html, id), wt = w && openTag(html, w);
+    if (!w || !sp || !wt) continue;
+    const el = html.slice(sp[0], sp[1]), up = `${id}-up`, tag = /^<([\w-]+)/.exec(wt[0])![1], own = new RegExp(`#${w}(?![\\w-])`, 'g');
+    for (const st of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi))
+      for (const r of st[1].replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g))
+        if (r[1].search(own) >= 0) rules.push(`${r[1].trim().replace(own, '#' + up)}{${r[2].trim()}}`);
+    rules.push(`#${up}{opacity:1!important;visibility:visible!important}`);
+    html = html.slice(0, sp[0]) + html.slice(sp[1]);
+    const root = /<[a-z][\w-]*\b[^>]*\sdata-composition-id="[^"]+"[^>]*>/i.exec(html)!, k = root.index + root[0].length;
+    html = html.slice(0, k) + '\n' + setAttr(setAttr(wt[0], 'id', up), 'data-hf-of', w) + el + `</${tag}>` + html.slice(k);
+    (ups[w] ??= []).push(up);
+  }
   for (const [id, e] of Object.entries(d.layers)) {
     if (!known(id) && !d.added.some(a => a.id === id)) { warn(`a camada ${id} não existe mais na composição; as edições dela foram ignoradas`); continue; }
     const m = openTag(html, id);
@@ -301,7 +370,7 @@ export function applyEdits(html: string, d: Layers, warn: (m: string) => void = 
       if (clip && e.start !== undefined) tag = setAttr(tag, 'data-start', String(e.start));
       if (clip && e.duration !== undefined) tag = setAttr(tag, 'data-duration', String(e.duration));
       if (clip && e.mediaStart !== undefined) tag = setAttr(tag, 'data-media-start', String(e.mediaStart));
-      if (e.original && /^<video\b/i.test(tag)) tag = setAttr(tag, 'src', ORIGINAL);   // the AI's background is a blurred copy of it
+      if ((e.original || e.full) && /^<video\b/i.test(tag)) tag = setAttr(tag, 'src', ORIGINAL);   // the AI's background is a blurred copy of it
       if (isAudio(id) || /^<video\b/i.test(tag)) {
         const vol = e.hidden && isAudio(id) ? 0 : e.volume;
         if (vol !== undefined) tag = setAttr(tag, 'data-volume', String(vol));
@@ -322,10 +391,13 @@ export function applyEdits(html: string, d: Layers, warn: (m: string) => void = 
     if (p.length) rules.push(`#${id}{${p.join(';')}}`);
     // the mask goes on the object itself: an added text or image is a full-frame box around its .in
     if (e.crop?.some(n => n > 0)) rules.push(`${d.added.some(a => a.id === id && a.kind !== 'video') ? `#${id} .in` : `#${id}`}{clip-path:inset(${e.crop.map(n => n + '%').join(' ')})}`);
+    if (e.full) rules.push(`#${id}{inset:0 auto auto 0!important;width:100%!important;height:auto!important}`);
+    if (e.mask) rules.push(`${[id, ...(ups[id] ?? [])].map(x => '#' + x).join(',')}{${['left', 'top', 'width', 'height'].map((k, i) => `${k}:${e.mask![i]}px!important`).join(';')};right:auto!important;bottom:auto!important}`);
     if (e.z !== undefined) rules.push(`#${stackTarget(html, id)}{z-index:${e.z}!important}`);
   }
   const three = d.added.some(a => a.kind === 'model')
     ? '<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script><script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>' : '';
+  html = stillTweens(html, Object.entries(d.layers).filter(([id, e]) => e.still && known(id) && !isAudio(id)).map(([id]) => id));
   const tail = (rules.length ? `<style data-hf-edits>${rules.join('\n')}</style>` : '') + three + editScript(d, id => !isAudio(id));
   html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, tail + '</body>') : html + tail;
   return mark(html);
@@ -358,7 +430,7 @@ export function syncEdits(dir: string, proj: string) {
     }
   }
   // the project's own master.mp4, for a background switched back to the original picture
-  if (Object.values(d.layers).some(e => e.original) && existsSync(join(proj, 'master.mp4'))) {
+  if (Object.values(d.layers).some(e => e.original || e.full) && existsSync(join(proj, 'master.mp4'))) {
     const to = join(dir, ORIGINAL);
     mkdirSync(dirname(to), { recursive: true });
     if (!existsSync(to) || statSync(to).size !== statSync(join(proj, 'master.mp4')).size) copyFileSync(join(proj, 'master.mp4'), to);

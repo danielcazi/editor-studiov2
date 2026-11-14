@@ -41,6 +41,15 @@
         <div class="traco" style="position:absolute;left:300px;top:40px;width:80px;height:80px"><svg viewBox="0 0 24 24" style="width:100%;height:100%"><path d="M3 6h18" fill="none" stroke="#5B4BFF" stroke-width="2"/><path id="traco-p" d="M3 12h18" fill="none" stroke="#111" stroke-width="2" pathLength="1" stroke-dasharray="1 1.2" stroke-dashoffset="1.1"/></svg></div>
         <div class="ico" style="position:absolute;left:420px;top:40px;width:80px;height:80px;color:#F3984B"><svg viewBox="0 0 24 24" style="width:100%;height:100%"><path d="M12 2s5 4.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-4 1-6.5 1-8.5z" fill="currentColor"/><path d="M3 21h18" fill="none" stroke="#1c1c1c" stroke-width="2" stroke-linecap="round"/></svg></div>
         <div class="selo" style="position:absolute;left:200px;top:880px;width:60px;height:60px;transform:skewX(-12deg)"><div id="selo-in" style="width:60px;height:60px;background:#5B4BFF;opacity:0"></div></div>
+        <!-- filter numa folha: cor na imagem (Channel Mixer) + drop-shadow (Drop Shadow); cor assada na forma; clip-path: polygon() vira o path -->
+        <img class="pb" src="foto.png" style="position:absolute;left:20px;top:525px;width:100px;height:100px;object-fit:cover;filter:grayscale(1) contrast(1.15) drop-shadow(0 8px 10px rgba(0,0,0,.4))">
+        <div class="lado" style="position:absolute;left:140px;top:525px;width:40px;height:100px;background:#FFA34D;filter:brightness(.62);clip-path:polygon(0 20px,40px 0,40px 80px,0 100px)"></div>
+        <!-- phrase() do kit: o texto sobe por uma janela (overflow:hidden) → texto nativo com máscara e animador de posição -->
+        <div id="frase" style="position:absolute;left:200px;top:530px;font:700 28px Arial;color:#141414"><span style="display:inline-block;overflow:hidden;vertical-align:top;padding:0 .12em .1em"><span id="frase0" style="display:inline-block">sobe aqui</span></span></div>
+        <!-- count() do kit: o conteúdo troca por tl.set → um texto com keyframes de Source Text -->
+        <div id="conta" style="position:absolute;left:200px;width:200px;top:575px;text-align:center;font:700 28px Arial;white-space:nowrap;color:#3E3D86">0</div>
+        <!-- contorno de adesivo num grupo: as camadas vão numa pré-composição que leva os Drop Shadow -->
+        <div id="adesivo" style="position:absolute;left:420px;top:530px;width:90px;height:90px;filter:drop-shadow(3px 0 0 #fff) drop-shadow(-3px 0 0 #fff) drop-shadow(0 6px 8px rgba(0,0,0,.35))"><div style="position:absolute;left:0;top:0;width:60px;height:60px;background:#5B4BFF"></div><div style="position:absolute;left:30px;top:30px;width:60px;height:60px;background:#F3984B"></div></div>
       </div>
     </div>
   </div>
@@ -49,6 +58,8 @@
     <video class="clip" id="talk0" src="talk.mp4" data-start="0" data-duration="2" data-media-start="0" data-track-index="6" muted playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
     <div class="rule" style="position:absolute;left:0;right:0;top:0;height:6px;background:#F3984B"></div>
   </div>
+  <!-- grão do kit: overlay sobre tudo; o exportador não o mede por quadro, vira sólido + Noise -->
+  <div id="grain" style="position:absolute;inset:-40px;z-index:5;pointer-events:none;background:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E&quot;);opacity:0.13;mix-blend-mode:overlay"></div>
 </div>
 <script>
   const tl = gsap.timeline({ paused: true });
@@ -57,6 +68,8 @@
   tl.to("#selo-in", { opacity: 1, duration: 0.01 }, 0.5); tl.to("#selo-in", { opacity: 0, duration: 0.01 }, 1.2);   // clipe com quadros vazios nas pontas
   tl.to("#traco-p", { strokeDashoffset: 0, duration: 1, autoRound: false }, 0.2);   // traço de svg que se desenha (padrão do kit): vira Trim Paths
   tl.fromTo("#cena", { scale: 1 }, { scale: 1.05, duration: 2, ease: "sine.inOut" }, 0);   // push-in da cena (move do kit.py): não é conteúdo mudando
+  tl.fromTo("#frase0", { yPercent: 115 }, { yPercent: 0, duration: 0.5 }, 0.3);
+  for (let i = 0; i <= 10; i++) tl.set("#conta", { textContent: "\u2060" + i * 25 }, 0.5 + i * 0.1);
   tl.fromTo(".sub", { filter: "blur(12px)", opacity: 0 }, { filter: "blur(0px)", opacity: 1, duration: 0.6 }, 0.2);
   const cv = document.getElementById('cena-cv'), ctx = cv.getContext('2d');
   const R = () => {
